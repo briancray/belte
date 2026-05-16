@@ -1,6 +1,7 @@
 import type { BunPlugin } from 'bun'
 import { belteResolverPlugin } from './belteResolverPlugin.ts'
 import { build } from './build.ts'
+import { loadSvelteConfig } from './loadSvelteConfig.ts'
 import { log } from './log.ts'
 import { sveltePlugin } from './sveltePlugin.ts'
 
@@ -50,12 +51,13 @@ export async function compile({
     target?: CompileTarget
     outfile?: string
 } = {}): Promise<string> {
-    await build({ cwd })
+    const svelteConfig = await loadSvelteConfig(cwd)
+    await build({ cwd, svelteConfig })
 
     const out = outfile ?? `${cwd}/dist/server${target.includes('windows') ? '.exe' : ''}`
 
     const plugins: BunPlugin[] = [
-        sveltePlugin({ generate: 'server' }),
+        sveltePlugin({ generate: 'server', svelteConfig }),
         belteResolverPlugin({ cwd, embedAssets: true }),
     ]
 

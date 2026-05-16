@@ -1,19 +1,28 @@
 import { rm } from 'node:fs/promises'
 import type { BunPlugin } from 'bun'
 import { belteResolverPlugin } from './belteResolverPlugin.ts'
+import { loadSvelteConfig } from './loadSvelteConfig.ts'
 import { log } from './log.ts'
+import type { SvelteConfig } from './SvelteConfig.ts'
 import { sveltePlugin } from './sveltePlugin.ts'
 
 const CLIENT_ENTRY = new URL('./clientEntry.ts', import.meta.url).pathname
 
-export async function build({ cwd = process.cwd() }: { cwd?: string } = {}): Promise<void> {
+export async function build({
+    cwd = process.cwd(),
+    svelteConfig,
+}: {
+    cwd?: string
+    svelteConfig?: SvelteConfig
+} = {}): Promise<void> {
     const distDir = `${cwd}/dist`
     const outDir = `${distDir}/_app`
 
     await rm(distDir, { recursive: true, force: true })
 
+    const config = svelteConfig ?? (await loadSvelteConfig(cwd))
     const plugins: BunPlugin[] = [
-        sveltePlugin({ generate: 'client' }),
+        sveltePlugin({ generate: 'client', svelteConfig: config }),
         belteResolverPlugin({ cwd }),
     ]
     try {
