@@ -10,6 +10,7 @@ import { isDebugEnabled } from './debug.ts'
 import type { Layouts } from './Layouts.ts'
 import { log } from './log.ts'
 import type { Routes } from './Routes.ts'
+import { requestContext } from './requestContext.ts'
 import { layoutPrefixesFor } from './routePrefixes.ts'
 
 export type Assets = Record<string, Uint8Array>
@@ -33,6 +34,45 @@ function contentType(path: string): string {
         return 'application/octet-stream'
     }
     return MIME[path.slice(dot)] ?? 'application/octet-stream'
+}
+
+let fetchPatched = false
+
+function rawUrl(input: RequestInfo | URL): string {
+    if (typeof input === 'string') {
+        return input
+    }
+    if (input instanceof URL) {
+        return input.href
+    }
+    if (input instanceof Request) {
+        return input.url
+    }
+    return String(input)
+}
+
+function patchFetch(): void {
+    if (fetchPatched) {
+        return
+    }
+    fetchPatched = true
+    const baseFetch = globalThis.fetch
+    globalThis.fetch = ((input, init) => {
+        const raw = rawUrl(input)
+        // "/foo" is path-relative (resolve against the request); "//host" is protocol-relative (leave alone).
+        if (!raw.startsWith('/') || raw.startsWith('//')) {
+            return baseFetch(input, init)
+        }
+        const ctx = requestContext.getStore()
+        if (!ctx) {
+            return baseFetch(input, init)
+        }
+        const resolved = new URL(raw, ctx.url)
+        if (input instanceof Request) {
+            return baseFetch(new Request(resolved, input), init)
+        }
+        return baseFetch(resolved, init)
+    }) as typeof fetch
 }
 
 export type ResolveContext = {
@@ -143,6 +183,7 @@ export async function createServer<TSocketData = unknown>({
         )
     }
 
+    patchFetch()
     const logRequests = isDebugEnabled('belte')
 
     async function resolvePageByPath(req: Request, url: URL, pathname: string): Promise<Resolved> {
@@ -256,7 +297,7 @@ export async function createServer<TSocketData = unknown>({
             loadViewChain(viewPrefixes),
         ])
 
-        const rendered = render(App, {
+        const rendered = await render(App, {
             props: {
                 state: {
                     layouts: viewChain,
@@ -289,14 +330,16 @@ export async function createServer<TSocketData = unknown>({
 
         async fetch(req, srv) {
             const url = new URL(req.url)
-            const start = logRequests ? Bun.nanoseconds() : 0
-            const response = await handle(req, srv, url)
-            if (logRequests) {
-                const ms = (Bun.nanoseconds() - start) / 1e6
-                const status = response ? response.status : 101
-                log.request(req.method, `${url.pathname}${url.search}`, status, ms)
-            }
-            return response as Response
+            return requestContext.run({ url }, async () => {
+                const start = logRequests ? Bun.nanoseconds() : 0
+                const response = await handle(req, srv, url)
+                if (logRequests) {
+                    const ms = (Bun.nanoseconds() - start) / 1e6
+                    const status = response ? response.status : 101
+                    log.request(req.method, `${url.pathname}${url.search}`, status, ms)
+                }
+                return response as Response
+            })
         },
 
         error(err) {

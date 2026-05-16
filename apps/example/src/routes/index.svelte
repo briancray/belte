@@ -5,6 +5,7 @@ let count = $state(0)
 let lastMessage = $state('')
 let ws: WebSocket | undefined = $state(undefined)
 let serverTime = $state('')
+let time = $state(fetch('/time').then((r) => r.json()))
 
 function connect() {
     ws = new WebSocket(`ws://${location.host}/ws`)
@@ -24,7 +25,7 @@ async function fetchTime() {
 }
 </script>
 
-<h1 class="text-3xl font-bold">Welcome</h1>
+<h1 class="text-3xl font-bold">Welcome {#await time then { now }}{now}{/await}</h1>
 <p class="mt-2 text-slate-600">
   Rendered at <code class="font-mono text-sm">{data.requestedAt}</code> (from the resolve hook).
 </p>

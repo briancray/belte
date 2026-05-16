@@ -23,7 +23,7 @@ function parseFlag(name: string): string | undefined {
 async function dev(): Promise<void> {
     await build({ cwd })
     Bun.spawn({
-        cmd: ['bun', '--hot', '--preload', PRELOAD, SERVER_ENTRY],
+        cmd: ['bun', '--hot', '--watch', '--preload', PRELOAD, SERVER_ENTRY],
         cwd,
         stdio: ['inherit', 'inherit', 'inherit'],
     })
