@@ -68,6 +68,27 @@ your-app/
 - `routes/_layout.svelte` wraps every page; `routes/admin/_layout.svelte` wraps everything under `/admin`. Layouts compose root-to-leaf.
 - `routes/_layout.ts` exports a `resolve` hook that runs server-side per request. Its result is merged shallowly into `data` and exposed to layouts/pages as a prop. Resolve hooks may return `{ redirect: "/somewhere" }` to short-circuit.
 
+```ts
+// routes/_layout.ts
+import type { ResolveHook } from 'belte/types/ResolveHook'
+
+export const resolve: ResolveHook = ({ url, params }) => {
+    return { data: { requestedAt: new Date().toISOString() } }
+}
+```
+
+```svelte
+<!-- routes/_layout.svelte -->
+<script lang="ts">
+import type { Snippet } from 'svelte'
+
+let { data, children }: { data: { requestedAt: string }; children: Snippet } = $props()
+</script>
+
+<header>rendered at {data.requestedAt}</header>
+<main>{@render children()}</main>
+```
+
 ### API routes
 
 A `.ts` file in `routes/` exports HTTP-method-named functions:
@@ -116,230 +137,3 @@ belte compile [--target=…] [--out=…]
 ```
 
 `belte compile` defaults to your host target (`bun-darwin-arm64`, `bun-linux-x64`, etc.) and writes to `dist/server`. The binary embeds your gzipped client assets, so it has no on-disk dependency on `dist/`.
-
----
-
-## Package entry points
-
-`belte` exposes each library file as its own subpath import — there is no barrel. Import the exact module you need.
-
-| Pattern                       | Resolves to                          |
-| ----------------------------- | ------------------------------------ |
-| `belte/types/<TypeName>`      | `src/lib/types/<TypeName>.ts`        |
-| `belte/server/<name>`         | `src/lib/server/<name>.ts`           |
-| `belte/client/<name>`         | `src/lib/client/<name>.ts`           |
-| `belte/shared/<name>`         | `src/lib/shared/<name>.ts`           |
-| `belte/build`                 | `src/build.ts`                       |
-| `belte/compile`               | `src/compile.ts`                     |
-| `belte/preload`               | `src/preload.ts`                     |
-| `belte/svelte-plugin`         | `src/sveltePlugin.ts`                |
-| `belte/resolver-plugin`       | `src/belteResolverPlugin.ts`         |
-
-Examples:
-
-```ts
-import { createServer } from 'belte/server/createServer'
-import { startClient } from 'belte/client/startClient'
-import { build } from 'belte/build'
-import { compile } from 'belte/compile'
-import { log } from 'belte/shared/log'
-import { isDebugEnabled } from 'belte/shared/isDebugEnabled'
-import type { ResolveHook } from 'belte/types/ResolveHook'
-import type { SocketUpgrade } from 'belte/types/SocketUpgrade'
-```
-
-Wildcard subpath exports require `"moduleResolution": "bundler"` (or `"nodenext"`) in your `tsconfig.json`.
-
----
-
-## Public API
-
-### `createServer(options) → Promise<Bun.Server>`
-
-Starts the SSR/SPA server. The compiled `serverEntry.ts` calls this for you; you only call it directly if you're building a custom entrypoint.
-
-```ts
-import { createServer } from 'belte/server/createServer'
-
-await createServer({
-    routes,        // Routes
-    apis,          // ApiRoutes | undefined
-    layouts,       // Layouts | undefined
-    shell,         // string — HTML template with <!--ssr:head--> / <!--ssr:body--> / <!--ssr:state--> markers
-    socket,        // Bun WebSocketHandler | undefined
-    socketUpgrade, // SocketUpgrade<T> | undefined
-    socketPath,    // string, defaults to "/__belte/socket"
-    assets,        // Record<string, Uint8Array> of pre-gzipped assets, or undefined to read from disk
-    distDir,       // string, defaults to `${cwd}/dist`
-    port,          // number, defaults to PORT env or 3000
-})
-```
-
-The server handles:
-
-- `/_app/*` — gzipped static assets (in-memory if `assets` is provided, otherwise from `${distDir}/_app/`)
-- `/__belte/resolve?p=<pathname>` — JSON endpoint the client uses to resolve a route during SPA navigation
-- `/__belte/socket` (or `socketPath`) — WebSocket upgrade endpoint when `socket` is set
-- everything else — page render (SSR) or API route dispatch
-
-### `startClient({ routes, layouts }) → Promise<void>`
-
-Hydrates the SSR'd page, then takes over navigation. Intercepts same-origin `<a>` clicks and `popstate`, fetches `/__belte/resolve` for the new route, swaps the page + layout chain, and resets scroll. Falls back to a full navigation on failure.
-
-The generated `clientEntry.ts` calls this; you only call it directly if you're customizing the client bootstrap.
-
-### `build({ cwd? }) → Promise<void>`
-
-Bundles the client into `${cwd}/dist/_app/` using `Bun.build`:
-
-- entry: belte's `clientEntry.ts`
-- target: `browser`, minified, code-split, source-mapped
-- plugins: `sveltePlugin({ generate: 'client' })`, `belteResolverPlugin({ cwd })`, and `bun-plugin-tailwind` if installed
-- gzips every output and writes `<file>.gz` siblings
-
-### `compile({ cwd?, target?, outfile? }) → Promise<string>`
-
-Calls `build`, then `Bun.build({ compile: { target, outfile } })` against `serverEntry.ts` with `belteResolverPlugin({ embedAssets: true })`. Produces a single executable that embeds the gzipped client bundle. Returns the output path.
-
-Helpers (imported from `belte/shared/`):
-
-- `detectTarget(platform?, arch?): CompileTarget` — picks the right `bun-<platform>-<arch>`. Defaults to `process.platform` / `process.arch`.
-- `normalizeTarget(input: string): CompileTarget` — accepts `darwin-arm64` or `bun-darwin-arm64`.
-
-### `sveltePlugin({ generate })`
-
-`BunPlugin` that compiles `.svelte` and `.svelte.{js,ts}` files via `svelte/compiler`. `generate` is `'client'` or `'server'`. TypeScript in `.svelte.ts` modules is stripped via `Bun.Transpiler` before compilation. CSS is injected (no separate stylesheet step).
-
-### `belteResolverPlugin({ cwd?, embedAssets? })`
-
-`BunPlugin` that resolves the virtual modules belte's entry files import — `_virtual/routes`, `_virtual/apis`, `_virtual/layouts`, `_virtual/shell`, `_virtual/socket`, `_virtual/assets`. Scans `${cwd}/src/routes/` and generates lazy `import()` maps so route splitting works out of the box.
-
-When `embedAssets: true` (set during `compile`), it inlines the gzipped contents of `${cwd}/dist/_app/*.gz` as base64 so the binary is self-contained.
-
-### `routePrefixes(route: string) → string[]`
-
-For a route key like `"posts/[id]/comments"` returns `["", "posts", "posts/[id]"]` — the directory prefixes from root to leaf, with the leaf basename dropped. Used internally to walk layout chains.
-
-### `log`
-
-Colorized logger built on `Bun.color`. Auto-disables ANSI when `Bun.enableANSIColors` is `false` (non-TTY or `NO_COLOR`).
-
-```ts
-import { log } from 'belte/shared/log'
-
-log.info('routes resolved')
-log.warn('something looks off')
-log.error(err)                                // accepts Error or any value
-log.success('ready at http://localhost:3000')
-log.detail('  - dist/_app/index.js')          // dim, no prefix
-log.debug('belte:router', 'matched /foo')     // gated by DEBUG env (see below)
-log.request('GET', '/foo', 200, 1.42)         // METHOD path STATUS Nms, all colorized
-```
-
-All methods except `request` prefix output with a bold magenta `[belte]`.
-
-### `isDebugEnabled(name, env?) → boolean`
-
-Matches the conventions of the [`debug`](https://www.npmjs.com/package/debug) npm package against `env` (defaults to `process.env.DEBUG`):
-
-- `DEBUG=belte` enables `belte`
-- `DEBUG=belte:*` enables `belte` and any `belte:foo`
-- `DEBUG=*` enables everything
-- `DEBUG=a,belte` comma-separated list
-
-The server uses this to gate per-request logging (`DEBUG=belte` turns on the `METHOD path STATUS Nms` line for every request).
-
-### Types
-
-Each type lives in its own file under `belte/types/<TypeName>`. Import only what you need.
-
-#### Routes & APIs
-
-```ts
-import type { Component } from 'svelte'
-
-type Routes = Record<string, () => Promise<{ default: Component }>>
-
-type ApiHandler = (req: Request, params: Record<string, string>) => Response | Promise<Response>
-type ApiModule  = Partial<Record<string, ApiHandler>>   // keyed by HTTP method
-type ApiRoutes  = Record<string, () => Promise<ApiModule>>
-```
-
-#### Layouts
-
-```ts
-type LayoutViewModule = { default: Component }
-type LayoutDataModule = { resolve?: ResolveHook }
-
-type LayoutEntry = {
-    view?:    () => Promise<LayoutViewModule>
-    resolve?: () => Promise<LayoutDataModule>
-}
-
-type Layouts = Record<string, LayoutEntry>   // key is directory prefix; "" = root
-```
-
-#### Resolve hook
-
-```ts
-type ResolveContext = {
-    req: Request
-    url: URL
-    route: string
-    params: Record<string, string>
-}
-
-type ResolveResult = {
-    data?: Record<string, unknown>
-    redirect?: string
-}
-
-type ResolveHook = (ctx: ResolveContext) => ResolveResult | Promise<ResolveResult>
-```
-
-Layouts run root-to-leaf. Each `data` object is shallow-merged into the running result and passed to the page as a prop. Returning `{ redirect }` short-circuits the chain and sends a 302 (server) or `history.replaceState` + re-navigate (client).
-
-#### WebSocket upgrade
-
-```ts
-type SocketUpgrade<T> = (req: Request) => false | { data: T } | Promise<false | { data: T }>
-```
-
-Return `false` to reject the upgrade with a 403, or `{ data }` to attach per-connection state.
-
-#### App state
-
-```ts
-type AppState = {
-    layouts: Array<{ key: string; Component: Component }>
-    Page: Component | undefined
-    params: Record<string, string>
-    data: Record<string, unknown>
-}
-```
-
-The single canonical type passed as `state` to `App.svelte`. The client's `nav` reactive store is shaped as `AppState`.
-
-#### Compile target
-
-```ts
-type CompileTarget =
-    | 'bun-darwin-arm64'
-    | 'bun-darwin-x64'
-    | 'bun-linux-arm64'
-    | 'bun-linux-x64'
-    | 'bun-windows-x64'
-```
-
----
-
-## Environment variables
-
-| Variable             | Effect                                                                                |
-| -------------------- | ------------------------------------------------------------------------------------- |
-| `PORT`               | Server port. Defaults to `3000`.                                                      |
-| `DEBUG`              | Enables `log.debug(scope, …)` and request logging. See `isDebugEnabled` for patterns. |
-| `NO_COLOR`           | Disables ANSI colors in `log`. Standard `NO_COLOR` semantics.                         |
-| `BELTE_SVELTE_MODE`  | `server` (default) or `client`. Used by `belte/preload` to pick the Svelte target.    |
-
-Bun auto-loads `.env` from the cwd, so dropping `DEBUG=belte:*` in `.env` is enough to enable verbose logging in development.
