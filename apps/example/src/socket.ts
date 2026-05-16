@@ -5,8 +5,6 @@ type Data = { id: number }
 
 let nextId = 0
 
-export const path = '/ws'
-
 export const upgrade: SocketUpgrade<Data> = () => ({
     data: { id: ++nextId },
 })

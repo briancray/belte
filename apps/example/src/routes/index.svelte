@@ -8,7 +8,7 @@ let serverTime = $state('')
 let time = $state(fetch('/time').then((r) => r.json()))
 
 function connect() {
-    ws = new WebSocket(`ws://${location.host}/ws`)
+    ws = new WebSocket(`ws://${location.host}/__belte/socket`)
     ws.addEventListener('message', (e) => {
         lastMessage = String(e.data)
     })
