@@ -114,8 +114,6 @@ If `src/socket.ts` exists, belte wires it into the same server:
 import type { SocketUpgrade } from 'belte/types/SocketUpgrade'
 import type { WebSocketHandler } from 'bun'
 
-export const path = '/ws'
-
 export const upgrade: SocketUpgrade<{ id: number }> = () => ({ data: { id: 1 } })
 
 export const socket: WebSocketHandler<{ id: number }> = {
