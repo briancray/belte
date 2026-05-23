@@ -1,5 +1,5 @@
 export type TraceEntry = {
-    kind: 'resolve' | 'fetch' | 'module' | 'api'
+    kind: 'module' | 'remote' | 'render' | 'middleware'
     label: string
     ms: number
 }

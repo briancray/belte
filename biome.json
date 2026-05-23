@@ -7,11 +7,7 @@
     },
     "files": {
         "includes": [
-            "packages/*/src/**/*.{ts,js,json,svelte}",
-            "packages/*/bin/**/*.{ts,js}",
-            "packages/*/scripts/**/*.{ts,js}",
-            "examples/*/src/**/*.{ts,js,json,svelte}",
-            "*.{json,ts,js}",
+            "**/*.{json,ts,js}",
             "!**/dist",
             "!**/node_modules",
             "!**/.belte",

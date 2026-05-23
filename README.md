@@ -59,6 +59,33 @@ your-app/
   dist/                 # produced by `belte build`
 ```
 
+### Path aliases
+
+Two import aliases are wired through the bundler in every mode (dev, build, compile):
+
+- `$routes/...` → `src/routes/...`
+- `$lib/...` → `src/lib/...`
+
+```ts
+import { getNow } from '$routes/time/endpoint.ts'
+import { formatDate } from '$lib/formatDate.ts'
+```
+
+For editor / type-check support, add matching `paths` to your `tsconfig.json`:
+
+```json
+{
+    "compilerOptions": {
+        "paths": {
+            "$routes": ["./src/routes"],
+            "$routes/*": ["./src/routes/*"],
+            "$lib": ["./src/lib"],
+            "$lib/*": ["./src/lib/*"]
+        }
+    }
+}
+```
+
 ### Routes
 
 - `routes/foo.svelte` → `GET /foo` (page)

@@ -19,11 +19,18 @@ export function sveltePlugin(options: {
         setup(build) {
             const userOptions = options.svelteConfig?.compilerOptions ?? {}
             const tsTranspiler = new Bun.Transpiler({ loader: 'ts' })
+            const compileOptions = {
+                ...userOptions,
+                experimental: {
+                    ...(userOptions as { experimental?: object }).experimental,
+                    async: true,
+                },
+            }
             build.onLoad({ filter: /\.svelte\.(js|ts)$/ }, async (args) => {
                 const raw = await Bun.file(args.path).text()
                 const source = args.path.endsWith('.ts') ? tsTranspiler.transformSync(raw) : raw
                 const { js, warnings } = compileModule(source, {
-                    ...userOptions,
+                    ...compileOptions,
                     filename: args.path,
                     generate: options.generate,
                     dev: false,
@@ -37,7 +44,7 @@ export function sveltePlugin(options: {
             build.onLoad({ filter: /\.svelte$/ }, async (args) => {
                 const source = await Bun.file(args.path).text()
                 const { js, warnings } = compile(source, {
-                    ...userOptions,
+                    ...compileOptions,
                     filename: args.path,
                     generate: options.generate,
                     css: 'injected',

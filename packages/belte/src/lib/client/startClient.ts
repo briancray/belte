@@ -1,9 +1,14 @@
 import type { Component } from 'svelte'
 import { hydrate } from 'svelte'
 import App from '../../App.svelte'
-import { layoutLoadersFor } from '../shared/layoutLoadersFor.ts'
+import { setCacheStoreResolver } from '../shared/activeCacheStore.ts'
+import { createCacheStore } from '../shared/createCacheStore.ts'
+import { nearestLayoutPrefix } from '../shared/nearestLayoutPrefix.ts'
+import type { CacheSnapshotEntry } from '../types/CacheSnapshotEntry.ts'
+import type { CacheStore } from '../types/CacheStore.ts'
 import type { Layouts } from '../types/Layouts.ts'
-import type { Routes } from '../types/Routes.ts'
+import type { Pages } from '../types/Pages.ts'
+import type { RemoteResponse } from '../types/RemoteResponse.ts'
 import { nav } from './nav.svelte.ts'
 
 declare global {
@@ -11,18 +16,34 @@ declare global {
         __SSR__: {
             route: string
             params: Record<string, string>
-            data: Record<string, unknown>
+            cache?: CacheSnapshotEntry[]
         }
     }
 }
 
-type ResolveResponse =
-    | {
-          route: string
-          params: Record<string, string>
-          data?: Record<string, unknown>
-      }
-    | { redirect: string }
+/*
+Pre-populates the client cache store with response entries captured during
+SSR. Each entry becomes an already-resolved Response so the first hydration
+pass finds the data via cache() without issuing a network round-trip.
+*/
+function hydrateCacheFromSnapshot(store: CacheStore, snapshot: CacheSnapshotEntry[]): void {
+    for (const entry of snapshot) {
+        const response = new Response(entry.body, {
+            status: entry.status,
+            statusText: entry.statusText,
+            headers: new Headers(entry.headers),
+        }) as RemoteResponse<unknown>
+        store.entries.set(entry.key, {
+            key: entry.key,
+            promise: Promise.resolve(response),
+            request: new Request(entry.url, { method: entry.method }),
+            ttl: undefined,
+            expiresAt: undefined,
+        })
+    }
+}
+
+type ResolveResponse = { route: string; params: Record<string, string> } | { redirect: string }
 
 type FetchOutcome =
     | { kind: 'ok'; response: Response }
@@ -30,10 +51,6 @@ type FetchOutcome =
     | { kind: 'not-found' }
     | { kind: 'http-error'; status: number }
 
-/*
-Wraps a JSON-accepting fetch in a tagged-union outcome so callers can branch
-on network errors, 404s, and other HTTP failures without try/catch noise.
-*/
 async function safeResolveFetch(pathname: string): Promise<FetchOutcome> {
     let response: Response
     try {
@@ -50,11 +67,6 @@ async function safeResolveFetch(pathname: string): Promise<FetchOutcome> {
     return { kind: 'ok', response }
 }
 
-/*
-Returns the anchor element a click event should hijack for client-side navigation,
-or undefined when the event should fall through to the browser (modifier keys,
-external origin, download/target attributes, hash-only, non-left buttons, etc.).
-*/
 function isInternalLinkEvent(event: MouseEvent): HTMLAnchorElement | undefined {
     if (event.defaultPrevented) {
         return undefined
@@ -92,13 +104,15 @@ function isInternalLinkEvent(event: MouseEvent): HTMLAnchorElement | undefined {
 /*
 Hydrates the SSR'd document against the SSR payload on `window.__SSR__`, then
 intercepts internal link clicks and popstate events to perform client-side
-navigations by fetching the same routes as JSON.
+navigations. Each navigation fetches a JSON envelope (route + params) and
+swaps the active page + layout component; pages call cache(...) themselves to
+fetch their data via the remote-function proxy.
 */
 export async function startClient({
-    routes,
+    pages,
     layouts,
 }: {
-    routes: Routes
+    pages: Pages
     layouts?: Layouts
 }): Promise<void> {
     const target = document.getElementById('app')
@@ -106,59 +120,43 @@ export async function startClient({
         throw new Error('[belte] missing #app target')
     }
 
-    async function loadPage(route: string): Promise<Component> {
-        const loader = routes[route]
-        if (!loader) {
-            throw new Error(`[belte] unknown route key: ${route}`)
-        }
-        const mod = await loader()
-        return mod.default
+    const cacheStore = createCacheStore()
+    setCacheStoreResolver(() => cacheStore)
+    if (window.__SSR__.cache) {
+        hydrateCacheFromSnapshot(cacheStore, window.__SSR__.cache)
     }
 
-    async function loadLayouts(
+    const layoutPrefixes = layouts ? Object.keys(layouts) : []
+
+    async function loadView(
         route: string,
-    ): Promise<Array<{ key: string; Component: Component }>> {
-        const loaders = layoutLoadersFor(route, layouts, 'view')
-        return Promise.all(
-            loaders.map(async ({ prefix, load }) => ({
-                key: prefix,
-                Component: (await load()).default,
-            })),
-        )
+    ): Promise<{ Page: Component; Layout: Component | undefined }> {
+        const pageLoader = pages[route]
+        if (!pageLoader) {
+            throw new Error(`[belte] unknown route: ${route}`)
+        }
+        const layoutPrefix = nearestLayoutPrefix(route, layoutPrefixes)
+        const [pageMod, layoutMod] = await Promise.all([
+            pageLoader(),
+            layoutPrefix && layouts ? layouts[layoutPrefix]() : Promise.resolve(undefined),
+        ])
+        return { Page: pageMod.default, Layout: layoutMod?.default }
     }
 
     try {
-        const { route, params, data } = window.__SSR__
-        const [Page, layoutChain] = await Promise.all([loadPage(route), loadLayouts(route)])
-        nav.layouts = layoutChain
+        const { route, params } = window.__SSR__
+        const { Page, Layout } = await loadView(route)
         nav.Page = Page
+        nav.layout = Layout
         nav.params = params
-        nav.data = data
-        // hydrate mounts to DOM — impure boundary
         hydrate(App, { target, props: { state: nav } })
     } catch (err) {
         console.error('[belte] initial hydration failed', err)
     }
 
-    /*
-    Performs a client-side navigation to `pathname`. Fetches the resolve
-    envelope as JSON, follows a redirect by replacing history and recursing,
-    swaps the active layouts/page/data, and resets scroll. Any network or
-    handler failure falls back to a full page load so the user is never stuck.
-    */
     async function navigate(pathname: string): Promise<void> {
         const outcome = await safeResolveFetch(pathname)
-        if (outcome.kind === 'network-error') {
-            console.error('[belte] resolve failed')
-            window.location.href = pathname
-            return
-        }
-        if (outcome.kind === 'not-found') {
-            window.location.href = pathname
-            return
-        }
-        if (outcome.kind === 'http-error') {
-            console.error('[belte] resolve returned', outcome.status)
+        if (outcome.kind !== 'ok') {
             window.location.href = pathname
             return
         }
@@ -169,14 +167,10 @@ export async function startClient({
             return
         }
         try {
-            const [Page, layoutChain] = await Promise.all([
-                loadPage(result.route),
-                loadLayouts(result.route),
-            ])
-            nav.layouts = layoutChain
+            const { Page, Layout } = await loadView(result.route)
             nav.Page = Page
+            nav.layout = Layout
             nav.params = result.params
-            nav.data = result.data ?? {}
             window.scrollTo(0, 0)
         } catch (err) {
             console.error('[belte] navigation failed', err)
@@ -184,7 +178,6 @@ export async function startClient({
         }
     }
 
-    // DOM event registration is the impure boundary for client navigation
     document.addEventListener('click', (event) => {
         const anchor = isInternalLinkEvent(event)
         if (!anchor) {
@@ -192,8 +185,6 @@ export async function startClient({
         }
         const url = new URL(anchor.href, window.location.href)
         event.preventDefault()
-        // Same path+search but different hash: let the browser handle the in-page jump
-        // and history entry; don't refetch the route.
         if (url.pathname === window.location.pathname && url.search === window.location.search) {
             if (url.hash !== window.location.hash) {
                 window.location.hash = url.hash

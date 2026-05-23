@@ -17,14 +17,13 @@ you are making a ssr + spa framwork for bun and svelte.
 * use functional style programming with pure functions
 * prefer approaches using modern javascript apis when comparing two of the same approaches
 * always use full known types where possible instead of creating adhoc one-use types
-* check utils folders for existing functionality before writing new functionality
 * always use openining and closing brackets for if statements, no single line ifs
 * if you're transforming data, prefer instance and static methods like reduce and map over for loops when applicable
 * use undefined instead of null for nullish values unless a type needs null
 * write svelte 5 components
 * run bun format on a file after changes
 * use tailwindcss classes for styling, and prefer tailwind classes over style properties when possible.
-* use sveltekit's $derived.by instead of $derived when making derived reactives
+* use sveltekit's $derived when making derived reactives unless $derived.by() is explicitely needed
 * do not start long living bun servers with `bun run dev`. When i type that it's a mistake
 * use descriptive variable names instead of abbrevations
 * add descriptions above all functions and logic that is otherwise exceptional or unexpected
