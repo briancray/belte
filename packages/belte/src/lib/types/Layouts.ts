@@ -1,13 +1,7 @@
-import type { LayoutEntry } from './LayoutEntry.ts'
+import type { Component } from 'svelte'
 
-/**
- * Merged map of directory prefix → layout entry.
- *
- *   ""           → routes/layout.svelte and/or routes/layout.ts
- *   "admin"      → routes/admin/layout.svelte and/or routes/admin/layout.ts
- *
- * For a hit route, every layout whose prefix is a parent directory runs
- * root-to-leaf: data resolves are awaited (merged shallow, redirect short-
- * circuits); view components wrap the page recursively (outermost = root).
- */
-export type Layouts = Record<string, LayoutEntry>
+/*
+Manifest of directory prefix → layout.svelte module loader. The deepest
+prefix that is an ancestor of a route wins (no stacking).
+*/
+export type Layouts = Record<string, () => Promise<{ default: Component }>>

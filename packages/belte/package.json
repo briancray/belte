@@ -5,8 +5,11 @@
     "exports": {
         "./types/*": "./src/lib/types/*.ts",
         "./server/*": "./src/lib/server/*.ts",
+        "./server": "./src/lib/server/server.ts",
         "./client/*": "./src/lib/client/*.ts",
         "./shared/*": "./src/lib/shared/*.ts",
+        "./route/*": "./src/lib/route/*.ts",
+        "./cache": "./src/lib/shared/cache.ts",
         "./build": "./src/build.ts",
         "./compile": "./src/compile.ts",
         "./preload": "./src/preload.ts",
@@ -16,18 +19,24 @@
     "bin": {
         "belte": "./bin/belte.ts"
     },
-    "files": ["src", "bin"],
+    "files": [
+        "src",
+        "bin"
+    ],
     "peerDependencies": {
         "svelte": "^5.0.0",
         "bun-plugin-tailwind": "*",
         "tailwindcss": "^4.0.0"
     },
     "peerDependenciesMeta": {
-        "bun-plugin-tailwind": { "optional": true },
-        "tailwindcss": { "optional": true }
+        "bun-plugin-tailwind": {
+            "optional": true
+        },
+        "tailwindcss": {
+            "optional": true
+        }
     },
     "devDependencies": {
-        "jsdom": "^29.1.1",
         "bun-plugin-tailwind": "latest",
         "tailwindcss": "^4.0.0"
     }

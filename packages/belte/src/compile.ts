@@ -32,7 +32,7 @@ export async function compile({
 
     const plugins: BunPlugin[] = [
         sveltePlugin({ generate: 'server', svelteConfig }),
-        belteResolverPlugin({ cwd, embedAssets: true }),
+        belteResolverPlugin({ cwd, embedAssets: true, target: 'server' }),
     ]
 
     const result = await Bun.build({

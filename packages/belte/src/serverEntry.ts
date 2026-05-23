@@ -1,24 +1,26 @@
 // @ts-expect-error virtual module resolved by belteResolverPlugin
-import { apis } from './_virtual/apis.ts'
+import * as appMod from './_virtual/app.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
 import { assets } from './_virtual/assets.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
 import { layouts } from './_virtual/layouts.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
-import { routes } from './_virtual/routes.ts'
+import { pages } from './_virtual/pages.ts'
+// @ts-expect-error virtual module resolved by belteResolverPlugin
+import { remotes } from './_virtual/remotes.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
 import { shell } from './_virtual/shell.ts'
-// @ts-expect-error virtual module resolved by belteResolverPlugin
-import * as socketMod from './_virtual/socket.ts'
 import { createServer } from './lib/server/createServer.ts'
+import { requestContext } from './lib/server/requestContext.ts'
+import { setCacheStoreResolver } from './lib/shared/activeCacheStore.ts'
+
+setCacheStoreResolver(() => requestContext.getStore()?.cache)
 
 await createServer({
-    routes,
-    apis,
+    pages,
+    remotes,
     layouts,
     shell,
-    socket: socketMod.socket,
-    socketUpgrade: socketMod.upgrade,
-    socketPath: socketMod.path,
+    app: appMod,
     assets,
 })

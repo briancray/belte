@@ -90,7 +90,7 @@ export async function build({
     const plugins: BunPlugin[] = [
         dedupeSveltePlugin({ cwd, conditions: ['browser', 'default'] }),
         sveltePlugin({ generate: 'client', svelteConfig: config }),
-        belteResolverPlugin({ cwd }),
+        belteResolverPlugin({ cwd, target: 'client' }),
     ]
     try {
         const tailwind = (await import('bun-plugin-tailwind')).default

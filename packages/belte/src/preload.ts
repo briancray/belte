@@ -7,7 +7,7 @@ const mode = (process.env.BELTE_SVELTE_MODE ?? 'server') as 'server' | 'client'
 const svelteConfig = await loadSvelteConfig()
 
 plugin(sveltePlugin({ generate: mode, svelteConfig }))
-plugin(belteResolverPlugin())
+plugin(belteResolverPlugin({ target: mode }))
 
 plugin({
     name: 'css-noop',
