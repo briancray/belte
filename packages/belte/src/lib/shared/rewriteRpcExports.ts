@@ -11,15 +11,15 @@ type RpcSite = {
 }
 
 /*
-Scans an `$rpc/**` module and locates its `export const <name> = handler.VERB(...)`
+Scans an `$rpc/**` module and locates its `export const <name> = VERB(...)`
 binding. Returns the verb, the export name, and the byte range of the
-`handler.VERB(` call so the rewriters can splice in the runtime
-implementation. Verb is extracted from the property name (`.GET`/`.POST`/…),
-the export name from the surrounding `export const <name> = ` binding.
+`VERB(` call so the rewriters can splice in the runtime implementation.
+Verb is the identifier itself (`GET`/`POST`/…); the export name comes from
+the surrounding `export const <name> = ` binding.
 
-A regex pass would be tidier but it can't tell a `handler.GET` mention
-inside a docstring or template literal from the real call, and it can't
-follow nested generics like `handler.GET<Map<K, V>>(`.
+A regex pass would be tidier but it can't tell a `GET` mention inside a
+docstring or template literal from the real call, and it can't follow
+nested generics like `GET<Map<K, V>>(`.
 
 Each file must contain exactly one such export; the bundler also checks
 that the export name matches the file's stem so the URL (file path) and
@@ -55,24 +55,22 @@ export function findRpcCallSite(source: string): RpcSite | undefined {
             while (j < len && isIdentPart(source[j])) {
                 j++
             }
-            if (source.slice(i, j) === 'handler') {
-                const verbProbe = matchVerbProperty(source, j)
-                if (verbProbe !== undefined) {
-                    const tail = matchCallTail(source, verbProbe.after)
-                    if (tail !== undefined) {
-                        const exportName = detectExportName(source, i)
-                        if (exportName !== undefined) {
-                            if (found !== undefined) {
-                                throw new Error(
-                                    '[belte] $rpc module contains more than one `handler.<VERB>(...)` export — each file must declare exactly one remote function',
-                                )
-                            }
-                            found = {
-                                verb: verbProbe.verb,
-                                exportName,
-                                callStart: i,
-                                parenStart: tail,
-                            }
+            const ident = source.slice(i, j)
+            if (VERB_SET.has(ident)) {
+                const tail = matchCallTail(source, j)
+                if (tail !== undefined) {
+                    const exportName = detectExportName(source, i)
+                    if (exportName !== undefined) {
+                        if (found !== undefined) {
+                            throw new Error(
+                                '[belte] $rpc module contains more than one `<VERB>(...)` export — each file must declare exactly one remote function',
+                            )
+                        }
+                        found = {
+                            verb: ident as HttpVerb,
+                            exportName,
+                            callStart: i,
+                            parenStart: tail,
                         }
                         i = tail + 1
                         continue
@@ -88,14 +86,14 @@ export function findRpcCallSite(source: string): RpcSite | undefined {
 }
 
 /*
-Rewrites an `$rpc/**` module for the server bundle: strips the handler
-import line and replaces the `handler.VERB(` call with
-`__belteDefineVerb__("VERB", "<url>", `. Generics on the handler call are
+Rewrites an `$rpc/**` module for the server bundle: strips the verb import
+line and replaces the `<VERB>(` call with
+`__belteDefineVerb__("VERB", "<url>", `. Generics on the verb call are
 discarded — they carry no runtime info and the verb/url come from the
-file path + handler method instead.
+file path + verb identifier instead.
 */
 export function rewriteForServer(source: string, url: string): string {
-    const stripped = stripHandlerImport(source)
+    const stripped = stripRpcImport(source)
     const site = findRpcCallSite(stripped)
     if (!site) {
         return stripped
@@ -122,36 +120,9 @@ export function extractRpcExport(
     return { verb: site.verb, exportName: site.exportName }
 }
 
-function stripHandlerImport(source: string): string {
-    const pattern =
-        /^\s*import\s*\{[^}]*\bhandler\b[^}]*\}\s*from\s*['"]belte\/rpc\/handler['"]\s*;?\s*$/gm
+function stripRpcImport(source: string): string {
+    const pattern = /^\s*import\s*\{[^}]*\}\s*from\s*['"]belte\/rpc['"]\s*;?\s*$/gm
     return source.replace(pattern, '')
-}
-
-function matchVerbProperty(
-    source: string,
-    after: number,
-): { verb: HttpVerb; after: number } | undefined {
-    let j = after
-    while (j < source.length && isWhitespace(source[j])) {
-        j++
-    }
-    if (source[j] !== '.') {
-        return undefined
-    }
-    j++
-    while (j < source.length && isWhitespace(source[j])) {
-        j++
-    }
-    const start = j
-    while (j < source.length && isIdentPart(source[j])) {
-        j++
-    }
-    const name = source.slice(start, j)
-    if (!VERB_SET.has(name)) {
-        return undefined
-    }
-    return { verb: name as HttpVerb, after: j }
 }
 
 function skipString(source: string, start: number, quote: string): number {

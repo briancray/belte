@@ -1,17 +1,21 @@
 <script lang="ts">
 import { cache } from 'belte/cache'
-import { navigate } from 'belte/nav'
+import { navigate } from 'belte/page'
+import { HttpError } from 'belte/shared/HttpError'
 import { getNow } from '$rpc/getNow.ts'
 import { boom } from '$rpc/boom.ts'
 
-const ssrTime = await cache(getNow, { ttl: 0 })()
-    .then((res) => res.json())
-    .then(({ now }) => now)
+const ssrTime = (await cache(getNow, { ttl: 0 })()).now
 
 let remoteTime = $state('')
 async function callRemote() {
-    const res = await getNow()
-    remoteTime = res.ok ? (await res.json()).now : `${res.status} ${res.statusText}`
+    try {
+        const { now } = await getNow()
+        remoteTime = now
+    } catch (err) {
+        const status = err instanceof HttpError ? `${err.status} ${err.statusText}` : String(err)
+        remoteTime = status
+    }
 }
 
 let fetchedTime = $state('')

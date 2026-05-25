@@ -2,7 +2,7 @@
 import { cache } from 'belte/cache'
 import { getSession } from '$rpc/getSession.ts'
 
-const session = await cache(getSession)().then((res) => res.json())
+const session = await cache(getSession)()
 </script>
 
 <h1 class="text-3xl font-bold">Dashboard</h1>

@@ -1,7 +1,7 @@
-import { handler } from 'belte/rpc/handler'
+import { POST } from 'belte/rpc'
 import { createSession, SESSION_COOKIE } from '../sessions.ts'
 
-export const login = handler.POST<{ username: string }, never>(async (args) => {
+export const login = POST<{ username: string }, never>(async (args) => {
     const username = String(args?.username ?? '').trim()
     if (!username) {
         return new Response('username is required', { status: 400 })

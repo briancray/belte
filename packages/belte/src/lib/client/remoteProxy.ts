@@ -1,8 +1,8 @@
 import { buildRpcRequest } from '../shared/buildRpcRequest.ts'
+import { decodeResponse } from '../shared/decodeResponse.ts'
 import { recordRemoteMeta } from '../shared/remoteMeta.ts'
 import type { HttpVerb } from '../types/HttpVerb.ts'
-import type { RemoteFunction } from '../types/RemoteFunction.ts'
-import type { RemoteResponse } from '../types/RemoteResponse.ts'
+import type { RawRemoteFunction, RemoteFunction } from '../types/RemoteFunction.ts'
 
 /*
 Client-side substitute for a verb-defined handler. The bundler emits one
@@ -13,7 +13,9 @@ shapes and identical WeakMap metadata so cache() works the same on either
 side.
 
 `url` is the flat rpc route. Args go in the JSON body (POST/PUT/PATCH) or
-the query string (GET/DELETE/HEAD).
+the query string (GET/DELETE/HEAD). Plain `fn(args)` decodes the Response
+by Content-Type and throws HttpError on non-2xx; `.raw(args)` is the
+escape hatch that returns the Response untouched.
 */
 export function remoteProxy<Args, Return>(
     method: HttpVerb,
@@ -23,19 +25,27 @@ export function remoteProxy<Args, Return>(
         return buildRpcRequest({ method, url, args, baseUrl: window.location.href })
     }
 
-    function dispatch(request: Request): Promise<RemoteResponse<Return>> {
-        const promise = fetch(request) as Promise<RemoteResponse<Return>>
+    function dispatch(request: Request): Promise<Response> {
+        const promise = fetch(request)
         recordRemoteMeta(promise, request)
         return promise
     }
 
-    function callable(args: Args): Promise<RemoteResponse<Return>> {
+    function rawCall(args: Args): Promise<Response> {
         return dispatch(buildRequest(args))
+    }
+    rawCall.method = method
+    rawCall.url = url
+    const raw = rawCall as RawRemoteFunction<Args>
+
+    function callable(args: Args): Promise<Return> {
+        return raw(args).then(decodeResponse) as Promise<Return>
     }
 
     callable.method = method
     callable.url = url
-    callable.fetch = (request: Request): Promise<RemoteResponse<Return>> => {
+    callable.raw = raw
+    callable.fetch = (request: Request): Promise<Response> => {
         return dispatch(request)
     }
     return callable as RemoteFunction<Args, Return>

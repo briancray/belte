@@ -1,20 +1,32 @@
 import type { CacheOptions } from '../types/CacheOptions.ts'
-import type { RemoteFunction } from '../types/RemoteFunction.ts'
-import type { RemoteResponse } from '../types/RemoteResponse.ts'
+import type { RawRemoteFunction, RemoteFunction } from '../types/RemoteFunction.ts'
 import { activeCacheStore } from './activeCacheStore.ts'
 import { canonicalJson } from './canonicalJson.ts'
+import { decodeResponse } from './decodeResponse.ts'
 import { keyForRemoteCall } from './keyForRemoteCall.ts'
 import { getRemoteMeta } from './remoteMeta.ts'
+
+type AnyRemote<Args, Return> = RemoteFunction<Args, Return> | RawRemoteFunction<Args>
 
 /*
 Curries a remote-function call against the request-scoped cache store.
 `cache(fn, options?)` returns an invoker; calling that invoker with args
 checks the store for a prior entry (keyed by fn.method + fn.url + args) and
-returns its response clone on hit, or invokes `fn(args)` once and stores
-the result on miss. Splitting configuration (the outer call) from invocation
-(the inner call) keeps options anchored in a fixed position so they can't
-collide with arg shapes. TTL = undefined → forever; ttl = 0 → dedupe only;
-ttl > 0 → entry expires `ttl` ms after the promise resolves.
+returns a shared promise on hit, or invokes the underlying raw call once
+and stores the resulting Response promise on miss. Splitting configuration
+(the outer call) from invocation (the inner call) keeps options anchored
+in a fixed position so they can't collide with arg shapes. TTL = undefined
+→ forever; ttl = 0 → dedupe only; ttl > 0 → entry expires `ttl` ms after
+the promise resolves.
+
+The invoker's return type mirrors the function you passed:
+
+  cache(getPost)({ id })       // → Promise<Post>      (decoded body)
+  cache(getPost.raw)({ id })   // → Promise<Response>  (raw escape hatch)
+
+Both share one stored entry — the cache only ever holds the underlying
+Response promise; the decoded view is derived on the way out for callers
+of the non-raw variant.
 
 Reactivity is implicit: the invoker calls `store.subscribe(key)`, which
 registers the surrounding $derived / $effect scope. Invalidating the key
@@ -25,23 +37,41 @@ in server code and plain client code.
 export function cache<Args, Return>(
     fn: RemoteFunction<Args, Return>,
     options?: CacheOptions,
-): (args?: Args) => Promise<RemoteResponse<Return>> {
-    return (args) => invokeWithCache(fn, args, options)
+): (args?: Args) => Promise<Return>
+export function cache<Args>(
+    fn: RawRemoteFunction<Args>,
+    options?: CacheOptions,
+): (args?: Args) => Promise<Response>
+export function cache<Args, Return>(
+    fn: AnyRemote<Args, Return>,
+    options?: CacheOptions,
+): (args?: Args) => Promise<Return | Response> {
+    /*
+    The "raw" variant lacks its own `.raw` sibling; only the decoded
+    callable carries one. Tell them apart by that presence and dispatch the
+    decode step accordingly.
+    */
+    const isRaw = !('raw' in fn)
+    const rawFn = isRaw ? (fn as RawRemoteFunction<Args>) : (fn as RemoteFunction<Args, Return>).raw
+    return (args) => {
+        const responsePromise = invokeWithCache(rawFn, args, options)
+        return isRaw ? responsePromise : (responsePromise.then(decodeResponse) as Promise<Return>)
+    }
 }
 
-function invokeWithCache<Args, Return>(
-    fn: RemoteFunction<Args, Return>,
+function invokeWithCache<Args>(
+    rawFn: RawRemoteFunction<Args>,
     args: Args | undefined,
     options: CacheOptions | undefined,
-): Promise<RemoteResponse<Return>> {
+): Promise<Response> {
     const store = activeCacheStore()
-    const key = resolveKey(fn, args, options?.key)
+    const key = resolveKey(rawFn, args, options?.key)
     store.subscribe(key)
     const existing = store.entries.get(key)
     if (existing) {
-        return shareable(existing.promise) as Promise<RemoteResponse<Return>>
+        return shareable(existing.promise)
     }
-    const promise = fn(args as Args)
+    const promise = rawFn(args as Args)
     const request = getRemoteMeta(promise)
     if (!request) {
         throw new Error(
@@ -51,7 +81,7 @@ function invokeWithCache<Args, Return>(
     const ttl = options?.ttl
     const entry = {
         key,
-        promise: promise as Promise<RemoteResponse<unknown>>,
+        promise,
         request,
         ttl,
         expiresAt: undefined as number | undefined,
@@ -92,14 +122,12 @@ Returns a promise that resolves to a fresh clone of the underlying Response.
 Multiple readers can each consume the body independently — the stored
 promise's Response is never consumed directly, so clones always succeed.
 */
-function shareable<Return>(
-    promise: Promise<RemoteResponse<Return>>,
-): Promise<RemoteResponse<Return>> {
-    return promise.then((response) => response.clone() as RemoteResponse<Return>)
+function shareable(promise: Promise<Response>): Promise<Response> {
+    return promise.then((response) => response.clone())
 }
 
 cache.invalidate = function invalidate<Args, Return>(
-    arg?: RemoteFunction<Args, Return> | CacheOptions['key'],
+    arg?: AnyRemote<Args, Return> | CacheOptions['key'],
 ): void {
     const store = activeCacheStore()
     if (arg === undefined) {
@@ -112,7 +140,8 @@ cache.invalidate = function invalidate<Args, Return>(
         /*
         `arg.url` is the route template; per-call args appear as `?...`
         (GET/DELETE) or after a space (canonical-json body) — see
-        keyForRemoteCall.
+        keyForRemoteCall. Passing either `fn` or `fn.raw` invalidates the
+        same set because they share method+url.
         */
         const prefix = `${arg.method} ${arg.url}`
         const affected: string[] = []
@@ -131,15 +160,15 @@ cache.invalidate = function invalidate<Args, Return>(
     }
 }
 
-function resolveKey<Args, Return>(
-    fn: RemoteFunction<Args, Return>,
+function resolveKey<Args>(
+    rawFn: RawRemoteFunction<Args>,
     args: Args | undefined,
     override: CacheOptions['key'],
 ): string {
     if (override !== undefined) {
         return canonicalKey(override)
     }
-    return keyForRemoteCall(fn.method, fn.url, args)
+    return keyForRemoteCall(rawFn.method, rawFn.url, args)
 }
 
 function canonicalKey(value: CacheOptions['key']): string {

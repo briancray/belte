@@ -1,4 +1,4 @@
-import { handler } from 'belte/rpc/handler'
+import { GET } from 'belte/rpc'
 
 /*
 Stand-in for a posts table. Demonstrates an RPC that takes a JSON-ish arg
@@ -10,6 +10,6 @@ const posts: Record<string, { id: string; title: string }> = {
     '2': { id: '2', title: 'World' },
 }
 
-export const getPost = handler.GET<{ id: string }, { id: string; title: string } | null>((args) =>
+export const getPost = GET<{ id: string }, { id: string; title: string } | null>((args) =>
     Response.json(posts[args.id] ?? null),
 )

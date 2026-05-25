@@ -1,8 +1,8 @@
-import { handler } from 'belte/rpc/handler'
+import { POST } from 'belte/rpc'
 import { destroySession, readSessionCookie, SESSION_COOKIE } from '../sessions.ts'
 
-export const logout = handler.POST<undefined, never>((_args, req) => {
-    destroySession(readSessionCookie(req))
+export const logout = POST<undefined, never>(() => {
+    destroySession(readSessionCookie())
     return new Response(undefined, {
         status: 303,
         headers: {

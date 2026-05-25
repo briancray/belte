@@ -141,7 +141,7 @@ export function belteResolverPlugin({
                 const declared = extractRpcExport(source)
                 if (!declared) {
                     throw new Error(
-                        `[belte] src/rpc/${relativePath} has no \`export const <name> = handler.<VERB>(...)\` — every $rpc module must declare exactly one remote function`,
+                        `[belte] src/rpc/${relativePath} has no \`export const <name> = <VERB>(...)\` — every $rpc module must declare exactly one remote function`,
                     )
                 }
                 const expectedName = relativePath.replace(/\.ts$/, '').split('/').pop() ?? ''
@@ -164,14 +164,13 @@ export const ${declared.exportName} = __belteRemoteProxy__(${JSON.stringify(decl
                     return { contents, loader: 'ts' }
                 }
                 /*
-                Server target: strip the user's `handler` import, then
-                rewrite the `handler.<VERB>(...)` call so the verb (from
-                the method name) and the URL (from the file path) are
-                threaded into defineVerb. The user's handler body stays
-                intact between the parens; any generics on the call are
-                dropped (they carry no runtime info). Rewriting is
-                tokenizer-driven so `handler.VERB` mentions inside strings
-                and comments are left alone.
+                Server target: strip the user's verb import, then rewrite
+                the `<VERB>(...)` call so the verb (from the identifier)
+                and the URL (from the file path) are threaded into
+                defineVerb. The user's handler body stays intact between
+                the parens; any generics on the call are dropped (they
+                carry no runtime info). Rewriting is tokenizer-driven so
+                `GET` mentions inside strings and comments are left alone.
                 */
                 const rewritten = rewriteForServer(source, url)
                 const banner = `import { defineVerb as __belteDefineVerb__ } from 'belte/server/defineVerb';
