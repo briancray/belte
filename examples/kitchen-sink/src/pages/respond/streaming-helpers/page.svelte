@@ -1,4 +1,5 @@
 <script lang="ts">
+import CodeBlock from '$lib/CodeBlock.svelte'
 import { tickFeed } from '$route/tickFeed.ts'
 import { countLog } from '$route/countLog.ts'
 
@@ -54,6 +55,30 @@ async function runJsonl() {
             <li>{frame}</li>
         {/each}
     </ul>
+    <CodeBlock
+        title="src/route/tickFeed.ts (server)"
+        code={`import { GET } from 'belte/route'
+import { sse } from 'belte/respond'
+
+export const tickFeed = GET<undefined, { tick: number; at: string }>(() =>
+    sse(
+        (async function* () {
+            for (let tick = 1; ; tick += 1) {
+                yield { tick, at: new Date().toISOString() }
+                await Bun.sleep(1000)
+            }
+        })(),
+    ),
+)`} />
+    <CodeBlock
+        title="this page (client)"
+        code={`import { tickFeed } from '$route/tickFeed.ts'
+
+let received = 0
+for await (const frame of tickFeed.stream()) {
+    /* ...render frame... */
+    if (++received === 5) break   // closes the stream cleanly
+}`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -74,4 +99,26 @@ async function runJsonl() {
             <li>{frame}</li>
         {/each}
     </ul>
+    <CodeBlock
+        title="src/route/countLog.ts (server)"
+        code={`import { GET } from 'belte/route'
+import { jsonl } from 'belte/respond'
+
+export const countLog = GET<{ to: number }, { n: number }>(({ to }) =>
+    jsonl(
+        (async function* () {
+            for (let n = 1; n <= to; n += 1) {
+                yield { n }
+                await Bun.sleep(200)
+            }
+        })(),
+    ),
+)`} />
+    <CodeBlock
+        title="this page (client)"
+        code={`import { countLog } from '$route/countLog.ts'
+
+for await (const frame of countLog.stream({ to: 8 })) {
+    /* ...render frame... */
+}`} />
 </section>

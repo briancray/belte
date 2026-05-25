@@ -1,4 +1,5 @@
 <script lang="ts">
+import CodeBlock from '$lib/CodeBlock.svelte'
 import { HttpError } from 'belte/shared/HttpError'
 import { getEcho } from '$route/getEcho.ts'
 import { createEcho } from '$route/createEcho.ts'
@@ -27,7 +28,7 @@ async function safeCall(verb: string, fn: () => Promise<unknown>): Promise<void>
 const message = $state({ value: 'hello' })
 </script>
 
-<h1 class="text-3xl font-bold">Verb-bound rpcs</h1>
+<h1 class="text-3xl font-bold">Verb-bound routes</h1>
 <p class="mt-2 text-slate-600">
     Each file under <code class="font-mono">src/route/</code> declares exactly one remote function.
     The imported verb picks the HTTP method; the filename picks the URL. The same identifier
@@ -92,6 +93,59 @@ const message = $state({ value: 'hello' })
             {/each}
         </ul>
     {/if}
+</section>
+
+<section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
+    <h2 class="text-sm font-semibold">Code</h2>
+    <p class="mt-1 text-sm text-slate-600">
+        Six files, one verb each. Args parsing is content-type-driven:
+        <code class="font-mono">GET / DELETE / HEAD</code>
+        read URL search params; <code class="font-mono">POST / PUT / PATCH</code>
+        read a JSON body (or <code class="font-mono">FormData</code>
+        when posted from an HTML form).
+    </p>
+    <CodeBlock
+        title="src/route/*.ts — six files, one verb each (server)"
+        code={`// getEcho.ts
+import { GET } from 'belte/route'
+import { json } from 'belte/respond'
+export const getEcho = GET<{ message: string }, { method: 'GET'; message: string }>(
+    ({ message }) => json({ method: 'GET', message }),
+)
+
+// createEcho.ts — POST: args from JSON body
+export const createEcho = POST<{ message: string }, { method: 'POST'; message: string }>(
+    ({ message }) => json({ method: 'POST', message }, { status: 201 }),
+)
+
+// replaceEcho.ts — PUT: args from JSON body
+export const replaceEcho = PUT<{ message: string }, { method: 'PUT'; message: string }>(
+    ({ message }) => json({ method: 'PUT', message }),
+)
+
+// patchEcho.ts — PATCH: args from JSON body
+export const patchEcho = PATCH<{ message: string }, { method: 'PATCH'; message: string }>(
+    ({ message }) => json({ method: 'PATCH', message }),
+)
+
+// deleteEcho.ts — DELETE: args from URL search params
+export const deleteEcho = DELETE<{ message: string }, { method: 'DELETE'; message: string }>(
+    ({ message }) => json({ method: 'DELETE', message }),
+)
+
+// headEcho.ts — HEAD: response carries headers, no body
+export const headEcho = HEAD<undefined, undefined>(() =>
+    new Response(undefined, { status: 204, headers: { 'x-echo': 'HEAD' } }),
+)`} />
+    <CodeBlock
+        title="this page (client) — every verb called the same way"
+        code={`import { getEcho } from '$route/getEcho.ts'
+import { createEcho } from '$route/createEcho.ts'
+/* ...etc */
+
+await getEcho({ message: 'hello' })       // typed: { method: 'GET'; message: string }
+await createEcho({ message: 'hello' })    // typed: { method: 'POST'; message: string }
+/* HEAD resolves to undefined; the rest resolve to the decoded JSON body */`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600">

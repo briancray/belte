@@ -1,4 +1,5 @@
 <script lang="ts">
+import CodeBlock from '$lib/CodeBlock.svelte'
 import { cache } from 'belte/consume'
 import { navigate } from 'belte/page'
 import { HttpError } from 'belte/shared/HttpError'
@@ -46,6 +47,41 @@ const product = $derived(
     {/each}
 </div>
 
+<CodeBlock
+    title="src/route/getProduct.ts (server) — id arrives as an arg, NOT a path segment"
+    code={`import { GET } from 'belte/route'
+import { json, error } from 'belte/respond'
+
+const products: Record<string, { id: string; name: string; price: number }> = {
+    '1': { id: '1', name: 'Stroopwafel', price: 4 },
+    '2': { id: '2', name: 'Speculaas', price: 3 },
+}
+
+export const getProduct = GET<{ id: string }, { id: string; name: string; price: number }>(
+    ({ id }) => {
+        const product = products[id]
+        if (!product) return error(404, \`no product with id \${id}\`)
+        return json(product)
+    },
+)`} />
+
+<CodeBlock
+    title="src/pages/route/product/[id]/page.svelte (this page) — [id] is the dynamic page segment"
+    code={`<script lang="ts">
+import { cache } from 'belte/consume'
+import { getProduct } from '$route/getProduct.ts'
+
+/* id is generated into src/.belte/routes.d.ts and typed via Routes */
+let { id }: { id: string } = $props()
+
+/* per-id cache entry; $derived re-runs on navigation between ids */
+const product = $derived(await cache(getProduct, { key: ['product', id] })({ id }))
+</script>`} />
+
 <p class="mt-6 text-sm text-slate-500">
-    Source: <code class="font-mono">src/pages/route/product/[id]/page.svelte</code>
+    Note: page URLs can have <code class="font-mono">[id]</code>
+    segments (they map to <code class="font-mono">:id</code>
+    path params); route URLs cannot — pass identifiers via args. See
+    <a class="underline" href="/route/verb-rpcs">verb-rpcs</a>
+    for the route-side convention.
 </p>

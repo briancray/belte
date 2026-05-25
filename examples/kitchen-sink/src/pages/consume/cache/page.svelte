@@ -1,4 +1,5 @@
 <script lang="ts">
+import CodeBlock from '$lib/CodeBlock.svelte'
 import { cache } from 'belte/consume'
 import { getCounter } from '$route/getCounter.ts'
 import { incrementCounter } from '$route/incrementCounter.ts'
@@ -64,25 +65,58 @@ async function reset() {
             invalidate only
         </button>
     </div>
+    <CodeBlock
+        title="src/route/getCounter.ts / incrementCounter.ts / resetCounter.ts (server)"
+        code={`// getCounter.ts
+export const getCounter = GET<undefined, { count: number }>(() =>
+    json({ count: counterState.count }),
+)
+
+// incrementCounter.ts
+export const incrementCounter = POST<undefined, { count: number }>(() => {
+    counterState.count += 1
+    return json({ count: counterState.count })
+})
+
+// resetCounter.ts
+export const resetCounter = DELETE<undefined, { count: number }>(() => {
+    counterState.count = 0
+    return json({ count: counterState.count })
+})`} />
+    <CodeBlock
+        title="this page (client)"
+        code={`import { cache } from 'belte/consume'
+
+const counter = $derived(cache(getCounter)())   // subscribes the deriving scope
+
+async function increment() {
+    await incrementCounter()
+    cache.invalidate(getCounter)                // re-runs every $derived that read getCounter
+}`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
     <h2 class="text-sm font-semibold">Mirror</h2>
     <p class="mt-1 text-sm text-slate-600">
         Second <code class="font-mono">$derived(cache(getCounter)())</code>
-        in the same page — both update together because they share one cache entry.
+        in the same page — both update together because they share one cache entry keyed by
+        <code class="font-mono">method + url + args</code>.
     </p>
     <p class="mt-3 font-mono text-3xl text-slate-900">{mirror.count}</p>
+    <CodeBlock
+        title="this page (client) — second $derived against the same key"
+        code={`const mirror = $derived(await cache(getCounter)())   // shares one entry with counter
+/* both this and the counter above re-run on the same invalidation */`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600">
     <h2 class="text-sm font-semibold text-slate-900">Options</h2>
-    <pre class="mt-3 overflow-x-auto rounded-md bg-slate-900 p-4 text-xs leading-relaxed text-slate-100"><code
-        >{`cache(fn)()                       /* lives forever, until invalidated */
+    <CodeBlock
+        code={`cache(fn)()                       /* lives forever, until invalidated */
 cache(fn, { ttl: 0 })()           /* dedupe in-flight only */
 cache(fn, { ttl: 30_000 })()      /* expire 30s after the promise settles */
 cache(fn, { key: 'group' })()     /* group calls under one key */
 cache.invalidate(fn)              /* drop every entry for this fn */
 cache.invalidate(['key', 'id'])   /* drop one keyed entry */
-cache.invalidate()                /* clear the whole store */`}</code></pre>
+cache.invalidate()                /* clear the whole store */`} />
 </section>
