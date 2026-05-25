@@ -18,8 +18,10 @@ export function destroySession(id: string | undefined): void {
 
 export const SESSION_COOKIE = 'sid'
 
-export function readSessionCookie(req: Request): string | undefined {
-    const cookie = req.headers.get('cookie') ?? ''
+import { request } from 'belte/server'
+
+export function readSessionCookie(): string | undefined {
+    const cookie = request().headers.get('cookie') ?? ''
     const match = cookie.split(/;\s*/).find((p) => p.startsWith(`${SESSION_COOKIE}=`))
     return match ? decodeURIComponent(match.slice(SESSION_COOKIE.length + 1)) : undefined
 }

@@ -4,45 +4,52 @@ import type { Layouts } from '../types/Layouts.ts'
 import type { Pages } from '../types/Pages.ts'
 
 /*
-Augmentable route table. The codegen step emits a `declare module 'belte/nav'`
-block that fills this interface with `routePath: paramShape` pairs derived from
-the project's `src/pages/**` tree. A bare belte install has no routes, so the
-fallback arm below keeps the union inhabited before the generated d.ts lands.
+Augmentable route table. The codegen step emits a `declare module 'belte/page'`
+block that fills this interface with `routePath: paramShape` pairs derived
+from the project's `src/pages/**` tree. A bare belte install has no routes,
+so the fallback arm below keeps the union inhabited before the generated
+d.ts lands.
 */
 export type Routes = {}
 
 type RouteKey = keyof Routes extends never ? string : keyof Routes
 type ParamsFor<R extends RouteKey> = R extends keyof Routes ? Routes[R] : Record<string, string>
 
-type NavStateFor<R extends RouteKey> = {
-    layout: Component | undefined
-    Page: Component | undefined
+type PageStateFor<R extends RouteKey> = {
     route: R
     params: ParamsFor<R>
-    pathname: string
-    search: string
-    hash: string
+    url: URL
 }
 
 /*
-Discriminated union keyed on `route`, so consumers that narrow on `nav.route`
-get the matching `nav.params` shape automatically. Initial state has empty
-strings for the URL fields; `bindNav` overwrites them from the SSR payload
-before `App.svelte` reads.
+Discriminated union keyed on `route`, so consumers that narrow on `page.route`
+get the matching `page.params` shape automatically. `url` is the live
+WHATWG URL for the currently-displayed location; navigation reassigns the
+reference so $derived subscribers re-run on every nav (not just on the
+fields they happen to touch).
 */
-export type AppState = keyof Routes extends never
-    ? NavStateFor<string>
-    : { [R in keyof Routes]: NavStateFor<R> }[keyof Routes]
+export type Page = keyof Routes extends never
+    ? PageStateFor<string>
+    : { [R in keyof Routes]: PageStateFor<R> }[keyof Routes]
 
 // biome-ignore lint/suspicious/noExplicitAny: discriminated-union init needs a single arm
-export const nav: AppState = $state<any>({
-    layout: undefined,
-    Page: undefined,
+export const page: Page = $state<any>({
     route: '',
     params: {},
-    pathname: '/',
-    search: '',
-    hash: '',
+    url: new URL('http://localhost/'),
+})
+
+/*
+Internal renderer state — the Layout/Page components App.svelte mounts.
+Kept on a separate $state object so it doesn't leak into the public `page`
+shape; users only ever see route/params/url.
+*/
+export const renderState = $state<{
+    Layout: Component | undefined
+    Page: Component | undefined
+}>({
+    Layout: undefined,
+    Page: undefined,
 })
 
 let boundPages: Pages | undefined
@@ -53,11 +60,11 @@ type SsrPayload = { route: string; params: Record<string, string> }
 
 /*
 Wires the route + layout tables produced by the bundler's virtual manifests
-and seeds nav state from the SSR payload. Called once from startClient
+and seeds page state from the SSR payload. Called once from startClient
 before `hydrate(App)` so the first render sees Page/Layout/params already
 populated. Subsequent `navigate()` calls reuse `boundPages` / `boundLayouts`.
 */
-export async function bindNav({
+export async function bindPage({
     pages,
     layouts,
     ssr,
@@ -77,7 +84,7 @@ async function loadView(
     route: string,
 ): Promise<{ Page: Component; Layout: Component | undefined }> {
     if (!boundPages) {
-        throw new Error('[belte] nav is not initialized — call bindNav first')
+        throw new Error('[belte] page is not initialized — call bindPage first')
     }
     const pageLoader = boundPages[route]
     if (!pageLoader) {
@@ -97,19 +104,17 @@ function applyState(
     Page: Component,
     Layout: Component | undefined,
 ): void {
-    const mutable = nav as NavStateFor<string>
-    mutable.Page = Page
-    mutable.layout = Layout
+    renderState.Layout = Layout
+    renderState.Page = Page
+    const mutable = page as PageStateFor<string>
     mutable.route = route
     mutable.params = params
-    syncLocation()
+    mutable.url = new URL(window.location.href)
 }
 
-function syncLocation(): void {
-    const mutable = nav as NavStateFor<string>
-    mutable.pathname = window.location.pathname
-    mutable.search = window.location.search
-    mutable.hash = window.location.hash
+function syncUrl(): void {
+    const mutable = page as PageStateFor<string>
+    mutable.url = new URL(window.location.href)
 }
 
 type FetchOutcome =
@@ -139,8 +144,8 @@ export type NavigateOptions = { replace?: boolean; scroll?: boolean }
 /*
 SPA navigation entrypoint. Writes history (push by default, replace on
 request), then resolves the new view. When only `search` or `hash` changes
-(same pathname), the JSON resolve fetch + loadView are skipped — only the
-reactive URL fields update, so $derived consumers re-run without paying a
+(same pathname), the JSON resolve fetch + loadView are skipped — only
+`page.url` is reassigned, so $derived consumers re-run without paying a
 network round-trip or remounting the page component. Falls back to a hard
 navigation if the resolve fetch or page-module import fails, mirroring the
 behaviour of the original click handler.
@@ -164,16 +169,16 @@ export async function navigate(href: string, options: NavigateOptions = {}): Pro
 /*
 Called by both navigate() (after writing history) and the popstate handler
 (history is already current). When the pathname hasn't changed, the route
-+ params + Page are the same; we just refresh the reactive URL fields. A
-true pathname change triggers the JSON resolve fetch and a page swap.
++ params + Page are the same; we just refresh `page.url`. A true pathname
+change triggers the JSON resolve fetch and a page swap.
 */
 async function applyTarget(
     pathname: string,
     fullTarget: string,
     resetScroll: boolean,
 ): Promise<void> {
-    if (pathname === nav.pathname) {
-        syncLocation()
+    if (pathname === page.url.pathname) {
+        syncUrl()
         return
     }
     const outcome = await safeResolveFetch(fullTarget)

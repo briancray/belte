@@ -1,22 +1,31 @@
 <script lang="ts">
-import type { AppState } from './lib/client/nav.svelte.ts'
+import type { Component } from 'svelte'
+import type { Page as PageState } from './lib/client/page.svelte.ts'
 
-let { state }: { state: AppState } = $props()
-let Layout = $derived(state.layout)
-let Page = $derived(state.Page)
-let params = $derived(state.params)
+let {
+    state,
+}: {
+    state: {
+        page: PageState
+        render: { Layout: Component | undefined; Page: Component | undefined }
+    }
+} = $props()
+
+let Layout = $derived(state.render.Layout)
+let PageView = $derived(state.render.Page)
+let params = $derived(state.page.params)
 </script>
 
-    {#if Layout}
-        <Layout>
-            {#if Page}
-                {#key Page}
-                    <Page {...params} />
-                {/key}
-            {/if}
-        </Layout>
-    {:else if Page}
-        {#key Page}
-            <Page {...params} />
-        {/key}
-    {/if}
+{#if Layout}
+    <Layout>
+        {#if PageView}
+            {#key PageView}
+                <PageView {...params} />
+            {/key}
+        {/if}
+    </Layout>
+{:else if PageView}
+    {#key PageView}
+        <PageView {...params} />
+    {/key}
+{/if}

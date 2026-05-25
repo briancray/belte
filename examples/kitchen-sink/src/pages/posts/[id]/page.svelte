@@ -5,7 +5,7 @@ import { getPost } from '$rpc/getPost.ts'
 /*
 Pages under bracket folders get their dynamic segments as props. The id
 prop is typed via the auto-generated Routes augmentation belte emits at
-src/.belte/routes.d.ts — same shape as `nav.params` for this route.
+src/.belte/routes.d.ts — same shape as `page.params` for this route.
 */
 let { id }: { id: string } = $props()
 
@@ -16,9 +16,7 @@ other. The args pass through to the handler over `/rpc/getPost?id=…`.
 Wrapping `await` inside `$derived` makes the value re-resolve when `id`
 changes (e.g. navigating /posts/1 → /posts/2 without remounting the Page).
 */
-const post = $derived(
-    await cache(getPost, { key: ['post', id] })({ id }).then((res) => res.json()),
-)
+const post = $derived(await cache(getPost, { key: ['post', id] })({ id }))
 </script>
 
 <h1 class="text-3xl font-bold">Post {id}</h1>

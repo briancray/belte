@@ -181,13 +181,12 @@ export async function createServer({
         const rendered = await render(App, {
             props: {
                 state: {
-                    layout: Layout,
-                    Page,
-                    route: routeUrl,
-                    params,
-                    pathname: store.url.pathname,
-                    search: store.url.search,
-                    hash: store.url.hash,
+                    page: {
+                        route: routeUrl,
+                        params,
+                        url: store.url,
+                    },
+                    render: { Layout, Page },
                 },
             },
         })
@@ -302,9 +301,7 @@ export async function createServer({
             if (!app?.handle) {
                 return handler(req, pathParams, store)
             }
-            return app.handle(req, (next) => handler(next, pathParams, store), {
-                server: store.server,
-            })
+            return app.handle(req, (next) => handler(next, pathParams, store))
         })
     }
 

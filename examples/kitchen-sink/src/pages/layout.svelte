@@ -1,21 +1,20 @@
 <script lang="ts">
 import '../app.css'
 import { cache } from 'belte/cache'
-import { nav } from 'belte/nav'
+import { page } from 'belte/page'
 import { getSession } from '$rpc/getSession'
 import { logout } from '$rpc/logout'
 
 let { children }: { children: any } = $props()
 
-const session = await cache(getSession)().then((res) => res.json())
+const session = await cache(getSession)()
 
 /*
-`nav.pathname` is reactive and synced from window.location on every SPA
-navigation, so derivations based on it (like "is this link active?") re-run
-without any per-link plumbing.
+`page.url` is reassigned on every SPA navigation, so derivations that read
+it (like "is this link active?") re-run without any per-link plumbing.
 */
 const linkClass = (href: string) =>
-    nav.pathname === href
+    page.url.pathname === href
         ? 'font-medium text-slate-900'
         : 'text-slate-600 hover:text-slate-900'
 </script>

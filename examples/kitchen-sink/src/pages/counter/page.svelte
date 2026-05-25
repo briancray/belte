@@ -10,8 +10,8 @@ key. When `cache.invalidate(getCounter)` fires, every derived re-runs,
 misses, and gets a fresh promise. SSR has no tracking, so the call just
 returns the snapshot promise once.
 */
-const counter = $derived(cache(getCounter)().then((res) => res.json()))
-const mirror = $derived(await cache(getCounter)().then((res) => res.json()))
+const counter = $derived(cache(getCounter)())
+const mirror = $derived(await cache(getCounter)())
 
 async function increment() {
     await incrementCounter()

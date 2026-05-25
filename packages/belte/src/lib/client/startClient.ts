@@ -6,8 +6,7 @@ import type { CacheSnapshotEntry } from '../types/CacheSnapshotEntry.ts'
 import type { CacheStore } from '../types/CacheStore.ts'
 import type { Layouts } from '../types/Layouts.ts'
 import type { Pages } from '../types/Pages.ts'
-import type { RemoteResponse } from '../types/RemoteResponse.ts'
-import { bindNav, handlePopstate, nav, navigate } from './nav.svelte.ts'
+import { bindPage, handlePopstate, navigate, page, renderState } from './page.svelte.ts'
 
 declare global {
     interface Window {
@@ -30,7 +29,7 @@ function hydrateCacheFromSnapshot(store: CacheStore, snapshot: CacheSnapshotEntr
             status: entry.status,
             statusText: entry.statusText,
             headers: new Headers(entry.headers),
-        }) as RemoteResponse<unknown>
+        })
         store.entries.set(entry.key, {
             key: entry.key,
             promise: Promise.resolve(response),
@@ -77,10 +76,12 @@ function isInternalLinkEvent(event: MouseEvent): HTMLAnchorElement | undefined {
 
 /*
 Hydrates the SSR'd document against the SSR payload on `window.__SSR__`,
-then intercepts internal link clicks (delegating to nav.navigate) and
-popstate events. The nav module owns the route/Page/Layout state and the
+then intercepts internal link clicks (delegating to navigate) and popstate
+events. The page module owns the route/Page/Layout state and the
 URL-resolution logic; this entry just wires the cache store, runs the
-initial bind, and attaches the global listeners.
+initial bind, and attaches the global listeners. App.svelte receives the
+public `page` proxy plus the internal renderState so the same reactive
+objects update across navigations.
 */
 export async function startClient({
     pages,
@@ -101,8 +102,8 @@ export async function startClient({
     }
 
     try {
-        await bindNav({ pages, layouts, ssr: window.__SSR__ })
-        hydrate(App, { target, props: { state: nav } })
+        await bindPage({ pages, layouts, ssr: window.__SSR__ })
+        hydrate(App, { target, props: { state: { page, render: renderState } } })
     } catch (err) {
         console.error('[belte] initial hydration failed', err)
     }
@@ -117,7 +118,7 @@ export async function startClient({
         Hash-only same-page navigations fall through to the browser so the
         native scroll-into-view for `#anchor` targets keeps working.
         Anything else (pathname, search, or pathname+hash combo) goes
-        through navigate() — it pushes history, refreshes nav state, and
+        through navigate() — it pushes history, refreshes page state, and
         short-circuits the JSON resolve when only search/hash differ.
         */
         if (url.pathname === window.location.pathname && url.search === window.location.search) {

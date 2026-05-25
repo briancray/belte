@@ -1,5 +1,5 @@
-import { handler } from 'belte/rpc/handler'
+import { GET } from 'belte/rpc'
 
-export const getNow = handler.GET<undefined, { now: string }>(() =>
+export const getNow = GET<undefined, { now: string }>(() =>
     Response.json({ now: new Date().toISOString() }),
 )

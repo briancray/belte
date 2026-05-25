@@ -1,7 +1,7 @@
-import { handler } from 'belte/rpc/handler'
+import { GET } from 'belte/rpc'
 import { getSession as readSession, readSessionCookie } from '../sessions.ts'
 
-export const getSession = handler.GET<undefined, { user: string } | null>((_args, req) => {
-    const session = readSession(readSessionCookie(req)) ?? null
+export const getSession = GET<undefined, { user: string } | null>(() => {
+    const session = readSession(readSessionCookie()) ?? null
     return Response.json(session)
 })
