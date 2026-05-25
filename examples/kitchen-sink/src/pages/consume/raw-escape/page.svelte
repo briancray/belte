@@ -1,4 +1,5 @@
 <script lang="ts">
+import CodeBlock from '$lib/CodeBlock.svelte'
 import { cache } from 'belte/consume'
 import { getReport } from '$route/getReport.ts'
 
@@ -52,6 +53,25 @@ const cachedRaw = $derived(cache(getReport.raw)({ id: 'r-1' }))
     </div>
     <p class="mt-3 font-mono text-xs text-slate-700">decoded: {decoded}</p>
     <p class="mt-1 font-mono text-xs text-slate-700">raw: {raw}</p>
+    <CodeBlock
+        title="src/route/getReport.ts (server) — sets a custom header that .raw can read"
+        code={`import { GET } from 'belte/route'
+
+export const getReport = GET<{ id: string }, { id: string; rows: number[] }>(({ id }) =>
+    Response.json(
+        { id, rows: [1, 2, 3] },
+        { headers: { 'x-report-version': '7', 'Cache-Control': 'no-store' } },
+    ),
+)`} />
+    <CodeBlock
+        title="this page (client) — decoded vs raw"
+        code={`/* decoded: only the body — fast path for "I just want the data" */
+const body = await getReport({ id: 'r-1' })
+
+/* raw: the underlying Response — headers, status, body stream */
+const response = await getReport.raw({ id: 'r-1' })
+const version = response.headers.get('x-report-version')   // '7'
+const body2 = await response.json()`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -70,4 +90,11 @@ const cachedRaw = $derived(cache(getReport.raw)({ id: 'r-1' }))
             cached raw → status={response.status} x-report-version={response.headers.get('x-report-version')}
         </p>
     {/await}
+    <CodeBlock
+        title="this page (client) — cache + .raw"
+        code={`import { cache } from 'belte/consume'
+
+const cachedRaw = $derived(cache(getReport.raw)({ id: 'r-1' }))
+/* same SSR-snapshot + reactivity + invalidation as the decoded variant,
+   but the invoker returns Promise<Response> instead of Promise<Body> */`} />
 </section>

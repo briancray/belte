@@ -1,4 +1,5 @@
 <script lang="ts">
+import CodeBlock from '$lib/CodeBlock.svelte'
 import { cache, subscribe } from 'belte/consume'
 import { whoAmI } from '$route/whoAmI.ts'
 import { publishChat } from '$route/publishChat.ts'
@@ -49,6 +50,27 @@ async function send() {
     </p>
     <pre class="mt-3 overflow-x-auto rounded-md bg-slate-900 p-4 text-xs leading-relaxed text-slate-100"><code
         >{JSON.stringify(me, undefined, 2)}</code></pre>
+    <CodeBlock
+        title="src/route/whoAmI.ts (server)"
+        code={`import { GET } from 'belte/route'
+import { request } from 'belte/server'
+import { json } from 'belte/respond'
+
+export const whoAmI = GET<undefined, { hasCookie: boolean; userAgent: string | null }>(() => {
+    const headers = request().headers
+    return json({
+        hasCookie: headers.has('cookie'),
+        userAgent: headers.get('user-agent'),
+    })
+})`} />
+    <CodeBlock
+        title="this page (client + SSR — same line on both sides)"
+        code={`import { cache } from 'belte/consume'
+import { whoAmI } from '$route/whoAmI.ts'
+
+/* top-level await inside the page <script> runs during SSR; the cache
+   snapshot replays on hydration so no second fetch happens. */
+const me = await cache(whoAmI)()`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -58,7 +80,7 @@ async function send() {
         calls <code class="font-mono">server.publish('chat', ...)</code>
         and also broadcasts in-process so the
         <code class="font-mono">chatFeed</code>
-        SOCKET rpc fans the message out to every reactive subscriber.
+        SOCKET route fans the message out to every reactive subscriber.
     </p>
     <div class="mt-3 flex flex-wrap items-end gap-2">
         <label class="text-xs font-medium">
@@ -91,4 +113,31 @@ async function send() {
     {:else}
         <p class="mt-2 text-xs text-slate-500">(no message yet)</p>
     {/if}
+    <CodeBlock
+        title="src/route/publishChat.ts (server)"
+        code={`import { POST } from 'belte/route'
+import { json, error } from 'belte/respond'
+import { server } from 'belte/server'
+import { appendChat, type ChatMessage } from '../chatState.ts'
+
+export const publishChat = POST<{ from: string; text: string }, ChatMessage>(({ from, text }) => {
+    if (!from.trim() || !text.trim()) {
+        return error(400, 'from and text are required')
+    }
+    const message: ChatMessage = { id: crypto.randomUUID(), from, text, at: Date.now() }
+    appendChat(message)
+    server.publish('chat', JSON.stringify(message))   // \`server\` proxy from belte/server
+    return json(message)
+})`} />
+    <CodeBlock
+        title="this page (client)"
+        code={`import { subscribe } from 'belte/consume'
+import { publishChat } from '$route/publishChat.ts'
+import { chatFeed } from '$route/chatFeed.ts'
+
+const latestChat = $derived(subscribe(chatFeed)())   // reactive — re-renders on every frame
+
+async function send() {
+    const message = await publishChat({ from, text })  // POST + fan-out
+}`} />
 </section>

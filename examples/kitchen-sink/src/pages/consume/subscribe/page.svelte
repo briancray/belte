@@ -1,4 +1,5 @@
 <script lang="ts">
+import CodeBlock from '$lib/CodeBlock.svelte'
 import { subscribe } from 'belte/consume'
 import { tickFeed } from '$route/tickFeed.ts'
 import { countLog } from '$route/countLog.ts'
@@ -37,7 +38,7 @@ async function send() {
     <code class="font-mono">sse(...)</code>
     handler, a <code class="font-mono">jsonl(...)</code>
     handler, or a <code class="font-mono">SOCKET</code>
-    rpc — the call site never changes.
+    route — the call site never changes.
 </p>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -51,6 +52,22 @@ async function send() {
     {:else}
         <p class="mt-1 font-mono text-xs text-slate-500">(no frame yet)</p>
     {/if}
+    <CodeBlock
+        title="src/route/tickFeed.ts (server — same handler as the streaming-helpers demo)"
+        code={`export const tickFeed = GET<undefined, { tick: number; at: string }>(() =>
+    sse(async function* () {
+        for (let tick = 1; ; tick += 1) {
+            yield { tick, at: new Date().toISOString() }
+            await Bun.sleep(1000)
+        }
+    }()),
+)`} />
+    <CodeBlock
+        title="this page (client)"
+        code={`import { subscribe } from 'belte/consume'
+
+const sseLatest = $derived(subscribe(tickFeed)())     // latest frame
+const sseStatus = $derived(subscribe.status(tickFeed)()) // 'pending' | 'open' | 'done' | 'error'`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -69,6 +86,13 @@ async function send() {
     {#if jsonlLatest}
         <p class="mt-1 font-mono text-xs text-slate-700">latest n: {jsonlLatest.n}</p>
     {/if}
+    <CodeBlock
+        title="this page (client) — conditional subscription"
+        code={`/* Reading subscribe(...) inside $derived only opens the stream while
+   the deriving scope is alive. Gate behind a $state flag to demo
+   open-on-first-read / close-on-last-reader. */
+let jsonlActive = $state(false)
+const jsonlLatest = $derived(jsonlActive ? subscribe(countLog)({ to: 20 }) : undefined)`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -104,4 +128,23 @@ async function send() {
     {:else}
         <p class="mt-3 text-xs text-slate-500">(no frame yet — publish something)</p>
     {/if}
+    <CodeBlock
+        title="src/route/chatFeed.ts (server)"
+        code={`import { SOCKET } from 'belte/route'
+import { watchChat, type ChatMessage } from '../chatState.ts'
+
+export const chatFeed = SOCKET<undefined, ChatMessage>(async function* () {
+    for await (const message of watchChat()) {
+        yield message
+    }
+})`} />
+    <CodeBlock
+        title="this page (client) — subscribe + publish over the same broadcast"
+        code={`import { subscribe } from 'belte/consume'
+
+const chatLatest = $derived(subscribe(chatFeed)())   // same shape regardless of transport
+
+async function send() {
+    await publishChat({ from, text })   // POST that fan-outs through the SOCKET
+}`} />
 </section>

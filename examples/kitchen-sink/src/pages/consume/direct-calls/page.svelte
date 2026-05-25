@@ -1,4 +1,5 @@
 <script lang="ts">
+import CodeBlock from '$lib/CodeBlock.svelte'
 import { getEcho } from '$route/getEcho.ts'
 import { createEcho } from '$route/createEcho.ts'
 
@@ -37,10 +38,30 @@ async function callPlainFetch() {
         await getEcho({`{ message: 'from remote proxy' }`})
     </button>
     <p class="mt-3 font-mono text-xs text-slate-700">{remoteBody}</p>
+    <CodeBlock
+        title="src/route/getEcho.ts (server)"
+        code={`import { GET } from 'belte/route'
+import { json } from 'belte/respond'
+
+export const getEcho = GET<{ message: string }, { method: 'GET'; message: string }>(
+    ({ message }) => json({ method: 'GET', message }),
+)`} />
+    <CodeBlock
+        title="this page (client — identical line, different runtime)"
+        code={`import { getEcho } from '$route/getEcho.ts'
+
+const value = await getEcho({ message: 'from remote proxy' })
+/* on the server: handler runs in-process
+   on the client: typed fetch to /route/getEcho?message=...
+   resolves to the decoded body — JSON parsed, typed as Return */`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
     <h2 class="text-sm font-semibold">Plain fetch via <code class="font-mono">.url</code></h2>
+    <p class="mt-1 text-sm text-slate-600">
+        Every remote function exposes <code class="font-mono">.url</code>
+        (and <code class="font-mono">.method</code>) so you can talk to it with any HTTP client.
+    </p>
     <button
         type="button"
         class="mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
@@ -48,6 +69,13 @@ async function callPlainFetch() {
         fetch(getEcho.url + '?message=...')
     </button>
     <p class="mt-3 font-mono text-xs text-slate-700">{plainBody}</p>
+    <CodeBlock
+        title="this page (client)"
+        code={`import { getEcho } from '$route/getEcho.ts'
+
+const url = \`\${getEcho.url}?message=\${encodeURIComponent('from plain fetch')}\`
+const response = await fetch(url)
+/* getEcho.url === '/route/getEcho'; getEcho.method === 'GET' */`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -67,4 +95,18 @@ async function callPlainFetch() {
             Submit <code class="font-mono">{createEcho.method} {createEcho.url}</code>
         </button>
     </form>
+    <CodeBlock
+        title="src/route/createEcho.ts (server — accepts JSON body or FormData)"
+        code={`import { POST } from 'belte/route'
+import { json } from 'belte/respond'
+
+export const createEcho = POST<{ message: string }, { method: 'POST'; message: string }>(
+    ({ message }) => json({ method: 'POST', message }, { status: 201 }),
+)`} />
+    <CodeBlock
+        title="this page (client — plain HTML form, no JS)"
+        code={`<form method="POST" action={createEcho.url}>
+    <input name="message" />
+    <button type="submit">Submit</button>
+</form>`} />
 </section>
