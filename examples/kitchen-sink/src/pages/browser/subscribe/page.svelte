@@ -1,6 +1,6 @@
 <script lang="ts">
 import CodeBlock from '$lib/CodeBlock.svelte'
-import { subscribe } from 'belte/browser'
+import { subscribe } from 'belte/browser/subscribe'
 import { chat } from '$sockets/chat.ts'
 import { publishChat } from '$rpc/publishChat.ts'
 
@@ -93,7 +93,7 @@ async function send() {
 <section class="mt-6 space-y-3">
     <CodeBlock
         title="this page — reactive read + publish-through-rpc"
-        code={`import { subscribe } from 'belte/browser'
+        code={`import { subscribe } from 'belte/browser/subscribe'
 import { chat } from '$sockets/chat.ts'
 import { publishChat } from '$rpc/publishChat.ts'
 

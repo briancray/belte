@@ -8,7 +8,7 @@ import type { Layouts } from './types/Layouts.ts'
 import type { Pages } from './types/Pages.ts'
 
 /*
-Augmentable route table. The codegen step emits a `declare module 'belte/browser'`
+Augmentable route table. The codegen step emits a `declare module 'belte/browser/page'`
 block that fills this interface with `routePath: paramShape` pairs derived
 from the project's `src/pages/**` tree. A bare belte install has no routes,
 so the fallback arm below keeps the union inhabited before the generated

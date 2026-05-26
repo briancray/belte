@@ -1,6 +1,6 @@
 import type { Subscribable } from './types/Subscribable.ts'
 import { decodeResponse } from './decodeResponse.ts'
-import { HttpError } from '../server/respond/HttpError.ts'
+import { HttpError } from '../server/HttpError.ts'
 import { STREAMING_CONTENT_TYPES } from './streamingContentTypes.ts'
 
 /*

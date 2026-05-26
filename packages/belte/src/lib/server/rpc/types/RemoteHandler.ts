@@ -1,4 +1,4 @@
-import type { TypedResponse } from '../../respond/types/TypedResponse.ts'
+import type { TypedResponse } from './TypedResponse.ts'
 
 /*
 Handler signature for verb-defined remote functions. Args is `undefined` for

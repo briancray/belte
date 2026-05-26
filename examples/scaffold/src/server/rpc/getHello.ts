@@ -23,6 +23,7 @@ dedupe). Other helpers in the same module: `error`, `redirect`, `sse`,
 `jsonl`.
 */
 
-import { GET, json } from 'belte/server'
+import { GET } from 'belte/server/GET'
+import { json } from 'belte/server/json'
 
 export const getHello = GET(() => json({ message: 'Hello from belte' }))

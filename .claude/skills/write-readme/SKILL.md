@@ -11,7 +11,7 @@ Re-derive the API from source — never trust prior README text. Read at least:
 
 - `packages/belte/package.json` — the `exports` map is the authoritative public surface
 - `packages/belte/bin/belte.ts` — CLI commands and flags
-- `packages/belte/src/lib/server/index.ts` and `packages/belte/src/lib/browser/index.ts` — what each public umbrella re-exports
+- `packages/belte/src/lib/server/*.ts` and `packages/belte/src/lib/browser/*.ts` — the public names (one file per export, no barrels — every public import is `belte/<namespace>/<name>`)
 - `packages/belte/src/belteResolverPlugin.ts` — directory conventions (`src/pages/`, `src/server/rpc/`, `src/server/sockets/`), path aliases, virtual modules
 - `packages/belte/tsconfig.app.json` — the inheritable tsconfig users extend via `"extends": "belte/tsconfig"`
 - `examples/barebones/` and `examples/kitchen-sink/` — minimal vs feature-rich snippet sources
@@ -33,7 +33,7 @@ In order:
 5. **A complete app on one screen** — a handful of files that compose into a working app (layout, page, an rpc, `package.json`).
 6. **CLI** — `bunx belte scaffold`, in-project commands, debug-logging env vars.
 7. **File-system conventions** — one `##` per file/folder kind: `Project layout`, `Pages and layouts — src/pages/`, `App hooks — src/app.ts`, `HTML shell — src/app.html`, `Project config`.
-8. **Public umbrellas** — one `##` per umbrella, internal `###`s per topic. Currently `belte/server` and `belte/browser`; future siblings (`belte/cli`, `belte/mcp`) slot in here.
+8. **Public namespaces** — one `##` per namespace, internal `###`s per topic. Currently `belte/server` and `belte/browser` (future siblings: `belte/cli`, `belte/mcp`). Each public name has its own path (`belte/server/GET`, `belte/browser/cache`, …) — no umbrella imports.
 
 Don't add Features / Why belte? / Roadmap / License / badges.
 

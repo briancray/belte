@@ -1,5 +1,6 @@
-import { error, json } from 'belte/server'
-import { GET } from 'belte/server'
+import { error } from 'belte/server/error'
+import { json } from 'belte/server/json'
+import { GET } from 'belte/server/GET'
 
 /*
 Stand-in for a products table. Used by /rpc/product/[id] to show how a

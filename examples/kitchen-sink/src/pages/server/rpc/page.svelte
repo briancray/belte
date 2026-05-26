@@ -1,6 +1,6 @@
 <script lang="ts">
 import CodeBlock from '$lib/CodeBlock.svelte'
-import { HttpError } from 'belte/browser'
+import { HttpError } from 'belte/browser/HttpError'
 import { getEcho } from '$rpc/getEcho.ts'
 import { createEcho } from '$rpc/createEcho.ts'
 import { replaceEcho } from '$rpc/replaceEcho.ts'
@@ -113,7 +113,8 @@ const message = $state({ value: 'hello' })
     <CodeBlock
         title="src/server/rpc/*.ts — one verb per file"
         code={`// getEcho.ts
-import { GET, json } from 'belte/server'
+import { GET } from 'belte/server/GET'
+import { json } from 'belte/server/json'
 export const getEcho = GET<{ message: string }>(({ message }) =>
     json({ method: 'GET' as const, message }),
 )

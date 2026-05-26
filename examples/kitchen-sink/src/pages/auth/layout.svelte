@@ -13,7 +13,7 @@ nav. Switching between "/" and "/auth/login" you can see the chrome
 change wholesale.
 */
 import '../../app.css'
-import { cache } from 'belte/browser'
+import { cache } from 'belte/browser/cache'
 import { getSession } from '$rpc/getSession.ts'
 import { logout } from '$rpc/logout.ts'
 

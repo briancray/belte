@@ -1,6 +1,6 @@
-import { json } from 'belte/server'
-import { GET } from 'belte/server'
-import { request } from 'belte/server'
+import { json } from 'belte/server/json'
+import { GET } from 'belte/server/GET'
+import { request } from 'belte/server/request'
 
 /*
 Demonstrates the `request()` helper from belte/server. The same `request()`

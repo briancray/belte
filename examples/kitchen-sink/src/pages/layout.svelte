@@ -1,6 +1,7 @@
 <script lang="ts">
 import '../app.css'
-import { cache, page } from 'belte/browser'
+import { cache } from 'belte/browser/cache'
+import { page } from 'belte/browser/page'
 import { getSession } from '$rpc/getSession.ts'
 import { logout } from '$rpc/logout.ts'
 

@@ -107,7 +107,8 @@ async function runJsonl() {
 <section class="mt-6 space-y-3">
     <CodeBlock
         title="src/server/rpc/tickFeed.ts — SSE"
-        code={`import { GET, sse } from 'belte/server'
+        code={`import { GET } from 'belte/server/GET'
+import { sse } from 'belte/server/sse'
 
 export const tickFeed = GET(() =>
     sse((async function* () {
@@ -120,7 +121,8 @@ export const tickFeed = GET(() =>
 
     <CodeBlock
         title="src/server/rpc/countLog.ts — JSONL"
-        code={`import { GET, jsonl } from 'belte/server'
+        code={`import { GET } from 'belte/server/GET'
+import { jsonl } from 'belte/server/jsonl'
 
 export const countLog = GET<{ to: number }>(({ to }) =>
     jsonl((async function* () {

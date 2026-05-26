@@ -1,6 +1,6 @@
 <script lang="ts">
 import CodeBlock from '$lib/CodeBlock.svelte'
-import { subscribe } from 'belte/browser'
+import { subscribe } from 'belte/browser/subscribe'
 import { chat } from '$sockets/chat.ts'
 import { publishChat } from '$rpc/publishChat.ts'
 
@@ -92,7 +92,7 @@ async function send() {
 <section class="mt-6 space-y-3">
     <CodeBlock
         title="src/server/sockets/chat.ts"
-        code={`import { socket } from 'belte/server'
+        code={`import { socket } from 'belte/server/socket'
 
 export type ChatMessage = { id: string; from: string; text: string; at: number }
 
@@ -100,7 +100,9 @@ export const chat = socket<ChatMessage>({ history: 100 })`} />
 
     <CodeBlock
         title="src/server/rpc/publishChat.ts — validated publish path"
-        code={`import { POST, error, json } from 'belte/server'
+        code={`import { POST } from 'belte/server/POST'
+import { error } from 'belte/server/error'
+import { json } from 'belte/server/json'
 import { chat, type ChatMessage } from '$sockets/chat.ts'
 
 export const publishChat = POST<{ from: string; text: string }>(({ from, text }) => {
@@ -118,7 +120,7 @@ for await (const m of chat.tail(20)) { /* last 20 (clamped to history), then liv
 
     <CodeBlock
         title="this page — reactive read"
-        code={`import { subscribe } from 'belte/browser'
+        code={`import { subscribe } from 'belte/browser/subscribe'
 import { chat } from '$sockets/chat.ts'
 
 const latest = $derived(subscribe(chat))     // re-renders on every new frame`} />

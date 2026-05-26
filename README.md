@@ -6,7 +6,7 @@ A tiny SSR + SPA framework for [Bun](https://bun.sh) and [Svelte 5](https://svel
 | --- | --- |
 | [Bets](#bets) | the four foundational decisions |
 | [Examples](#examples) | barebones, scaffold, kitchen-sink |
-| [The four bets](#the-four-bets) | each bet expanded with a snippet |
+| [The four bets](#the-four-bets) | isomorphism, framework-owned network, single runtime, no-barrel imports |
 | [A complete app on one screen](#a-complete-app-on-one-screen) | minimal layout + page + rpc + `package.json` |
 | [CLI](#cli) | `bunx belte scaffold` and the in-project commands |
 | [Project layout](#project-layout) | folder tree + path aliases |
@@ -22,7 +22,7 @@ A tiny SSR + SPA framework for [Bun](https://bun.sh) and [Svelte 5](https://svel
 1. **Isomorphism by default** — same callable, both sides. The bundler swaps the runtime; user code never branches on `typeof window`.
 2. **Framework owns the network** — one rpc URL shape, one ws multiplex, two reactive consumers (`cache` for request/response, `subscribe` for streams).
 3. **One runtime, dev → prod → binary** — every CLI mode runs on the same `Bun.serve`. No Node, no Vite.
-4. **Two flat umbrellas per side** — `belte/server` (everything declared on the server) and `belte/browser` (the html consumer). Future siblings (`belte/cli`, `belte/mcp`) plug in without growing the server side.
+4. **One path per export, no barrels** — `belte/server/GET`, `belte/server/json`, `belte/browser/cache`, …. No umbrella imports, no client-bundle bloat from accidentally pulling the server runtime through an index.
 
 ## Examples
 
@@ -38,7 +38,8 @@ A tiny SSR + SPA framework for [Bun](https://bun.sh) and [Svelte 5](https://svel
 
 ```ts
 // src/server/rpc/getPost.ts
-import { GET, json } from 'belte/server'
+import { GET } from 'belte/server/GET'
+import { json } from 'belte/server/json'
 export const getPost = GET(({ id }: { id: string }) => json({ title: `Post ${id}` }))
 ```
 
@@ -52,7 +53,7 @@ Sockets work the same way — one declaration, isomorphic `publish` and async it
 
 ```ts
 // src/server/sockets/chat.ts
-import { socket } from 'belte/server'
+import { socket } from 'belte/server/socket'
 export const chat = socket<ChatMessage>({ history: 100 })
 ```
 
@@ -78,22 +79,29 @@ Plain HTML still works — every rpc has `.url` and `.method`, so `<form action=
 
 `belte compile` embeds the gzipped client assets into the binary — no on-disk dependency on `dist/`.
 
-### Two flat umbrellas per side
+### One path per export — no barrel imports
+
+Every public name has its own module path. `belte/server` and `belte/browser` are namespaces, not files — `belte/server` on its own resolves nothing.
 
 ```ts
-// server side
-import {
-    GET, POST, PUT, PATCH, DELETE, HEAD,
-    socket,
-    json, error, redirect, sse, jsonl,
-    request, server, HttpError,
-} from 'belte/server'
+// server side — one import line per name
+import { GET } from 'belte/server/GET'
+import { POST } from 'belte/server/POST'
+import { json } from 'belte/server/json'
+import { error } from 'belte/server/error'
+import { socket } from 'belte/server/socket'
+import { request } from 'belte/server/request'
+import type { AppModule } from 'belte/server/AppModule'
 
 // browser side
-import { page, navigate, cache, subscribe, HttpError } from 'belte/browser'
+import { cache } from 'belte/browser/cache'
+import { subscribe } from 'belte/browser/subscribe'
+import { page } from 'belte/browser/page'
+import { navigate } from 'belte/browser/navigate'
+import { HttpError } from 'belte/browser/HttpError'   // also at belte/server/HttpError
 ```
 
-`belte/server` is the only thing `src/server/**` imports from belte; `belte/browser` is the only thing `src/pages/**` imports. Future consumer modules (`belte/cli`, `belte/mcp`) sit alongside `belte/browser`.
+`belte/server/**` is what `src/server/**` imports from belte; `belte/browser/**` is what `src/pages/**` imports. Future consumer namespaces (`belte/cli/**`, `belte/mcp/**`) sit alongside.
 
 ---
 
@@ -112,7 +120,7 @@ let { children }: { children: import('svelte').Snippet } = $props()
 ```svelte
 <!-- src/pages/page.svelte -->
 <script lang="ts">
-import { cache } from 'belte/browser'
+import { cache } from 'belte/browser/cache'
 import { getPost } from '$rpc/getPost.ts'
 const post = await cache(getPost)({ id: 'hello' })
 </script>
@@ -121,7 +129,8 @@ const post = await cache(getPost)({ id: 'hello' })
 
 ```ts
 // src/server/rpc/getPost.ts
-import { GET, json } from 'belte/server'
+import { GET } from 'belte/server/GET'
+import { json } from 'belte/server/json'
 export const getPost = GET(({ id }: { id: string }) => json({ title: `Post ${id}` }))
 ```
 
@@ -184,7 +193,7 @@ src/
 ```svelte
 <!-- src/pages/posts/[id]/page.svelte -->
 <script lang="ts">
-import { cache } from 'belte/browser'
+import { cache } from 'belte/browser/cache'
 import { getPost } from '$rpc/getPost.ts'
 let { id }: { id: string } = $props()
 const post = $derived(await cache(getPost, { key: ['post', id] })({ id }))
@@ -203,7 +212,7 @@ Every export is optional. Resolved at build time via the `belte:app` virtual mod
 | `handleError` | 500 fallback. Replaces belte's default stack-trace response.        |
 
 ```ts
-import type { AppModule } from 'belte/server'
+import type { AppModule } from 'belte/server/AppModule'
 
 export const handle: AppModule['handle'] = async (request, next) => {
     const response = await next(request)
@@ -260,7 +269,9 @@ Everything declared on the server: rpcs, sockets, response helpers, request/serv
 | `POST / PUT / PATCH`  | JSON body or `FormData` (query overrides)     |
 
 ```ts
-import { GET, json, error } from 'belte/server'
+import { GET } from 'belte/server/GET'
+import { json } from 'belte/server/json'
+import { error } from 'belte/server/error'
 
 export const getPost = GET(({ id }: { id: string }) => {
     const post = db.posts.get(id)
@@ -294,7 +305,8 @@ for await (const tick of tickFeed.stream()) { /* … */ }
 Every verb helper accepts `{ schema }` as a second argument. Any [Standard Schema](https://standardschema.dev)-compatible value works (zod, valibot, arktype, …). Failed inbound validation → `422` + `{ issues }`. Schema + library are server-only — the client bundle never sees zod.
 
 ```ts
-import { POST, json } from 'belte/server'
+import { POST } from 'belte/server/POST'
+import { json } from 'belte/server/json'
 import { z } from 'zod'
 
 const schema = z.object({ title: z.string().min(1), body: z.string() })
@@ -316,7 +328,8 @@ export const createPost = POST(({ title, body }) => json({ id: crypto.randomUUID
 All set `Cache-Control: no-store` unless overridden. `sse` and `jsonl` translate consumer cancellation into `iterator.return()`, so `finally` blocks run.
 
 ```ts
-import { GET, sse } from 'belte/server'
+import { GET } from 'belte/server/GET'
+import { sse } from 'belte/server/sse'
 
 export const tickFeed = GET(() =>
     sse((async function* () {
@@ -333,7 +346,8 @@ For broadcast fan-out across many subscribers, declare a [socket](#sockets) inst
 - `server()` — live `Bun.Server`. Throws before `Bun.serve` has booted.
 
 ```ts
-import { request, server } from 'belte/server'
+import { request } from 'belte/server/request'
+import { server } from 'belte/server/server'
 
 const cookie = request().headers.get('cookie')
 const port = server().port
@@ -347,10 +361,10 @@ Re-exported from `belte/browser` so client-side catch handlers can import it wit
 
 ```ts
 // server handler
-import { HttpError } from 'belte/server'
+import { HttpError } from 'belte/server/HttpError'
 
 // page / layout
-import { HttpError } from 'belte/browser'
+import { HttpError } from 'belte/browser/HttpError'
 
 try { await getPost({ id }) }
 catch (err) {
@@ -378,7 +392,7 @@ Override per response via the helper's `init` arg. Pre-gzipped siblings are stre
 - Steady-state fan-out rides Bun's `server.publish`, so chatty topics don't iterate JS per message per client.
 
 ```ts
-import { socket } from 'belte/server'
+import { socket } from 'belte/server/socket'
 export type ChatMessage = { id: string; from: string; text: string; at: number }
 export const chat = socket<ChatMessage>({ history: 100 })
 ```
@@ -405,7 +419,9 @@ Iteration auto-closes when `return()` runs (`break` out of `for await`).
 
 ```ts
 // src/server/rpc/publishChat.ts
-import { POST, json, error } from 'belte/server'
+import { POST } from 'belte/server/POST'
+import { json } from 'belte/server/json'
+import { error } from 'belte/server/error'
 import { type ChatMessage, chat } from '$sockets/chat.ts'
 
 export const publishChat = POST(({ from, text }: { from: string; text: string }) => {
@@ -451,7 +467,7 @@ Each rpc also exposes `.url` and `.method`, so plain forms and `fetch` work:
 Wraps a direct rpc call with three things on top: **dedupe**, **SSR snapshot**, **reactivity**.
 
 ```ts
-import { cache } from 'belte/browser'
+import { cache } from 'belte/browser/cache'
 const session = await cache(getSession)()
 ```
 
@@ -475,7 +491,7 @@ Wrap `cache()` in `$derived` to subscribe; mutate via plain rpc call, then inval
 
 ```svelte
 <script lang="ts">
-import { cache } from 'belte/browser'
+import { cache } from 'belte/browser/cache'
 import { getCounter } from '$rpc/getCounter.ts'
 import { incrementCounter } from '$rpc/incrementCounter.ts'
 
@@ -499,7 +515,7 @@ Reactive consumer for any `Subscribable<T>` — a `Socket<T>` or `fn.stream(args
 
 ```svelte
 <script lang="ts">
-import { subscribe } from 'belte/browser'
+import { subscribe } from 'belte/browser/subscribe'
 import { chat } from '$sockets/chat.ts'
 import { tickFeed } from '$rpc/tickFeed.ts'
 
@@ -518,7 +534,8 @@ const error   = $derived(subscribe.error(chat))          // Error | undefined
 `page` is a reactive `{ route, params, url }`. Reading any field inside `$derived` / `$effect` subscribes that scope.
 
 ```ts
-import { page, navigate } from 'belte/browser'
+import { page } from 'belte/browser/page'
+import { navigate } from 'belte/browser/navigate'
 
 const isActive = (href: string) => page.url.pathname === href
 if (page.route === '/posts/[id]') page.params.id   // typed as string
