@@ -1,5 +1,6 @@
-import { error, json } from 'belte/server'
-import { POST } from 'belte/server'
+import { error } from 'belte/server/error'
+import { json } from 'belte/server/json'
+import { POST } from 'belte/server/POST'
 import { type ChatMessage, chat } from '$sockets/chat.ts'
 
 /*

@@ -1,5 +1,5 @@
 import type { Server } from 'bun'
-import { getActiveServer } from './getActiveServer.ts'
+import { getActiveServer } from './runtime/getActiveServer.ts'
 
 /*
 Returns the active Bun.serve instance. Mirrors `request()`'s

@@ -21,8 +21,8 @@ ended cleanly" from "handler threw" without a side-channel. The full
 error is logged server-side via the framework's error handler — only the
 message crosses the wire.
 */
-import { NO_STORE } from '../../shared/cacheControlValues.ts'
-import type { TypedResponse } from './types/TypedResponse.ts'
+import { NO_STORE } from '../shared/cacheControlValues.ts'
+import type { TypedResponse } from './rpc/types/TypedResponse.ts'
 
 export function jsonl<Frame>(iterable: AsyncIterable<Frame>): TypedResponse<Frame> {
     const encoder = new TextEncoder()

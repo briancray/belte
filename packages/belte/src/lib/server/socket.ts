@@ -1,5 +1,5 @@
-import type { Socket } from './types/Socket.ts'
-import type { SocketOptions } from './types/SocketOptions.ts'
+import type { Socket } from './sockets/types/Socket.ts'
+import type { SocketOptions } from './sockets/types/SocketOptions.ts'
 
 /*
 Declares a Socket inside a file under `src/server/sockets/`. Each file contains

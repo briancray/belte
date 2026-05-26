@@ -20,7 +20,7 @@ Four trees must all agree with the README:
 
 The README isn't just a list of helpers — it's the design spec for the examples. Specifically:
 
-- **Public surface.** `packages/belte/package.json` `exports` is the authoritative import map; the umbrella entry files (`src/lib/server/index.ts`, `src/lib/browser/index.ts`) list every re-export. Every name in the README must come from there with the exact path shown.
+- **Public surface.** `packages/belte/package.json` `exports` is the authoritative import map. Every public name has its own path — `belte/server/<name>` and `belte/browser/<name>`. No barrels: never `import { X, Y } from 'belte/server'`, always `import { X } from 'belte/server/X'`. The files under `src/lib/server/*.ts` and `src/lib/browser/*.ts` enumerate the public names.
 - **Project layout.** The folder tree under the README's "Project layout" section is the layout the examples must use (`src/pages/`, `src/server/rpc/`, `src/server/sockets/`, `$pages` / `$rpc` / `$sockets` / `$lib`, tsconfig extends `belte/tsconfig`).
 - **Umbrella structure.** The README's `##` sections per umbrella (`belte/server`, `belte/browser`, future siblings) define the kitchen-sink page-tree shape. The kitchen-sink's URL tree should mirror it — e.g. README's `belte/server → RPC` corresponds to `/server/rpc`, `belte/browser → cache(fn, options?)` to `/browser/cache`.
 - **TOC checklist.** The README's TOC table is the kitchen-sink coverage checklist. Every topic listed should have a demonstrating page (or appear inline in the parent umbrella's overview when too small to deserve its own). Reference-only topics (e.g. HTTP cache-control defaults) can live as a table on the umbrella overview rather than a dedicated page.
@@ -41,7 +41,7 @@ The README isn't just a list of helpers — it's the design spec for the example
 The repo's `CLAUDE.md` applies; the README's style applies to demo content.
 
 - One export per file, name matches filename.
-- `belte/server` for everything declared on the server, `belte/browser` for the html consumer.
+- One import path per name: `belte/server/<name>`, `belte/browser/<name>`. Never the bare namespace.
 - Svelte 5 syntax (`$props`, `$state`, `$derived`, `{@render children()}`).
 - Tailwind classes only in kitchen-sink; plain CSS elsewhere.
 - Comments in template/scaffold files explain *why* — they're user-facing docs.

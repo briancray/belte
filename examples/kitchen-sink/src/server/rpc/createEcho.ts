@@ -1,5 +1,5 @@
-import { json } from 'belte/server'
-import { POST } from 'belte/server'
+import { json } from 'belte/server/json'
+import { POST } from 'belte/server/POST'
 
 /* POST — args arrive in the JSON request body. */
 export const createEcho = POST<{ message: string }>(({ message }) =>

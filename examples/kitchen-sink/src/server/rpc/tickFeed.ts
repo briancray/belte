@@ -1,5 +1,5 @@
-import { sse } from 'belte/server'
-import { GET } from 'belte/server'
+import { sse } from 'belte/server/sse'
+import { GET } from 'belte/server/GET'
 
 /*
 SSE streaming over plain HTTP. The handler returns `sse(asyncIterable)` —

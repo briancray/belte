@@ -15,8 +15,8 @@ Status guidance:
 - 307 — temporary, preserve method
 - 308 — permanent, preserve method
 */
-import { NO_STORE } from '../../shared/cacheControlValues.ts'
-import type { TypedResponse } from './types/TypedResponse.ts'
+import { NO_STORE } from '../shared/cacheControlValues.ts'
+import type { TypedResponse } from './rpc/types/TypedResponse.ts'
 
 type RedirectStatus = 301 | 302 | 303 | 307 | 308
 

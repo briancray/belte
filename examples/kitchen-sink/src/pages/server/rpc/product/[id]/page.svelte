@@ -1,6 +1,8 @@
 <script lang="ts">
 import CodeBlock from '$lib/CodeBlock.svelte'
-import { cache, navigate, HttpError } from 'belte/browser'
+import { cache } from 'belte/browser/cache'
+import { navigate } from 'belte/browser/navigate'
+import { HttpError } from 'belte/browser/HttpError'
 import { getProduct } from '$rpc/getProduct.ts'
 
 let { id }: { id: string } = $props()
@@ -65,7 +67,9 @@ const product = $derived(
 <section class="mt-6 space-y-3">
     <CodeBlock
         title="src/server/rpc/getProduct.ts"
-        code={`import { GET, json, error } from 'belte/server'
+        code={`import { GET } from 'belte/server/GET'
+import { json } from 'belte/server/json'
+import { error } from 'belte/server/error'
 
 export const getProduct = GET<{ id: string }>(({ id }) => {
     const product = products[id]
@@ -76,7 +80,7 @@ export const getProduct = GET<{ id: string }>(({ id }) => {
     <CodeBlock
         title="this page — [id] segment + per-id cache"
         code={`<script lang="ts">
-import { cache } from 'belte/browser'
+import { cache } from 'belte/browser/cache'
 import { getProduct } from '$rpc/getProduct.ts'
 
 let { id }: { id: string } = $props()    // typed via src/.belte/routes.d.ts

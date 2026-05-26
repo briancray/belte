@@ -1,5 +1,5 @@
-import { json } from 'belte/server'
-import { POST } from 'belte/server'
+import { json } from 'belte/server/json'
+import { POST } from 'belte/server/POST'
 import { counterState } from '../../counterState.ts'
 
 export const incrementCounter = POST(() => {

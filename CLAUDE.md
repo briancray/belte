@@ -7,12 +7,12 @@ you are making a ssr + spa framwork for bun and svelte.
 * maintain high visibility into the stack for debugging
 * maintain a consistent runtime between all modes (dev and build)
 * isomorphism by default — same callable, same name, same behavior on both sides; the bundler swaps the runtime
-* one flat umbrella per side: `belte/server` collects everything server-only (rpc verbs, the `socket()` helper, `respond/*`, `request`, `server`); each consumer surface gets its own flat umbrella named after the consumer (`belte/browser` for html clients, future siblings like `belte/cli` / `belte/mcp`).
+* no barrels. Every public name has its own module path: `belte/server/GET`, `belte/server/socket`, `belte/server/json`, `belte/browser/cache`, `belte/browser/page`, …. `belte/server` and `belte/browser` are namespaces — there is no umbrella `index.ts`, so importing a single name never drags side-effecting siblings into the bundle.
 * value performance when all other conditions are met
 
 # coding guidelines
 
-* src/lib is split three ways: `lib/server/` (server-only code, with `rpc/`, `sockets/`, `respond/`, `runtime/` sub-modules + each sub-module's `types/`), `lib/browser/` (the html-browser consumer surface — page state, navigate, cache, subscribe, the client-side proxies wired by the bundler), and `lib/shared/` (cross-side machinery + cache infra + build-time helpers, plus a `types/` for cross-side types). Future consumer surfaces sit as siblings to `browser/` (e.g. `lib/cli/`, `lib/mcp/`).
+* src/lib is split three ways: `lib/server/` (server-only — public names like `GET.ts` / `socket.ts` / `json.ts` / `request.ts` sit flat at the top; internal helpers live in `rpc/` / `sockets/` / `runtime/` sub-modules + each sub-module's `types/`), `lib/browser/` (html consumer — `cache.ts` / `subscribe.ts` / `page.svelte.ts` + the bundler-target proxies), and `lib/shared/` (cross-side machinery + cache infra + build-time helpers + `types/` for cross-side types). Future consumer surfaces sit as siblings to `browser/`. No `index.ts` barrels anywhere.
 * use bun apis not node apis when possible
 * only one export per file named after the export
 * write pure functions and use functional style programming

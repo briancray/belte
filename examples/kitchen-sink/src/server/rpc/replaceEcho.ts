@@ -1,5 +1,5 @@
-import { json } from 'belte/server'
-import { PUT } from 'belte/server'
+import { json } from 'belte/server/json'
+import { PUT } from 'belte/server/PUT'
 
 /* PUT — args arrive in the JSON request body, same as POST. */
 export const replaceEcho = PUT<{ message: string }>(({ message }) =>

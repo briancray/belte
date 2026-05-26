@@ -23,8 +23,8 @@ the message (full error logged server-side) before the stream closes;
 EventSource surfaces this via its `error` listener and `subscribe()`
 maps it to the entry's `error` field.
 */
-import { NO_STORE } from '../../shared/cacheControlValues.ts'
-import type { TypedResponse } from './types/TypedResponse.ts'
+import { NO_STORE } from '../shared/cacheControlValues.ts'
+import type { TypedResponse } from './rpc/types/TypedResponse.ts'
 
 const KEEPALIVE_INTERVAL_MS = 15000
 

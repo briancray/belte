@@ -1,5 +1,5 @@
-import { NO_STORE } from '../../shared/cacheControlValues.ts'
-import type { TypedResponse } from './types/TypedResponse.ts'
+import { NO_STORE } from '../shared/cacheControlValues.ts'
+import type { TypedResponse } from './rpc/types/TypedResponse.ts'
 
 /*
 Plain-text error Response — clearer than constructing a Response by

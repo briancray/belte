@@ -1,6 +1,7 @@
 <script lang="ts">
 import CodeBlock from '$lib/CodeBlock.svelte'
-import { cache, subscribe } from 'belte/browser'
+import { cache } from 'belte/browser/cache'
+import { subscribe } from 'belte/browser/subscribe'
 import { whoAmI } from '$rpc/whoAmI.ts'
 import { publishChat } from '$rpc/publishChat.ts'
 import { chat } from '$sockets/chat.ts'
@@ -102,7 +103,9 @@ async function send() {
 <section class="mt-6 space-y-3">
     <CodeBlock
         title="src/server/rpc/whoAmI.ts"
-        code={`import { GET, request, json } from 'belte/server'
+        code={`import { GET } from 'belte/server/GET'
+import { request } from 'belte/server/request'
+import { json } from 'belte/server/json'
 
 export const whoAmI = GET(() => {
     const headers = request().headers
@@ -114,7 +117,9 @@ export const whoAmI = GET(() => {
 
     <CodeBlock
         title="src/server/rpc/publishChat.ts"
-        code={`import { POST, error, json } from 'belte/server'
+        code={`import { POST } from 'belte/server/POST'
+import { error } from 'belte/server/error'
+import { json } from 'belte/server/json'
 import { chat, type ChatMessage } from '$sockets/chat.ts'
 
 export const publishChat = POST<{ from: string; text: string }>(({ from, text }) => {
@@ -126,7 +131,8 @@ export const publishChat = POST<{ from: string; text: string }>(({ from, text })
 
     <CodeBlock
         title="this page — SSR + reactive read"
-        code={`import { cache, subscribe } from 'belte/browser'
+        code={`import { cache } from 'belte/browser/cache'
+import { subscribe } from 'belte/browser/subscribe'
 import { whoAmI } from '$rpc/whoAmI.ts'
 import { chat } from '$sockets/chat.ts'
 
