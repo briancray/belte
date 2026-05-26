@@ -1,28 +1,30 @@
 # belte
 
-A tiny SSR + SPA framework for [Bun](https://bun.sh) and [Svelte 5](https://svelte.dev).
+A multimodal framework for [Bun](https://bun.sh) and [Svelte 5](https://svelte.dev). One typed backend; three clients — browser, MCP, CLI.
 
 | Section | What it covers |
 | --- | --- |
 | [Bets](#bets) | the four foundational decisions |
 | [Examples](#examples) | barebones, scaffold, kitchen-sink |
-| [The four bets](#the-four-bets) | isomorphism, framework-owned network, single runtime, no-barrel imports |
-| [A complete app on one screen](#a-complete-app-on-one-screen) | minimal layout + page + rpc + `package.json` |
-| [CLI](#cli) | `bunx belte scaffold` and the in-project commands |
+| [The three bets](#the-three-bets) | multimodal isomorphism, framework-owned network, single runtime |
+| [A complete app on one screen](#a-complete-app-on-one-screen) | one rpc, three clients |
+| [CLI](#cli) | `bunx belte scaffold`, in-project commands, `belte cli` |
 | [Project layout](#project-layout) | folder tree + path aliases |
 | [Pages and layouts](#pages-and-layouts--srcpages) | `page.svelte` / `layout.svelte`, nearest-only layouts, dynamic segments |
 | [App hooks](#app-hooks--srcappts) | `init` / `handle` / `handleError` |
+| [MCP server](#mcp-server--srcservermcpts) | optional `src/server/mcp.ts` — authorize hook, name, version |
 | [HTML shell](#html-shell--srcapphtml) | three SSR markers |
 | [Project config](#project-config) | `svelte.config.js`, `tsconfig` extending `belte/tsconfig` |
 | [`belte/server`](#belteserver) | rpc verbs, response helpers, sockets, `request` / `server`, `HttpError`, cache-control defaults |
 | [`belte/browser`](#beltebrowser) | direct calls, `cache`, `subscribe`, `page` / `navigate`, `HttpError`, request lifecycle |
+| [`belte/mcp`](#beltemcp) | `createMcpServer`, tool + resource derivation, auth forwarding |
+| [`belte/cli`](#beltecli) | `createClient`, argv parsing, thin vs full binaries, install endpoint |
 
 ## Bets
 
-1. **Isomorphism by default** — same callable, both sides. The bundler swaps the runtime; user code never branches on `typeof window`.
-2. **Framework owns the network** — one rpc URL shape, one ws multiplex, two reactive consumers (`cache` for request/response, `subscribe` for streams).
-3. **One runtime, dev → prod → binary** — every CLI mode runs on the same `Bun.serve`. No Node, no Vite.
-4. **One path per export, no barrels** — `belte/server/GET`, `belte/server/json`, `belte/browser/cache`, …. No umbrella imports, no client-bundle bloat from accidentally pulling the server runtime through an index.
+1. **Multimodal isomorphism** — one rpc declaration, four call-sites: server, browser, MCP tool, CLI command. The bundler / MCP dispatcher / CLI binary each swap the runtime.
+2. **Framework owns the network** — one rpc URL shape, one ws multiplex for sockets, one MCP endpoint, one CLI download endpoint.
+3. **One runtime, dev → prod → binary** — every command runs on the same `Bun.serve`. No Node, no Vite.
 
 ## Examples
 
@@ -32,39 +34,49 @@ A tiny SSR + SPA framework for [Bun](https://bun.sh) and [Svelte 5](https://svel
 
 ---
 
-## The four bets
+## The three bets
 
-### Isomorphism by default
+### Multimodal isomorphism
+
+One rpc declaration. Three clients can call it; the server can call its own rpc just as easily.
 
 ```ts
 // src/server/rpc/getPost.ts
 import { GET } from 'belte/server/GET'
 import { json } from 'belte/server/json'
-export const getPost = GET(({ id }: { id: string }) => json({ title: `Post ${id}` }))
+import { z } from 'zod'
+
+const schema = z.object({ id: z.string() })
+export const getPost = GET(({ id }) => json({ title: `Post ${id}` }), { schema })
 ```
 
-```ts
-// anywhere — page, layout, another rpc, the browser
-import { getPost } from '$rpc/getPost.ts'
-const post = await getPost({ id: 'abc' })
-```
+| Caller        | Call-site                                                              |
+| ------------- | ---------------------------------------------------------------------- |
+| Server / SSR  | `import { getPost } from '$rpc/getPost.ts'` then `await getPost({ id })` |
+| Browser       | same import path; `cache(getPost)({ id })` for SSR-aware reactivity     |
+| MCP tool      | exposed as tool `getPost` at `POST /__belte/mcp`                       |
+| CLI command   | exposed as `myapp getPost --id=abc` from the compiled binary           |
 
-Sockets work the same way — one declaration, isomorphic `publish` and async iteration:
+Schemas are the gate: any rpc with a `{ schema }` auto-exposes to MCP and CLI. Without a schema, it stays browser-only. Override per-rpc with `{ clients: { mcp: false, cli: false } }`.
 
-```ts
-// src/server/sockets/chat.ts
-import { socket } from 'belte/server/socket'
-export const chat = socket<ChatMessage>({ history: 100 })
-```
+Surface differences worth knowing:
+
+| Surface       | Direct call | Schema validation | Stream subscribe                              | Socket publish        |
+| ------------- | ----------- | ----------------- | --------------------------------------------- | --------------------- |
+| Browser       | yes         | yes               | live (ws multiplex)                           | if `clientPublish`    |
+| MCP tool      | yes         | yes               | single-shot `await_<socket>` + history snapshot resource | if `clientPublish` |
+| CLI command   | yes         | yes (argv → schema) | not yet                                     | not yet               |
 
 ### Framework owns the network
 
-| Concern             | Shape                                              |
-| ------------------- | -------------------------------------------------- |
-| RPC URL             | `/rpc/<filename>` (flat — no `[id]` segments)      |
-| WebSocket           | one `/__belte/sockets` multiplexed per client      |
-| Reactive (req/resp) | `$derived(cache(fn)(args))` — re-runs on invalidate |
-| Reactive (stream)   | `$derived(subscribe(source))` — re-runs per frame  |
+| Concern             | Shape                                                          |
+| ------------------- | -------------------------------------------------------------- |
+| RPC URL             | `/rpc/<filename>` (flat — no `[id]` segments)                  |
+| WebSocket           | one `/__belte/sockets` multiplexed per client                  |
+| MCP                 | one `POST /__belte/mcp` (JSON-RPC 2.0)                          |
+| CLI install         | `GET /__belte/cli` returns a shell installer; `GET /__belte/cli/<platform>` streams a tarball |
+| Reactive (req/resp) | `$derived(cache(fn)(args))` — re-runs on invalidate            |
+| Reactive (stream)   | `$derived(subscribe(source))` — re-runs per frame              |
 
 Plain HTML still works — every rpc has `.url` and `.method`, so `<form action={createPost.url} method={createPost.method}>` and `fetch(getPost.url)` are first-class.
 
@@ -75,46 +87,25 @@ Plain HTML still works — every rpc has `.url` and `.method`, so `<form action=
 | `belte dev`     | bundle + `bun --hot` the server entry                        |
 | `belte build`   | bundle the client into `dist/_app/` (gzip siblings included) |
 | `belte start`   | run the server entry against `dist/`                         |
-| `belte compile` | build + `Bun.build({ compile })` → standalone binary         |
+| `belte compile` | build + `Bun.build({ compile })` → standalone server binary  |
+| `belte cli`     | bake the rpc manifest, compile a standalone CLI binary       |
 
-`belte compile` embeds the gzipped client assets into the binary — no on-disk dependency on `dist/`.
-
-### One path per export — no barrel imports
-
-Every public name has its own module path. `belte/server` and `belte/browser` are namespaces, not files — `belte/server` on its own resolves nothing.
-
-```ts
-// server side — one import line per name
-import { GET } from 'belte/server/GET'
-import { POST } from 'belte/server/POST'
-import { json } from 'belte/server/json'
-import { error } from 'belte/server/error'
-import { socket } from 'belte/server/socket'
-import { request } from 'belte/server/request'
-import type { AppModule } from 'belte/server/AppModule'
-
-// browser side
-import { cache } from 'belte/browser/cache'
-import { subscribe } from 'belte/browser/subscribe'
-import { page } from 'belte/browser/page'
-import { navigate } from 'belte/browser/navigate'
-import { HttpError } from 'belte/browser/HttpError'   // also at belte/server/HttpError
-```
-
-`belte/server/**` is what `src/server/**` imports from belte; `belte/browser/**` is what `src/pages/**` imports. Future consumer namespaces (`belte/cli/**`, `belte/mcp/**`) sit alongside.
+`belte compile` embeds the gzipped client assets into the binary. `belte cli --platforms=linux-x64,darwin-arm64` cross-builds thin CLI binaries the server's `/__belte/cli/<platform>` endpoint serves to users.
 
 ---
 
 ## A complete app on one screen
 
-```svelte
-<!-- src/pages/layout.svelte -->
-<script lang="ts">
-import '../app.css'
-let { children }: { children: import('svelte').Snippet } = $props()
-</script>
-<header><a href="/">Home</a></header>
-<main>{@render children()}</main>
+One rpc, declared once, reachable from the browser via SSR-aware cache, from any MCP client over JSON-RPC, and from a downloadable CLI binary.
+
+```ts
+// src/server/rpc/getPost.ts
+import { GET } from 'belte/server/GET'
+import { json } from 'belte/server/json'
+import { z } from 'zod'
+
+const schema = z.object({ id: z.string() })
+export const getPost = GET(({ id }) => json({ title: `Post ${id}` }), { schema })
 ```
 
 ```svelte
@@ -127,20 +118,39 @@ const post = await cache(getPost)({ id: 'hello' })
 <h1>{post.title}</h1>
 ```
 
-```ts
-// src/server/rpc/getPost.ts
-import { GET } from 'belte/server/GET'
-import { json } from 'belte/server/json'
-export const getPost = GET(({ id }: { id: string }) => json({ title: `Post ${id}` }))
+```svelte
+<!-- src/pages/layout.svelte -->
+<script lang="ts">
+import '../app.css'
+let { children }: { children: import('svelte').Snippet } = $props()
+</script>
+<header><a href="/">Home</a></header>
+<main>{@render children()}</main>
 ```
 
 ```json
 // package.json
-{ "scripts": { "dev": "belte dev" }, "dependencies": { "belte": "^0.0.1", "svelte": "^5.0.0" } }
+{ "scripts": { "dev": "belte dev" }, "dependencies": { "belte": "^0.0.1", "svelte": "^5.0.0", "zod": "^3.0.0" } }
 ```
 
 ```sh
 bun install && bun run dev
+```
+
+Same app, talking to the MCP endpoint:
+
+```sh
+curl -sX POST http://localhost:3000/__belte/mcp \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"getPost","arguments":{"id":"hello"}}}'
+```
+
+Same app, talking via the compiled CLI binary:
+
+```sh
+belte cli                              # build ./dist/cli
+./dist/cli getPost --id=hello          # in-process — registry baked in
+APP_URL=http://localhost:3000 ./dist/cli getPost --id=hello   # remote — manifest only
 ```
 
 ---
@@ -152,10 +162,24 @@ bunx belte scaffold my-app    # copy the bundled template
 belte dev                     # build + hot-reload
 belte build                   # bundle the client into dist/_app/
 belte start                   # run the prod server against dist/
-belte compile [--target=…] [--out=…]   # standalone binary
+belte compile [--target=…] [--out=…]                   # standalone server binary
+belte cli     [--target=…] [--out=…] [--platforms=…]   # standalone CLI binary
 ```
 
 `belte compile` defaults to your host target (`bun-darwin-arm64`, `bun-linux-x64`, …) and writes to `dist/app`.
+
+`belte cli` is two-pass: a discovery build walks the rpc registry to bake a manifest, then `Bun.build({ compile })` emits the binary. `APP_URL` at build time decides thin vs full:
+
+| `APP_URL` at build | Mode | Behavior                                                                       |
+| ------------------ | ---- | ------------------------------------------------------------------------------ |
+| unset              | full | every rpc module is bundled in. Runs in-process when `APP_URL` is unset at runtime, remote when it's set. |
+| set                | thin | only the manifest is bundled. Requires `APP_URL` at runtime to reach the server. |
+
+`--platforms=linux-x64,darwin-arm64,…` requires thin mode and emits `dist/cli-thin/<platform>/<programName>` — the layout the server's `/__belte/cli/<platform>` download endpoint expects. Users install via:
+
+```sh
+curl -fsSL https://your-app.example/__belte/cli | sh
+```
 
 **Debug logging** (read from `.env` automatically):
 
@@ -172,6 +196,7 @@ src/
   server/
     rpc/                   # one rpc per file → /rpc/<filename>
     sockets/               # one topic per file → /__belte/sockets multiplex
+    mcp.ts                 # optional: custom createMcpServer call
   app.ts                   # optional: init / handle / handleError
   app.html, app.css        # optional shell and CSS
 ```
@@ -222,6 +247,34 @@ export const handle: AppModule['handle'] = async (request, next) => {
 ```
 
 WebSocket upgrades aren't exposed here — they're owned by the socket hub at `/__belte/sockets`.
+
+## MCP server — `src/server/mcp.ts`
+
+Optional. Default-export an `McpServer` to customise the MCP endpoint at `POST /__belte/mcp`. Without this file, the framework constructs a zero-arg `createMcpServer()` and uses package.json for `name` and `version`.
+
+```ts
+import { createMcpServer } from 'belte/mcp/createMcpServer'
+import { HttpError } from 'belte/server/HttpError'
+import { request } from 'belte/server/request'
+
+export default createMcpServer({
+    name: 'belte-app',
+    version: '1.0.0',
+    authorize: (req) => {
+        if (!req.headers.get('authorization')) {
+            throw new HttpError(401, 'mcp requires bearer token')
+        }
+    },
+})
+```
+
+| Option      | Default                          | Effect                                                                |
+| ----------- | -------------------------------- | --------------------------------------------------------------------- |
+| `name`      | `package.json` name              | server identity in the MCP `initialize` response                      |
+| `version`   | `package.json` version           | server identity in the MCP `initialize` response                      |
+| `authorize` | `undefined`                      | called once per MCP request before any tool/resource dispatch. Throw to reject. |
+
+Per-tool authorization stays in the underlying rpc handler — same code path as the HTTP route.
 
 ## HTML shell — `src/app.html`
 
@@ -300,9 +353,9 @@ for await (const tick of tickFeed.stream()) { /* … */ }
 
 `.raw` composes with `cache()` — `cache(fn.raw)` shares the same cache key as `cache(fn)`. `.stream(args)` composes with `subscribe()` (see [`belte/browser`](#beltebrowser)).
 
-### Schema validation
+### Schema validation + client exposure
 
-Every verb helper accepts `{ schema }` as a second argument. Any [Standard Schema](https://standardschema.dev)-compatible value works (zod, valibot, arktype, …). Failed inbound validation → `422` + `{ issues }`. Schema + library are server-only — the client bundle never sees zod.
+Every verb helper accepts `{ schema, clients? }` as a second argument. Any [Standard Schema](https://standardschema.dev)-compatible value works (zod, valibot, arktype, …). Failed inbound validation → `422` + `{ issues }`. Schema + library are server-only — the client bundle never sees zod.
 
 ```ts
 import { POST } from 'belte/server/POST'
@@ -314,6 +367,14 @@ export const createPost = POST(({ title, body }) => json({ id: crypto.randomUUID
 ```
 
 `Args` on the caller infer from `InferInput`; the handler receives `InferOutput`. Generic order is `<Return, Schema>` so `POST<MyReturn>(fn, { schema })` overrides `Return` while letting `Schema` infer.
+
+A schema also gates the non-browser surfaces. Defaults:
+
+| `clients:` key | Default                         | Override                                       |
+| -------------- | ------------------------------- | ---------------------------------------------- |
+| `browser`      | `true`                          | `{ clients: { browser: false } }`              |
+| `mcp`          | `true` when `schema` is present | `{ clients: { mcp: false } }` (or no schema)   |
+| `cli`          | `true` when `schema` is present | `{ clients: { cli: false } }` (or no schema)   |
 
 ### Response helpers
 
@@ -381,6 +442,7 @@ catch (err) {
 | Other static assets under `/_app/`                           | `public, max-age=0, must-revalidate`         |
 | SSR HTML / JSON                                              | `private, no-cache`                          |
 | Errors (404 / 405 / 500)                                     | `no-store`                                   |
+| `/__belte/mcp`, `/__belte/cli`                               | `no-store`                                   |
 
 Override per response via the helper's `init` arg. Pre-gzipped siblings are streamed when the client sends `Accept-Encoding: gzip`.
 
@@ -393,8 +455,11 @@ Override per response via the helper's `init` arg. Pre-gzipped siblings are stre
 
 ```ts
 import { socket } from 'belte/server/socket'
+import { z } from 'zod'
+
 export type ChatMessage = { id: string; from: string; text: string; at: number }
-export const chat = socket<ChatMessage>({ history: 100 })
+const schema = z.object({ id: z.string(), from: z.string(), text: z.string(), at: z.number() })
+export const chat = socket<ChatMessage>({ history: 100, schema })
 ```
 
 | Option         | Default     | Effect                                                                       |
@@ -402,6 +467,8 @@ export const chat = socket<ChatMessage>({ history: 100 })
 | `history`      | `0`         | buffer last *N* messages for replay                                          |
 | `ttl`          | `undefined` | per-frame max age in ms; entries older than `ttl` are evicted before replay  |
 | `clientPublish`| `false`     | when `true`, browser publishes are forwarded server-side                     |
+| `schema`       | `undefined` | validates `publish()` payloads synchronously; auto-exposes to MCP            |
+| `clients`      | (derived)   | same shape as rpc — schema flips on `mcp` by default                         |
 
 #### Iteration
 
@@ -436,7 +503,7 @@ export const publishChat = POST(({ from, text }: { from: string; text: string })
 
 ## `belte/browser`
 
-The html-browser consumer surface — direct rpc calls, the `cache` and `subscribe` reactive consumers, and SPA navigation. Future siblings (`belte/cli`, `belte/mcp`) plug in without changing `belte/server`.
+The html-browser consumer surface — direct rpc calls, the `cache` and `subscribe` reactive consumers, and SPA navigation.
 
 ### Direct rpc calls
 
@@ -566,3 +633,90 @@ hydration                      client cache loads from __SSR__ — no second fet
 $derived(cache(fn)())          subscribes; cache.invalidate re-runs every subscriber
 $derived(subscribe(source))    opens after hydration (socket: ws replay+tail; rpc: fetch loop)
 ```
+
+---
+
+## `belte/mcp`
+
+Server-only namespace. Auto-mounted at `POST /__belte/mcp` (JSON-RPC 2.0, MCP protocol `2025-06-18`). The default behavior works zero-config; provide `src/server/mcp.ts` to customise.
+
+### Tool + resource derivation
+
+Every rpc with `clients.mcp` becomes one tool named after its export. Every socket with `clients.mcp` contributes:
+
+| Derived from socket   | Kind     | What it does                                                               |
+| --------------------- | -------- | -------------------------------------------------------------------------- |
+| `await_<name>`        | tool     | blocks for the next published entry (default `30000ms` timeout via `timeoutMs`) |
+| `publish_<name>`      | tool     | only when `clientPublish: true` — publishes a validated payload            |
+| `belte://stream/<name>` | resource | latest history window as JSON                                              |
+
+Schemas attached to verbs and sockets are rendered as the tool's `inputSchema` (Standard Schema → JSON Schema). Without a schema, the surface stays off.
+
+### Auth forwarding
+
+Inbound MCP requests forward `cookie`, `authorization`, `x-forwarded-for`, `x-forwarded-proto` headers onto every synthesized rpc request, so existing session/bearer middleware in `src/app.ts` keeps working unchanged. The optional `authorize` hook on `createMcpServer` runs once per envelope before any dispatch.
+
+Tool calls go through the **same** `verb.fetch` code path as the HTTP route — validation, response helpers, and error mapping behave identically.
+
+### `createMcpServer(opts?)`
+
+Returns `{ handle(request: Request): Promise<Response> }`. The framework calls `handle` for every `POST /__belte/mcp` request. Options are documented in [MCP server — `src/server/mcp.ts`](#mcp-server--srcservermcpts).
+
+### Streaming caveat
+
+MCP gets single-shot `await_<name>` plus snapshot resources — not a live subscription. Real-time fan-out stays on the ws multiplex for now.
+
+---
+
+## `belte/cli`
+
+Server-only namespace covering the in-process / remote rpc client and the standalone CLI binary toolchain.
+
+### `createClient<Api>(opts?)`
+
+Typed proxy over the project's rpcs. Modes are chosen at construction:
+
+| Option       | Mode        | Behavior                                                                  |
+| ------------ | ----------- | ------------------------------------------------------------------------- |
+| `url`        | remote      | each call hits `<url>/<manifest[name].url>` over `fetch`                  |
+| no `url`     | in-process  | looks up the verb in the registry, calls `verb.fetch(synthesized)` — no network |
+| `token`      | both        | sets `authorization: Bearer <token>` on the synthesized request           |
+| `manifest`   | both        | the bundler-emitted CLI manifest; in-process falls back to the live registry |
+
+```ts
+// scripts/seed.ts
+import { createClient } from 'belte/cli/createClient'
+import { createPost } from '$rpc/createPost.ts'   // forces the registry to populate
+void createPost                                   // referenced so the import isn't tree-shaken
+
+const client = createClient<{ createPost: (args: { title: string; body: string }) => Promise<{ id: string }> }>()
+await client.createPost({ title: 'Hi', body: 'World' })
+```
+
+### Standalone binary
+
+`belte cli` packages the same client surface into a downloadable executable. Argv parses against each rpc's JSON Schema; required fields become required args, optional fields become flags.
+
+```sh
+myapp getPost --id=abc           # GET /rpc/getPost?id=abc
+myapp createPost --title='...' --body='...'   # POST /rpc/createPost
+myapp --help
+myapp getPost --help
+```
+
+`.env` next to the binary is auto-loaded — set `APP_URL` and `APP_TOKEN` there to point a thin binary at a deployed server.
+
+### Server-side install endpoint
+
+`createServer` registers two routes for the CLI:
+
+| Route                          | Returns                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| `GET /__belte/cli`             | shell installer that detects `uname`, downloads the right platform tarball, drops the binary into `$BELTE_INSTALL_DIR` (default `~/.local/bin`) |
+| `GET /__belte/cli/<platform>`  | gzipped tarball containing the thin binary + an `.env` with the request's origin as `APP_URL` |
+
+The first request triggers a `belte cli --platforms=…` build if needed; concurrent requests dedupe onto one build. Pre-build into `dist/cli-thin/` to skip the on-demand step.
+
+### Streaming caveat
+
+CLI commands cover the request/response surface only — sockets, `sse`, and `jsonl` rpcs aren't reachable from the binary yet. Plain `await` on a streaming verb will return an unreadable `Response` body; use the browser or MCP surface for those.

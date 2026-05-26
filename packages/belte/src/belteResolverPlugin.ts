@@ -75,10 +75,12 @@ export function belteResolverPlugin({
     cwd = process.cwd(),
     embedAssets = false,
     target = 'server',
+    thin,
 }: {
     cwd?: string
     embedAssets?: boolean
     target?: 'server' | 'client'
+    thin?: boolean
 } = {}): BunPlugin {
     const pagesDir = `${cwd}/src/pages`
     const rpcDir = `${cwd}/src/server/rpc`
@@ -132,7 +134,7 @@ export function belteResolverPlugin({
         setup(build) {
             build.onResolve(
                 {
-                    filter: /\/_virtual\/(rpc|sockets|pages|layouts|app|assets|shell)\.ts$/,
+                    filter: /\/_virtual\/(rpc|sockets|pages|layouts|app|mcp|assets|shell|cli-manifest|cli-name|cli-rpcs)\.ts$/,
                 },
                 (args) => {
                     const name = args.path.split('/').pop()?.replace('.ts', '')
@@ -347,6 +349,86 @@ export const ${prepared.exportName} = __belteSocketProxy__(${JSON.stringify(name
                         }
                     }
                     return { contents: 'export {};', loader: 'js' }
+                }
+
+                if (args.path === 'belte:cli-manifest') {
+                    /*
+                    The CLI binary's bake-time manifest. Discovery (a
+                    one-shot script the bundler runs separately) writes
+                    `${cwd}/dist/cli-manifest.json` from the populated
+                    verbRegistry; this virtual splices that JSON in as a
+                    default-exported object. Empty manifest when the
+                    discovery file is missing — the binary still works
+                    but exposes no subcommands until the user runs the
+                    full `belte cli` flow.
+                    */
+                    const manifestPath = `${cwd}/dist/cli-manifest.json`
+                    if (!existsSync(manifestPath)) {
+                        return { contents: 'export default {}', loader: 'js' }
+                    }
+                    const json = await Bun.file(manifestPath).text()
+                    return { contents: `export default ${json}`, loader: 'js' }
+                }
+
+                if (args.path === 'belte:cli-name') {
+                    /*
+                    Program name shown in `<program> --help`. Reads the
+                    project's package.json `name` field, falling back to
+                    `app` when missing.
+                    */
+                    const pkgPath = `${cwd}/package.json`
+                    if (!existsSync(pkgPath)) {
+                        return { contents: 'export default "app"', loader: 'js' }
+                    }
+                    const pkg = (await Bun.file(pkgPath).json()) as { name?: string }
+                    const name = pkg.name ?? 'app'
+                    return { contents: `export default ${JSON.stringify(name)}`, loader: 'js' }
+                }
+
+                if (args.path === 'belte:cli-rpcs') {
+                    /*
+                    Eager-import side-effect bundle for the FULL CLI
+                    binary. Importing every rpc module fires defineVerb
+                    so the verbRegistry is populated and createClient's
+                    in-process fallback can dispatch. Thin builds emit
+                    an empty module — the binary speaks remote-only.
+
+                    `thin` resolution order: explicit plugin option
+                    wins (set by buildCli when its `thin` option is
+                    passed), otherwise fall back to process.env.APP_URL
+                    so the CLI-tooling entry points work without
+                    ceremony.
+                    */
+                    const isThin = thin ?? Boolean(process.env.APP_URL)
+                    if (isThin) {
+                        return { contents: 'export {}', loader: 'js' }
+                    }
+                    const files = await scanRpcOnce()
+                    const lines = files.map(
+                        (file) => `import ${JSON.stringify(`${rpcDir}/${file}`)}`,
+                    )
+                    return { contents: `${lines.join('\n')}\nexport {}`, loader: 'js' }
+                }
+
+                if (args.path === 'belte:mcp') {
+                    /*
+                    User's optional src/server/mcp.ts default-exports an
+                    McpServer (typically constructed via createMcpServer).
+                    Absent that, fall back to a default-constructed server.
+                    */
+                    const userMcp = `${cwd}/src/server/mcp.ts`
+                    if (await Bun.file(userMcp).exists()) {
+                        log.info('using custom src/server/mcp.ts')
+                        return {
+                            contents: `export { default } from ${JSON.stringify(userMcp)}`,
+                            loader: 'js',
+                        }
+                    }
+                    return {
+                        contents:
+                            "import { createMcpServer } from 'belte/mcp/createMcpServer'\nexport default createMcpServer()\n",
+                        loader: 'js',
+                    }
                 }
 
                 if (args.path === 'belte:assets') {

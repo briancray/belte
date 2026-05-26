@@ -1,4 +1,5 @@
 import { createPushIterator } from '../../shared/createPushIterator.ts'
+import { resolveClientFlags } from '../../shared/resolveClientFlags.ts'
 import type { Socket } from './types/Socket.ts'
 import type { SocketOptions } from './types/SocketOptions.ts'
 import { getActiveServer } from '../runtime/getActiveServer.ts'
@@ -26,6 +27,9 @@ to remote subscribers; called client-side (via socketProxy) it sends a
 export function defineSocket<T>(name: string, opts: SocketOptions = {}): Socket<T> {
     const historySize = opts.history ?? 0
     const ttl = opts.ttl
+    const schema = opts.schema
+    const jsonSchema = opts.jsonSchema
+    const clients = resolveClientFlags(opts.clients, schema !== undefined)
     type BufferEntry = { value: T; expiresAt: number | undefined }
     const buffer: BufferEntry[] = []
     const subscribers = new Set<(message: T) => void>()
@@ -61,21 +65,47 @@ export function defineSocket<T>(name: string, opts: SocketOptions = {}): Socket<
     publishes skip the per-call getter.
     */
     let cachedServer: ReturnType<typeof getActiveServer>
+    /*
+    When a schema is attached, publish() validates synchronously and
+    throws on bad payloads. Standard Schema's validate() is generally
+    async — but for the synchronous server-side publish path we treat
+    a Promise return as a programming error (publish must be sync to
+    preserve in-process notify ordering). Schemas that need async
+    refinement should pre-validate at the call site instead.
+    */
+    function validateSync(message: T): T {
+        if (!schema) {
+            return message
+        }
+        const result = schema['~standard'].validate(message)
+        if (result instanceof Promise) {
+            throw new Error(
+                `[belte] socket "${name}" schema returned a Promise — sockets require sync validation`,
+            )
+        }
+        if (result.issues) {
+            throw new Error(
+                `[belte] socket "${name}" publish payload failed validation: ${JSON.stringify(result.issues)}`,
+            )
+        }
+        return result.value as T
+    }
     function publish(message: T): void {
+        const validated = validateSync(message)
         if (historySize > 0) {
             const now = Date.now()
             pruneExpired(now)
-            buffer.push({ value: message, expiresAt: ttl === undefined ? undefined : now + ttl })
+            buffer.push({ value: validated, expiresAt: ttl === undefined ? undefined : now + ttl })
             if (buffer.length > historySize) {
                 buffer.shift()
             }
         }
         for (const notify of subscribers) {
-            notify(message)
+            notify(validated)
         }
         const server = cachedServer ?? (cachedServer = getActiveServer())
         if (server) {
-            server.publish(topic, JSON.stringify({ type: 'msg', socket: name, message }))
+            server.publish(topic, JSON.stringify({ type: 'msg', socket: name, message: validated }))
         }
     }
 
@@ -110,6 +140,7 @@ export function defineSocket<T>(name: string, opts: SocketOptions = {}): Socket<
 
     const self: Socket<T> = {
         name,
+        clients,
         publish,
         tail: (count = 0) => iterate(count),
         [Symbol.asyncIterator]: () => iterate('all')[Symbol.asyncIterator](),
@@ -117,6 +148,9 @@ export function defineSocket<T>(name: string, opts: SocketOptions = {}): Socket<
     registerSocket({
         socket: self as Socket<unknown>,
         allowClientPublish: opts.clientPublish ?? false,
+        schema,
+        jsonSchema,
+        clients,
         snapshotHistory: () => {
             pruneExpired(Date.now())
             return buffer.map((entry) => entry.value)

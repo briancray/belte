@@ -1,8 +1,9 @@
 <!--
-Root layout. Wraps every page below src/pages/. Nest a layout.svelte deeper
-to wrap a subtree (e.g. src/pages/admin/layout.svelte). Layouts compose
-root-to-leaf and run on both the server (during SSR) and the client (after
-hydration).
+Root layout. Wraps every page below src/pages/. Layouts are nearest-only:
+the deepest matching layout.svelte runs and replaces ancestors — they don't
+stack. To inherit chrome in a nested layout, extract a snippet and
+{@render} it from each layout. Layouts run on both the server (during SSR)
+and the client (after hydration).
 -->
 <script lang="ts">
 import '../app.css'

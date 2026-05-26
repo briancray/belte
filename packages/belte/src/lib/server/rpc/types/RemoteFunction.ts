@@ -1,3 +1,4 @@
+import type { ClientFlags } from '../../../shared/types/ClientFlags.ts'
 import type { HttpVerb } from './HttpVerb.ts'
 import type { RawRemoteFunction } from './RawRemoteFunction.ts'
 import type { Subscribable } from '../../../shared/types/Subscribable.ts'
@@ -27,6 +28,7 @@ for user code.
 export type RemoteFunction<Args, Return> = ((args: Args) => Promise<Return>) & {
     readonly method: HttpVerb
     readonly url: string
+    readonly clients: ClientFlags
     readonly raw: RawRemoteFunction<Args>
     stream(args?: Args): Subscribable<Return>
     fetch(request: Request): Promise<Response>

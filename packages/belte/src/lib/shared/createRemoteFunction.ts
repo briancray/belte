@@ -1,3 +1,4 @@
+import type { ClientFlags } from './types/ClientFlags.ts'
 import type { HttpVerb } from '../server/rpc/types/HttpVerb.ts'
 import type { RawRemoteFunction } from '../server/rpc/types/RawRemoteFunction.ts'
 import type { RemoteFunction } from '../server/rpc/types/RemoteFunction.ts'
@@ -28,11 +29,12 @@ place so the two halves can't drift.
 export function createRemoteFunction<Args, Return>(opts: {
     method: HttpVerb
     url: string
+    clients: ClientFlags
     buildRequest: (args: Args | undefined) => Request
     invoke: (request: Request, args: Args | undefined) => Promise<Response>
     parseArgsForFetch?: (request: Request) => Promise<Args | undefined>
 }): RemoteFunction<Args, Return> {
-    const { method, url, buildRequest, invoke, parseArgsForFetch } = opts
+    const { method, url, clients, buildRequest, invoke, parseArgsForFetch } = opts
 
     function dispatch(request: Request, args: Args | undefined): Promise<Response> {
         const promise = invoke(request, args)
@@ -52,6 +54,7 @@ export function createRemoteFunction<Args, Return>(opts: {
     }
     callable.method = method
     callable.url = url
+    callable.clients = clients
     callable.raw = raw
     callable.stream = (args?: Args): Subscribable<Return> => {
         return subscribableFromResponse(keyForRemoteCall(method, url, args), () =>
