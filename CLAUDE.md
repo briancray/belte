@@ -13,22 +13,22 @@ you are making a ssr + spa framwork for bun and svelte.
 
 # coding guidelines
 
-* write library files into src/lib with separate folders for types, server (utils), client (utils), shared (utils).
-* do not use node apis when a bun api can be used
-* use one export per file named after the export
-* no need to create files for file-local module bindings
-* use functional style programming with pure functions
-* prefer approaches using modern javascript apis when comparing two of the same approaches
-* always use full known types where possible instead of creating adhoc one-use types
-* always use openining and closing brackets for if statements, no single line ifs
-* if you're transforming data, prefer instance and static methods like reduce and map over for loops when applicable
-* use undefined instead of null for nullish values unless a type needs null
+* write library files into src/lib/<logical grouping> with separate folders for types, server (functions), client (functions), shared (functions) and components
+* use bun apis not node apis when possible
+* only one export per file named after the export
+* write pure functions and use functional style programming
+* use the minimal amount of code to achieve a goal
+* use descriptive variable names instead of abbrevations
+* write short descriptive comments above each function and above code blocks that need explanation
+* use /* and */ for multiline comments and // for single line comments
 * write svelte 5 components
-* run bun format on a file after changes
+* always use full known types where possible instead of creating adhoc one-use types
+* if a function is shared, add it to the proper  folder and check library folders for existing functionality before writing one
+* run bun format on a file after all changes complete
 * use tailwindcss classes for styling, and prefer tailwind classes over style properties when possible.
-* use Svelte 5's $derived for derived reactives unless $derived.by() is explicitly needed
+* always use openining and closing brackets for if statements, no single line ifsn on
+* if you're transforming data, prefer functional instance and static methods like map, filter, reduce etc over for loops when applicable
+* do not start long living bun servers with `bun run dev`. When i type that it's a mistake
+* use undefined instead of null for nullish values unless a type needs null
 * reactive consumers (cache, subscribe, future ones) use `createSubscriber` from `svelte/reactivity` so the surrounding $derived/$effect drives the underlying resource lifecycle — open on first read, close on last reader. don't invent parallel reactivity machinery.
 * do not start long living bun servers with `bun run dev`. When i type that it's a mistake
-* use descriptive variable names instead of abbrevations
-* add descriptions above all functions and logic that is otherwise exceptional or unexpected
-* use /* and */ for multiline comments in javascript. dont use per-line markers so that linewidth formatting can change.

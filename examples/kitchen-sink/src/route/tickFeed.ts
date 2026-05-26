@@ -1,11 +1,12 @@
-import { GET } from 'belte/route'
 import { sse } from 'belte/respond'
+import { GET } from 'belte/route'
 
 /*
 SSE streaming over plain HTTP. The handler returns `sse(asyncIterable)` —
-each yielded frame becomes one `data: <json>\n\n` event. Consumers on
-the client can use `EventSource`, the framework's `subscribe(fn)(args)`,
-or just `.stream(args)` for a `for await` loop.
+each yielded frame becomes one `data: <json>\n\n` event. The client
+consumes with `new EventSource(tickFeed.url)`, or by reading
+`tickFeed.raw(...)`'s body if it needs Response headers/status. For
+pub/sub fan-out reach for `belte/stream` instead.
 */
 export const tickFeed = GET<undefined, { tick: number; at: string }>(() =>
     sse(

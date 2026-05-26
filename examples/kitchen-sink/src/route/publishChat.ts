@@ -1,17 +1,15 @@
+import { error, json } from 'belte/respond'
 import { POST } from 'belte/route'
-import { json, error } from 'belte/respond'
-import { server } from 'belte/server'
-import { appendChat, type ChatMessage } from '../chatState.ts'
+import { type ChatMessage, chat } from '$stream/chat.ts'
 
 /*
-POST that records a chat message and broadcasts it two ways:
-- in-process fan-out for SOCKET subscribers reading watchChat()
-- the live `Bun.Server` proxy (`server.publish`) for any raw ws
-  subscribers — used here to show off the `server` import from
-  belte/server, which is a stable module-scope reference.
-
-`error(...)` from belte/respond is the typed-error path; the client
-sees an HttpError with status 400.
+POST handler that records a chat message and publishes it to the
+`chat` stream. Anyone subscribed to that stream — whether through
+`for await (const m of chat)` on the server or `subscribe(chat)` on
+the client — receives the message. Validation happens here because
+`chat` is declared without `clientPublish: true`, so the browser
+can't publish directly; the auth/sanitisation gate lives in this
+route.
 */
 export const publishChat = POST<{ from: string; text: string }, ChatMessage>(({ from, text }) => {
     const trimmedFrom = from.trim()
@@ -25,7 +23,6 @@ export const publishChat = POST<{ from: string; text: string }, ChatMessage>(({ 
         text: trimmedText,
         at: Date.now(),
     }
-    appendChat(message)
-    server.publish('chat', JSON.stringify(message))
+    chat.publish(message)
     return json(message)
 })

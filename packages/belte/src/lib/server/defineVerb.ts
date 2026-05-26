@@ -1,7 +1,6 @@
 import { buildRouteRequest } from '../shared/buildRouteRequest.ts'
 import { decodeResponse } from '../shared/decodeResponse.ts'
 import { recordRemoteMeta } from '../shared/remoteMeta.ts'
-import { streamResponse } from '../shared/streamResponse.ts'
 import type { HttpVerb } from '../types/HttpVerb.ts'
 import type { RawRemoteFunction, RemoteFunction } from '../types/RemoteFunction.ts'
 import type { RemoteHandler } from '../types/RemoteHandler.ts'
@@ -29,9 +28,10 @@ so the verb (from the export name) and the URL (from the file path under
 
 The plain call (`fn(args)`) resolves to the Content-Type-decoded body;
 non-2xx responses throw HttpError. `.raw(args)` returns the underlying
-Response for callers that need status/headers/streaming. `.fetch(req)` is
-the dispatch hook the framework's router uses to invoke the handler from
-an incoming HTTP request (with args parsed off the Request via parseArgs).
+Response for callers that need status/headers/body streaming.
+`.fetch(req)` is the dispatch hook the framework's router uses to
+invoke the handler from an incoming HTTP request (with args parsed off
+the Request via parseArgs).
 
 Every raw invocation records the synthesized Request against the returned
 promise so cache() can stash it on the entry without re-building.
@@ -101,9 +101,6 @@ export function defineVerb<Args, Return>(
     callable.method = method
     callable.url = url
     callable.raw = raw
-    callable.stream = (args: Args): AsyncIterable<Return> => {
-        return streamResponse(rawCall(args)) as AsyncIterable<Return>
-    }
     callable.fetch = async (request: Request): Promise<Response> => {
         const args = (await parseArgs(method, request)) as Args | undefined
         return invoke(request, args)

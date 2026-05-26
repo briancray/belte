@@ -46,10 +46,11 @@ const currentPath = $derived(page.url.pathname)
     <a
         href="/consume/subscribe"
         class="rounded-lg border border-slate-200 bg-white p-5 hover:border-slate-400">
-        <h2 class="text-lg font-semibold"><code class="font-mono">subscribe()</code> + <code class="font-mono">.stream</code></h2>
+        <h2 class="text-lg font-semibold"><code class="font-mono">subscribe()</code></h2>
         <p class="mt-1 text-sm text-slate-600">
-            Reactive streams against SSE, JSONL, and SOCKET rpcs — same call site, same
-            iteration shape.
+            Reactive consumer for streams declared under
+            <code class="font-mono">src/stream/</code> — read the latest published value
+            inside any <code class="font-mono">$derived</code>.
         </p>
     </a>
 </section>

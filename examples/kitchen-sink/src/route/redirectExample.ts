@@ -1,5 +1,5 @@
-import { GET } from 'belte/route'
 import { redirect } from 'belte/respond'
+import { GET } from 'belte/route'
 
 /*
 GET that returns a redirect via belte/respond. The `redirect()` helper

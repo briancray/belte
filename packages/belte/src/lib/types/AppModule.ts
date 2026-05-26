@@ -6,12 +6,12 @@ kick in when an export is missing. init returns an optional cleanup
 function that runs on SIGINT/SIGTERM. handle is single-middleware with
 next so user code can mutate the response or branch on the URL.
 
-WebSockets are not exposed here — belte's only native WebSocket surface
-is SOCKET-bound rpc (see `belte/route`), multiplexed onto a single
-framework-owned connection per client at `/__belte/socket`. Inside
-request scopes, the live Bun.Server is reachable via the exported
-`server` proxy from `belte/server`; `init` receives it explicitly
-because it runs outside a request.
+WebSockets are not exposed here — belte's only native WebSocket
+surface is the stream hub (see `belte/stream`), multiplexed onto a
+single framework-owned connection per client at `/__belte/stream`.
+Inside request scopes, the live Bun.Server is reachable via the
+exported `server` proxy from `belte/server`; `init` receives it
+explicitly because it runs outside a request.
 */
 export type AppModule = {
     init?: (ctx: {

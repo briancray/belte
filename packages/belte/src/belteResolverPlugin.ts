@@ -5,7 +5,9 @@ import { Glob } from 'bun'
 import { log } from './lib/shared/log.ts'
 import { pageUrlForFile } from './lib/shared/pageUrlForFile.ts'
 import { extractRouteExport, rewriteForServer } from './lib/shared/rewriteRouteExports.ts'
+import { extractStreamExport, rewriteStreamForServer } from './lib/shared/rewriteStreamExports.ts'
 import { routeUrlForFile } from './lib/shared/routeUrlForFile.ts'
+import { streamNameForFile } from './lib/shared/streamNameForFile.ts'
 import { writeRoutesDts } from './lib/shared/writeRoutesDts.ts'
 
 /*
@@ -41,20 +43,19 @@ function escapeRegex(value: string): string {
 /*
 Bun plugin that wires every virtual import belte produces at build time:
 - `belte:route`   — { routeUrl: () => import(route-module) } HTTP-verb manifest
-- `belte:sockets` — { routeUrl: () => import(route-module) } SOCKET manifest
+- `belte:streams` — { streamName: () => import(stream-module) } stream manifest
 - `belte:pages`   — { pageUrl: () => import(page.svelte) } manifest
 - `belte:layouts` — { dirPrefix: () => import(layout.svelte) } manifest
 - `belte:app`     — { init?, handle?, handleError? } from src/app.ts
 - `belte:assets`  — gzipped chunk bytes embedded for standalone compile
 - `belte:shell`   — app.html content (custom or default)
 
-Also rewrites every module under src/route to bind each verb-named export
-to a runtime implementation: HTTP verbs (GET / POST / PUT / PATCH /
-DELETE / HEAD) thread verb + URL into defineVerb on the server and
-remoteProxy on the client; SOCKET threads just the URL into defineSocket
-on the server and socketProxy on the client. Each route file is
-classified once and emitted into the appropriate manifest so the server
-can route HTTP requests and ws frames against disjoint URL spaces.
+Also rewrites modules under src/route and src/stream:
+- src/route/<file>.ts: each HTTP-verb export is bound to a runtime
+  implementation — defineVerb on the server, remoteProxy on the client.
+- src/stream/<file>.ts: each `stream(opts)` export is bound to
+  defineStream on the server (with the stream name + opts) or
+  streamProxy on the client (name only — opts are server-side).
 */
 export function belteResolverPlugin({
     cwd = process.cwd(),
@@ -67,17 +68,19 @@ export function belteResolverPlugin({
 } = {}): BunPlugin {
     const pagesDir = `${cwd}/src/pages`
     const routeDir = `${cwd}/src/route`
+    const streamDir = `${cwd}/src/stream`
     const libDir = `${cwd}/src/lib`
 
     /*
     The whole-tree validation + per-leaf classification only needs to run
-    once per build. Memoise the promise so the three virtual manifests
-    (route/pages/layouts) share a single scan instead of each one re-globbing
-    the trees. The shell read is memoised the same way so two passes don't
-    re-read app.html from disk.
+    once per build. Memoise the promise so the virtual manifests
+    (route/streams/pages/layouts) share a single scan instead of each one
+    re-globbing the trees. The shell read is memoised the same way so two
+    passes don't re-read app.html from disk.
     */
     let pagesScanPromise: Promise<PagesScan> | undefined
-    let routeScanPromise: Promise<RouteScan> | undefined
+    let routeScanPromise: Promise<string[]> | undefined
+    let streamScanPromise: Promise<string[]> | undefined
     let shellContentsPromise: Promise<string> | undefined
     function scanPagesOnce(): Promise<PagesScan> {
         if (!pagesScanPromise) {
@@ -88,11 +91,17 @@ export function belteResolverPlugin({
         }
         return pagesScanPromise
     }
-    function scanRouteOnce(): Promise<RouteScan> {
+    function scanRouteOnce(): Promise<string[]> {
         if (!routeScanPromise) {
             routeScanPromise = scanRoute(routeDir)
         }
         return routeScanPromise
+    }
+    function scanStreamOnce(): Promise<string[]> {
+        if (!streamScanPromise) {
+            streamScanPromise = scanStream(streamDir)
+        }
+        return streamScanPromise
     }
     function loadShellOnce(): Promise<string> {
         if (!shellContentsPromise) {
@@ -102,13 +111,14 @@ export function belteResolverPlugin({
     }
 
     const routeFilter = new RegExp(`^${escapeRegex(routeDir)}/.*\\.ts$`)
+    const streamFilter = new RegExp(`^${escapeRegex(streamDir)}/.*\\.ts$`)
 
     return {
         name: 'belte-resolver',
         setup(build) {
             build.onResolve(
                 {
-                    filter: /\/_virtual\/(route|sockets|pages|layouts|app|assets|shell)\.ts$/,
+                    filter: /\/_virtual\/(route|streams|pages|layouts|app|assets|shell)\.ts$/,
                 },
                 (args) => {
                     const name = args.path.split('/').pop()?.replace('.ts', '')
@@ -127,6 +137,13 @@ export function belteResolverPlugin({
             build.onResolve({ filter: /^\$route(\/.*)?$/ }, (args) => {
                 const subpath = args.path.slice('$route'.length)
                 return { path: resolveExtension(subpath ? `${routeDir}${subpath}` : routeDir) }
+            })
+
+            build.onResolve({ filter: /^\$stream(\/.*)?$/ }, (args) => {
+                const subpath = args.path.slice('$stream'.length)
+                return {
+                    path: resolveExtension(subpath ? `${streamDir}${subpath}` : streamDir),
+                }
             })
 
             build.onResolve({ filter: /^\$lib(\/.*)?$/ }, (args) => {
@@ -156,48 +173,72 @@ export function belteResolverPlugin({
                 /*
                 For the client bundle, replace the entire module source
                 with a single proxy stub so the handler body and any
-                server-only top-level imports never reach the browser. The
-                stub keeps the same export name the source declared, so
-                page imports resolve identically on both sides. SOCKET
-                modules emit a socketProxy stub against the route URL; HTTP
-                verbs emit a remoteProxy stub against verb + URL.
+                server-only top-level imports never reach the browser.
+                The stub keeps the same export name the source declared,
+                so page imports resolve identically on both sides.
                 */
                 if (target === 'client') {
-                    const contents =
-                        declared.verb === 'SOCKET'
-                            ? `import { socketProxy as __belteSocketProxy__ } from 'belte/client/socketProxy';
-export const ${declared.exportName} = __belteSocketProxy__(${JSON.stringify(url)});
-`
-                            : `import { remoteProxy as __belteRemoteProxy__ } from 'belte/client/remoteProxy';
+                    const contents = `import { remoteProxy as __belteRemoteProxy__ } from 'belte/client/remoteProxy';
 export const ${declared.exportName} = __belteRemoteProxy__(${JSON.stringify(declared.verb)}, ${JSON.stringify(url)});
 `
                     return { contents, loader: 'ts' }
                 }
                 /*
                 Server target: strip the user's verb import, then rewrite
-                the `<VERB>(...)` call so the verb (from the identifier)
-                and the URL (from the file path) are threaded into the
-                runtime constructor — defineVerb for HTTP verbs,
-                defineSocket for SOCKET. The user's handler body stays
-                intact between the parens; any generics on the call are
-                dropped (they carry no runtime info). Rewriting is
+                the `<VERB>(` call so the verb (from the identifier) and
+                the URL (from the file path) are threaded into the
+                runtime constructor — defineVerb. The user's handler body
+                stays intact between the parens; any generics on the call
+                are dropped (they carry no runtime info). Rewriting is
                 tokenizer-driven so `GET` mentions inside strings and
                 comments are left alone.
                 */
                 const rewritten = rewriteForServer(source, url)
-                const banner =
-                    declared.verb === 'SOCKET'
-                        ? `import { defineSocket as __belteDefineSocket__ } from 'belte/server/defineSocket';
+                const banner = `import { defineVerb as __belteDefineVerb__ } from 'belte/server/defineVerb';
 `
-                        : `import { defineVerb as __belteDefineVerb__ } from 'belte/server/defineVerb';
+                return { contents: `${banner}${rewritten}`, loader: 'ts' }
+            })
+
+            build.onLoad({ filter: streamFilter }, async (args) => {
+                if (!args.path.startsWith(`${streamDir}/`)) {
+                    return undefined
+                }
+                const relativePath = args.path.slice(streamDir.length + 1)
+                const source = await Bun.file(args.path).text()
+                const name = streamNameForFile(relativePath)
+                const declared = extractStreamExport(source)
+                if (!declared) {
+                    throw new Error(
+                        `[belte] src/stream/${relativePath} has no \`export const <name> = stream(...)\` — every $stream module must declare exactly one stream`,
+                    )
+                }
+                const expectedName = relativePath.replace(/\.ts$/, '').split('/').pop() ?? ''
+                if (declared.exportName !== expectedName) {
+                    throw new Error(
+                        `[belte] src/stream/${relativePath} exports \`${declared.exportName}\` but the filename expects \`${expectedName}\` — the export name must match the file's stem`,
+                    )
+                }
+                if (target === 'client') {
+                    /*
+                    Client bundle gets a name-only stub — opts (history,
+                    clientPublish) are server-side state and don't
+                    affect the client's wire behaviour.
+                    */
+                    const contents = `import { streamProxy as __belteStreamProxy__ } from 'belte/client/streamProxy';
+export const ${declared.exportName} = __belteStreamProxy__(${JSON.stringify(name)});
+`
+                    return { contents, loader: 'ts' }
+                }
+                const rewritten = rewriteStreamForServer(source, name)
+                const banner = `import { defineStream as __belteDefineStream__ } from 'belte/server/defineStream';
 `
                 return { contents: `${banner}${rewritten}`, loader: 'ts' }
             })
 
             build.onLoad({ filter: /.*/, namespace: NS }, async (args) => {
                 if (args.path === 'belte:route') {
-                    const { httpFiles } = await scanRouteOnce()
-                    const byUrl = httpFiles
+                    const files = await scanRouteOnce()
+                    const byUrl = files
                         .toSorted()
                         .map((file) => ({ url: routeUrlForFile(file), file }))
                     const entries = byUrl
@@ -217,24 +258,24 @@ export const ${declared.exportName} = __belteRemoteProxy__(${JSON.stringify(decl
                     }
                 }
 
-                if (args.path === 'belte:sockets') {
-                    const { socketFiles } = await scanRouteOnce()
-                    const byUrl = socketFiles
+                if (args.path === 'belte:streams') {
+                    const files = await scanStreamOnce()
+                    const byName = files
                         .toSorted()
-                        .map((file) => ({ url: routeUrlForFile(file), file }))
-                    const entries = byUrl
+                        .map((file) => ({ name: streamNameForFile(file), file }))
+                    const entries = byName
                         .map(
-                            ({ url, file }) =>
-                                `    ${JSON.stringify(url)}: () => import(${JSON.stringify(`${routeDir}/${file}`)}),`,
+                            ({ name, file }) =>
+                                `    ${JSON.stringify(name)}: () => import(${JSON.stringify(`${streamDir}/${file}`)}),`,
                         )
                         .join('\n')
-                    if (byUrl.length > 0) {
+                    if (byName.length > 0) {
                         log.info(
-                            `resolved ${byUrl.length} socket modules: ${byUrl.map((b) => b.url).join(', ')}`,
+                            `resolved ${byName.length} stream modules: ${byName.map((b) => b.name).join(', ')}`,
                         )
                     }
                     return {
-                        contents: `export const sockets = {\n${entries}\n}\n`,
+                        contents: `export const streams = {\n${entries}\n}\n`,
                         loader: 'js',
                     }
                 }
@@ -380,36 +421,27 @@ async function scanPages(pagesDir: string): Promise<PagesScan> {
 }
 
 /*
-Walks src/route once and partitions every `.ts` file into HTTP-verb routes
-and SOCKET routes. Classification reads each file's source and extracts
-the verb identifier (cheap — one tokenizer pass per file). Returns
-empty lists when the directory doesn't exist so a pages-only app
+Walks src/route once. Every `.ts` file is an HTTP-verb route. Returns
+an empty list when the directory doesn't exist so a pages-only app
 builds without a `route/` folder.
 */
-async function scanRoute(routeDir: string): Promise<RouteScan> {
+async function scanRoute(routeDir: string): Promise<string[]> {
     if (!existsSync(routeDir)) {
-        return { httpFiles: [], socketFiles: [] }
+        return []
     }
-    const allFiles = await Array.fromAsync(new Glob('**/*.ts').scan({ cwd: routeDir }))
-    const httpFiles: string[] = []
-    const socketFiles: string[] = []
-    await Promise.all(
-        allFiles.map(async (file) => {
-            const source = await Bun.file(`${routeDir}/${file}`).text()
-            const declared = extractRouteExport(source)
-            if (declared?.verb === 'SOCKET') {
-                socketFiles.push(file)
-            } else {
-                httpFiles.push(file)
-            }
-        }),
-    )
-    return { httpFiles, socketFiles }
+    return await Array.fromAsync(new Glob('**/*.ts').scan({ cwd: routeDir }))
 }
 
-type RouteScan = {
-    httpFiles: string[]
-    socketFiles: string[]
+/*
+Walks src/stream once. Each `.ts` file declares one stream; the
+dispatcher loads modules lazily on first sub/pub frame. Returns an
+empty list when the directory doesn't exist.
+*/
+async function scanStream(streamDir: string): Promise<string[]> {
+    if (!existsSync(streamDir)) {
+        return []
+    }
+    return await Array.fromAsync(new Glob('**/*.ts').scan({ cwd: streamDir }))
 }
 
 /*
