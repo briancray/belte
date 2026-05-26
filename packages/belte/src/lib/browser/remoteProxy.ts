@@ -4,6 +4,14 @@ import type { HttpVerb } from '../server/rpc/types/HttpVerb.ts'
 import type { RemoteFunction } from '../server/rpc/types/RemoteFunction.ts'
 
 /*
+The browser stub is only emitted when the verb has `clients.browser:
+true`, so the value is always true here. mcp/cli flags are server-only
+discovery state and the browser bundle has no use for them; default
+false so the public RemoteFunction shape stays the same on both sides.
+*/
+const BROWSER_CLIENT_FLAGS = { browser: true, mcp: false, cli: false } as const
+
+/*
 Client-side substitute for a verb-defined handler. The bundler emits one
 call per verb export inside an `$rpc/**` module (GET / POST / …): server
 target uses defineVerb (real handler), browser target uses remoteProxy
@@ -23,6 +31,7 @@ export function remoteProxy<Args, Return>(
     return createRemoteFunction<Args, Return>({
         method,
         url,
+        clients: BROWSER_CLIENT_FLAGS,
         buildRequest: (args) =>
             buildRpcRequest({ method, url, args, baseUrl: window.location.href }),
         invoke: (request) => fetch(request),

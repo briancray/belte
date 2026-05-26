@@ -3,7 +3,11 @@ import * as appMod from './_virtual/app.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
 import { assets } from './_virtual/assets.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
+import cliProgramName from './_virtual/cli-name.ts'
+// @ts-expect-error virtual module resolved by belteResolverPlugin
 import { layouts } from './_virtual/layouts.ts'
+// @ts-expect-error virtual module resolved by belteResolverPlugin
+import mcp from './_virtual/mcp.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
 import { pages } from './_virtual/pages.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
@@ -26,4 +30,6 @@ await createServer({
     shell,
     app: appMod,
     assets,
+    mcp,
+    cliProgramName,
 })

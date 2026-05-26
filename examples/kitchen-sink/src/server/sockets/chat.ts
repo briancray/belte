@@ -1,12 +1,22 @@
 import { socket } from 'belte/server/socket'
+import { z } from 'zod'
 
 export type ChatMessage = { id: string; from: string; text: string; at: number }
+
+const schema = z.object({
+    id: z.string(),
+    from: z.string(),
+    text: z.string(),
+    at: z.number(),
+})
 
 /*
 A topic-style broadcast: anyone with the import can publish or
 subscribe. `history: 100` retains the last 100 messages and replays
 them to new subscribers. `clientPublish` is left off (default false)
 so browsers can't publish directly — publish flows through publishChat
-which validates input and runs server-side.
+which validates input and runs server-side. The attached schema
+validates publishes synchronously and flips MCP exposure on, so the
+socket appears as `await_chat` + `belte://stream/chat` (see /mcp).
 */
-export const chat = socket<ChatMessage>({ history: 100 })
+export const chat = socket<ChatMessage>({ history: 100, schema })

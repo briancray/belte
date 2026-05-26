@@ -1,7 +1,11 @@
 import { json } from 'belte/server/json'
 import { POST } from 'belte/server/POST'
+import { z } from 'zod'
 
-/* POST — args arrive in the JSON request body. */
-export const createEcho = POST<{ message: string }>(({ message }) =>
-    json({ method: 'POST' as const, message }, { status: 201 }),
+const schema = z.object({ message: z.string() })
+
+/* POST — args arrive in the JSON request body. Schema auto-exposes the rpc to MCP + CLI. */
+export const createEcho = POST(
+    ({ message }) => json({ method: 'POST' as const, message }, { status: 201 }),
+    { schema },
 )

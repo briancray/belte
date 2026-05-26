@@ -79,6 +79,7 @@ export const getProduct = GET<{ id: string }>(({ id }) => {
 
     <CodeBlock
         title="this page — [id] segment + per-id cache"
+        lang="svelte"
         code={`<script lang="ts">
 import { cache } from 'belte/browser/cache'
 import { getProduct } from '$rpc/getProduct.ts'

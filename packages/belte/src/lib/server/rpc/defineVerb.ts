@@ -1,11 +1,14 @@
 import { buildRpcRequest } from '../../shared/buildRpcRequest.ts'
 import { NO_STORE } from '../../shared/cacheControlValues.ts'
+import type { ClientFlags } from '../../shared/types/ClientFlags.ts'
 import { createRemoteFunction } from '../../shared/createRemoteFunction.ts'
+import { resolveClientFlags } from '../../shared/resolveClientFlags.ts'
 import type { HttpVerb } from './types/HttpVerb.ts'
 import type { RemoteFunction } from './types/RemoteFunction.ts'
 import type { RemoteHandler } from './types/RemoteHandler.ts'
 import type { StandardSchemaV1 } from './types/StandardSchemaV1.ts'
 import { parseArgs } from './parseArgs.ts'
+import { registerVerb } from './registerVerb.ts'
 import { requestContext } from '../runtime/requestContext.ts'
 
 /*
@@ -41,9 +44,15 @@ export function defineVerb<Args, Return>(
     method: HttpVerb,
     url: string,
     handler: RemoteHandler<Args, Return>,
-    opts?: { schema?: StandardSchemaV1 },
+    opts?: {
+        schema?: StandardSchemaV1
+        jsonSchema?: Record<string, unknown>
+        clients?: Partial<ClientFlags>
+    },
 ): RemoteFunction<Args, Return> {
     const schema = opts?.schema
+    const jsonSchema = opts?.jsonSchema
+    const clients = resolveClientFlags(opts?.clients, schema !== undefined)
 
     function inheritHeaders(): Headers {
         const headers = new Headers()
@@ -102,11 +111,19 @@ export function defineVerb<Args, Return>(
         return schema ? validateThenHandle(args) : runHandler(args)
     }
 
-    return createRemoteFunction<Args, Return>({
+    const remote = createRemoteFunction<Args, Return>({
         method,
         url,
+        clients,
         buildRequest,
         invoke,
         parseArgsForFetch: (request) => parseArgs(method, request) as Promise<Args | undefined>,
     })
+    registerVerb({
+        remote: remote as RemoteFunction<unknown, unknown>,
+        schema,
+        jsonSchema,
+        clients,
+    })
+    return remote
 }

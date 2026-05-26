@@ -34,6 +34,8 @@ const linkClass = (prefix: string) =>
             <a href="/" class="text-base font-semibold">belte kitchen-sink</a>
             <a href="/server" class={linkClass('/server')}>belte/server</a>
             <a href="/browser" class={linkClass('/browser')}>belte/browser</a>
+            <a href="/mcp" class={linkClass('/mcp')}>belte/mcp</a>
+            <a href="/cli" class={linkClass('/cli')}>belte/cli</a>
             <a href="/auth/dashboard" class={linkClass('/auth')}>Auth</a>
             <div class="ml-auto flex items-center gap-3">
                 {#if session?.user}

@@ -16,11 +16,15 @@ For inbound validation pass a Standard Schema-compatible schema as the
 second argument: `GET(fn, { schema })`. Args then infers from the schema's
 output type and the server replies with 422 on validation failure.
 
-`json(...)` from `belte/server` is a thin wrapper over `Response.json` that
-defaults `Cache-Control: no-store`, since intermediary caches shouldn't
+`json(...)` from `belte/server/json` is a thin wrapper over `Response.json`
+that defaults `Cache-Control: no-store`, since intermediary caches shouldn't
 memoise rpc replies (the framework's per-request cache handles in-process
-dedupe). Other helpers in the same module: `error`, `redirect`, `sse`,
-`jsonl`.
+dedupe). Other helpers are siblings, one per file: `belte/server/error`,
+`belte/server/redirect`, `belte/server/sse`, `belte/server/jsonl`.
+
+Every rpc value also exposes `.raw(args?)` (returns the underlying
+`Response`) and `.stream(args?)` (returns a `Subscribable` view of the body)
+for callers that need headers/status or want to iterate SSE/JSONL frames.
 */
 
 import { GET } from 'belte/server/GET'

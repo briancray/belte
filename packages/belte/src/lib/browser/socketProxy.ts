@@ -5,6 +5,14 @@ import { getSocketChannel } from './socketChannel.ts'
 let nextId = 0
 
 /*
+Browser stub is only emitted when `clients.browser: true`, so the value
+is always true here. mcp/cli flags are server-only discovery state; the
+browser bundle has no use for them. Default false so the public Socket
+shape stays consistent on both sides.
+*/
+const BROWSER_CLIENT_FLAGS = { browser: true, mcp: false, cli: false } as const
+
+/*
 Client-side substitute for a server-declared Socket. The bundler emits
 one call per socket export under `src/server/sockets/`: server target uses
 defineSocket (real fan-out), browser target uses socketProxy (subscribe
@@ -46,6 +54,7 @@ export function socketProxy<T>(name: string): Socket<T> {
 
     return {
         name,
+        clients: BROWSER_CLIENT_FLAGS,
         publish(message: T) {
             getSocketChannel().publish(name, message)
         },

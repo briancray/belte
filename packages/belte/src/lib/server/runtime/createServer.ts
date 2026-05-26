@@ -3,6 +3,10 @@ import { Glob } from 'bun'
 import type { Component } from 'svelte'
 import { render } from 'svelte/server'
 import App from '../../../App.svelte'
+import { handleCliDownload } from '../cli/handleCliDownload.ts'
+import { handleCliInstall } from '../cli/handleCliInstall.ts'
+import { setMcpManifests } from '../../mcp/mcpManifests.ts'
+import type { McpServer } from '../../mcp/types/McpServer.ts'
 import { NO_STORE, SSR_CACHE_CONTROL } from '../../shared/cacheControlValues.ts'
 import { createCacheStore } from '../../shared/createCacheStore.ts'
 import { isDebugEnabled } from '../../shared/isDebugEnabled.ts'
@@ -36,6 +40,9 @@ function wantsJson(req: Request): boolean {
 }
 
 const SOCKETS_PATH = '/__belte/sockets'
+const MCP_PATH = '/__belte/mcp'
+const CLI_PATH = '/__belte/cli'
+const CLI_DOWNLOAD_PREFIX = '/__belte/cli/'
 
 type AnyRemoteFunction = RemoteFunction<unknown, unknown>
 
@@ -58,6 +65,8 @@ export async function createServer({
     shell,
     app,
     assets,
+    mcp,
+    cliProgramName,
     distDir = `${process.cwd()}/dist`,
     port = Number(process.env.PORT ?? 3000),
 }: {
@@ -68,9 +77,14 @@ export async function createServer({
     shell: string
     app?: AppModule
     assets?: Assets
+    mcp?: McpServer
+    cliProgramName?: string
     distDir?: string
     port?: number
 }): Promise<Server<unknown>> {
+    setMcpManifests({ rpc, sockets })
+    const cliName = cliProgramName ?? 'app'
+    const cliCwd = process.cwd()
     /*
     Forward-declared so the per-request closures below can reference it. The
     value is assigned by Bun.serve() further down; closures only fire after
@@ -407,6 +421,18 @@ export async function createServer({
                     return undefined as unknown as Response
                 }
                 return new Response('Upgrade failed', { status: 400 })
+            }
+            if (url.pathname === MCP_PATH && mcp) {
+                return dispatchRequest(req, {}, async () => mcp.handle(req))
+            }
+            if (url.pathname === CLI_PATH) {
+                return dispatchRequest(req, {}, async () => handleCliInstall(req, cliName))
+            }
+            if (url.pathname.startsWith(CLI_DOWNLOAD_PREFIX)) {
+                const platform = url.pathname.slice(CLI_DOWNLOAD_PREFIX.length)
+                return dispatchRequest(req, {}, async () =>
+                    handleCliDownload(req, platform, cliName, cliCwd),
+                )
             }
             /*
             Static assets sidestep ALS + the per-request CacheStore + the

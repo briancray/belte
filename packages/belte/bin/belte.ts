@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { build } from '../src/build.ts'
+import { buildCli } from '../src/buildCli.ts'
 import { compile } from '../src/compile.ts'
 import { normalizeTarget } from '../src/lib/shared/normalizeTarget.ts'
 import { scaffold } from '../src/scaffold.ts'
@@ -62,6 +63,26 @@ async function compileCmd(): Promise<void> {
     })
 }
 
+// Builds the standalone CLI binary. APP_URL at build time decides thin (no
+// runtime) vs full (in-process fallback). Discovery walks the rpc registry
+// to bake the manifest in. `--platforms a,b,c` requires APP_URL and emits
+// thin binaries into dist/cli-thin/<platform>/<programName> so the
+// /__belte/cli download endpoint can stream them.
+async function cliCmd(): Promise<void> {
+    const targetFlag = parseFlag('target')
+    const outFlag = parseFlag('out')
+    const platformsFlag = parseFlag('platforms')
+    const platforms = platformsFlag
+        ? platformsFlag.split(',').map((value) => normalizeTarget(value.trim()))
+        : undefined
+    await buildCli({
+        cwd,
+        target: targetFlag ? normalizeTarget(targetFlag) : undefined,
+        outfile: outFlag,
+        platforms,
+    })
+}
+
 // Scaffolds the bundled template into a new project directory.
 async function scaffoldCmd(): Promise<void> {
     const name = rest.find((arg) => !arg.startsWith('--'))
@@ -81,7 +102,11 @@ function usage(): never {
             '  belte build                          build the client into dist/_app/\n' +
             '  belte start                          run the production server against dist/\n' +
             '  belte compile [--target=<bun-...>] [--out=<path>]\n' +
-            '                                       build a standalone executable',
+            '                                       build a standalone server executable\n' +
+            '  belte cli [--target=<bun-...>] [--out=<path>] [--platforms=<a,b,c>]\n' +
+            '                                       build the cli binary (thin if APP_URL is set;\n' +
+            '                                       --platforms emits thin binaries per platform\n' +
+            '                                       under dist/cli-thin/ for the download endpoint)',
     )
     process.exit(1)
 }
@@ -96,6 +121,8 @@ if (command === 'scaffold') {
     await start()
 } else if (command === 'compile') {
     await compileCmd()
+} else if (command === 'cli') {
+    await cliCmd()
 } else {
     usage()
 }
