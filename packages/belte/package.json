@@ -10,6 +10,7 @@
         "./shared/*": "./src/lib/shared/*.ts",
         "./route": "./src/lib/route/index.ts",
         "./respond": "./src/lib/respond/index.ts",
+        "./stream": "./src/lib/stream/index.ts",
         "./consume": "./src/lib/consume/index.ts",
         "./page": "./src/lib/client/page.svelte.ts",
         "./build": "./src/build.ts",

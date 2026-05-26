@@ -3,7 +3,7 @@ import CodeBlock from '$lib/CodeBlock.svelte'
 import { cache, subscribe } from 'belte/consume'
 import { whoAmI } from '$route/whoAmI.ts'
 import { publishChat } from '$route/publishChat.ts'
-import { chatFeed } from '$route/chatFeed.ts'
+import { chat } from '$stream/chat.ts'
 
 /*
 SSR-friendly seed for the initial paint: whoAmI runs during the server
@@ -16,7 +16,7 @@ let from = $state('alice')
 let text = $state('hello belte')
 let lastSendResult = $state('(not sent)')
 
-const latestChat = $derived(subscribe(chatFeed)())
+const latestChat = $derived(subscribe(chat))
 
 async function send() {
     try {
@@ -36,7 +36,10 @@ async function send() {
     inside any handler or page render — no plumbing. The
     <code class="font-mono">server</code>
     proxy is a stable reference to the live
-    <code class="font-mono">Bun.Server</code>; reach for it from module scope.
+    <code class="font-mono">Bun.Server</code>; reach for it from module scope when you need
+    it. Most apps won't — the framework's
+    <a class="underline" href="/stream">stream</a>
+    primitive already rides on Bun's native publish under the hood.
 </p>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -74,13 +77,13 @@ const me = await cache(whoAmI)()`} />
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
-    <h2 class="text-sm font-semibold">server — publish over the framework's ws</h2>
+    <h2 class="text-sm font-semibold">publish through a stream</h2>
     <p class="mt-1 text-sm text-slate-600">
         <code class="font-mono">publishChat</code>
-        calls <code class="font-mono">server.publish('chat', ...)</code>
-        and also broadcasts in-process so the
-        <code class="font-mono">chatFeed</code>
-        SOCKET route fans the message out to every reactive subscriber.
+        validates input then calls
+        <code class="font-mono">chat.publish(message)</code> —
+        in-process subscribers are notified directly and remote ws
+        subscribers receive a frame via Bun's native publish under the hood.
     </p>
     <div class="mt-3 flex flex-wrap items-end gap-2">
         <label class="text-xs font-medium">
@@ -104,8 +107,8 @@ const me = await cache(whoAmI)()`} />
     </div>
     <p class="mt-2 text-xs text-slate-500">{lastSendResult}</p>
     <p class="mt-4 text-sm text-slate-600">
-        Latest broadcast frame (reactive via
-        <code class="font-mono">subscribe(chatFeed)()</code>):
+        Latest message (reactive via
+        <code class="font-mono">subscribe(chat)</code>):
     </p>
     {#if latestChat}
         <pre class="mt-2 overflow-x-auto rounded-md bg-slate-900 p-4 text-xs leading-relaxed text-slate-100"><code
@@ -116,28 +119,24 @@ const me = await cache(whoAmI)()`} />
     <CodeBlock
         title="src/route/publishChat.ts (server)"
         code={`import { POST } from 'belte/route'
-import { json, error } from 'belte/respond'
-import { server } from 'belte/server'
-import { appendChat, type ChatMessage } from '../chatState.ts'
+import { error, json } from 'belte/respond'
+import { chat, type ChatMessage } from '$stream/chat.ts'
 
 export const publishChat = POST<{ from: string; text: string }, ChatMessage>(({ from, text }) => {
-    if (!from.trim() || !text.trim()) {
-        return error(400, 'from and text are required')
-    }
+    if (!from.trim() || !text.trim()) return error(400, 'from and text are required')
     const message: ChatMessage = { id: crypto.randomUUID(), from, text, at: Date.now() }
-    appendChat(message)
-    server.publish('chat', JSON.stringify(message))   // \`server\` proxy from belte/server
+    chat.publish(message)
     return json(message)
 })`} />
     <CodeBlock
         title="this page (client)"
         code={`import { subscribe } from 'belte/consume'
+import { chat } from '$stream/chat.ts'
 import { publishChat } from '$route/publishChat.ts'
-import { chatFeed } from '$route/chatFeed.ts'
 
-const latestChat = $derived(subscribe(chatFeed)())   // reactive — re-renders on every frame
+const latestChat = $derived(subscribe(chat))   // reactive — re-renders on every message
 
 async function send() {
-    const message = await publishChat({ from, text })  // POST + fan-out
+    await publishChat({ from, text })          // POST → validates → chat.publish() on the server
 }`} />
 </section>

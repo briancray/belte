@@ -1,7 +1,6 @@
 import { buildRouteRequest } from '../shared/buildRouteRequest.ts'
 import { decodeResponse } from '../shared/decodeResponse.ts'
 import { recordRemoteMeta } from '../shared/remoteMeta.ts'
-import { streamResponse } from '../shared/streamResponse.ts'
 import type { HttpVerb } from '../types/HttpVerb.ts'
 import type { RawRemoteFunction, RemoteFunction } from '../types/RemoteFunction.ts'
 
@@ -46,9 +45,6 @@ export function remoteProxy<Args, Return>(
     callable.method = method
     callable.url = url
     callable.raw = raw
-    callable.stream = (args: Args): AsyncIterable<Return> => {
-        return streamResponse(rawCall(args)) as AsyncIterable<Return>
-    }
     callable.fetch = (request: Request): Promise<Response> => {
         return dispatch(request)
     }

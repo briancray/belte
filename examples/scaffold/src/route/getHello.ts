@@ -15,8 +15,9 @@ memoise rpc replies (the framework's per-request cache handles in-process
 dedupe). Other helpers in the same module: `error`, `redirect`, `sse`,
 `jsonl`.
 */
-import { GET } from 'belte/route'
+
 import { json } from 'belte/respond'
+import { GET } from 'belte/route'
 
 export const getHello = GET<undefined, { message: string }>(() =>
     json({ message: 'Hello from belte' }),

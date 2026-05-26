@@ -6,6 +6,8 @@
             "$pages/*": ["./src/pages/*"],
             "$route": ["./src/route"],
             "$route/*": ["./src/route/*"],
+            "$stream": ["./src/stream"],
+            "$stream/*": ["./src/stream/*"],
             "$lib": ["./src/lib"],
             "$lib/*": ["./src/lib/*"]
         }

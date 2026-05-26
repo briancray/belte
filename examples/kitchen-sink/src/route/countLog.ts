@@ -1,11 +1,12 @@
-import { GET } from 'belte/route'
 import { jsonl } from 'belte/respond'
+import { GET } from 'belte/route'
 
 /*
 JSONL streaming over plain HTTP — one JSON object per line. Best when
 the consumer is itself another script (logs, large result sets, bulk
-exports) rather than a browser's EventSource. `subscribe(fn)(args)`
-parses it for you on the client just like SSE.
+exports) rather than a browser's EventSource. Clients read the
+Response body via `.raw(args)` and parse with TextDecoderStream + a
+split-by-newline reduce.
 */
 export const countLog = GET<{ to: number }, { n: number }>(({ to }) =>
     jsonl(

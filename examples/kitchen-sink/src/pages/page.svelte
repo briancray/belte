@@ -1,29 +1,40 @@
 <script lang="ts">
 /*
-Kitchen-sink index. Mirrors the README's three lifecycle phases so a
-reader can move from a passage in the README straight to a working
-example on this site.
+Kitchen-sink index. The four primitives — route, stream, respond,
+consume — each get a card. Route + stream are how things are
+declared; respond is what runs per-request; consume is how the client
+reads.
 */
 </script>
 
 <h1 class="text-3xl font-bold">belte kitchen-sink</h1>
 <p class="mt-2 text-slate-600">
-    Working demos of every primitive in the
-    <a class="underline" href="https://github.com/briancray/belte#readme">README</a>, organised by
-    the same three lifecycle phases the imports use:
-    <code class="font-mono">belte/route</code>
-    → <code class="font-mono">belte/respond</code>
-    → <code class="font-mono">belte/consume</code>.
+    Working demos of every primitive in the framework, organised by
+    lifecycle phase: <code class="font-mono">belte/route</code>
+    and <code class="font-mono">belte/stream</code>
+    for declaration, <code class="font-mono">belte/respond</code>
+    for what runs per-request, and
+    <code class="font-mono">belte/consume</code> for the client.
 </p>
 
-<section class="mt-8 grid gap-4 sm:grid-cols-3">
+<section class="mt-8 grid gap-4 sm:grid-cols-2">
     <a
         href="/route"
         class="rounded-lg border border-slate-200 bg-white p-5 hover:border-slate-400">
         <h2 class="text-lg font-semibold">Route</h2>
         <p class="mt-1 text-sm text-slate-600">
-            How routes, handlers, and app hooks get registered. Pages, layouts, dynamic segments,
-            verb-bound rpcs, and the SOCKET transport.
+            HTTP verbs declared by file name. Pages, layouts, dynamic segments, and verb-bound
+            rpcs.
+        </p>
+    </a>
+    <a
+        href="/stream"
+        class="rounded-lg border border-slate-200 bg-white p-5 hover:border-slate-400">
+        <h2 class="text-lg font-semibold">Stream</h2>
+        <p class="mt-1 text-sm text-slate-600">
+            Named broadcast topics multiplexed onto one framework-owned ws. Publish and
+            subscribe from either side, history replay, server-only or
+            <code class="font-mono">clientPublish</code> opt-in.
         </p>
     </a>
     <a

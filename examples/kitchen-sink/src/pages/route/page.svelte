@@ -15,15 +15,6 @@
         </p>
     </a>
     <a
-        href="/route/socket-rpc"
-        class="rounded-lg border border-slate-200 bg-white p-5 hover:border-slate-400">
-        <h2 class="text-lg font-semibold">SOCKET routes</h2>
-        <p class="mt-1 text-sm text-slate-600">
-            Async-generator handlers multiplexed onto one framework-owned websocket at
-            <code class="font-mono">/__belte/socket</code>.
-        </p>
-    </a>
-    <a
         href="/route/product/1"
         class="rounded-lg border border-slate-200 bg-white p-5 hover:border-slate-400">
         <h2 class="text-lg font-semibold">Dynamic segments</h2>

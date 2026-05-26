@@ -33,6 +33,7 @@ const linkClass = (prefix: string) =>
         <nav class="mx-auto flex max-w-4xl flex-wrap items-center gap-4 px-6 py-4 text-sm">
             <a href="/" class="text-base font-semibold">belte kitchen-sink</a>
             <a href="/route" class={linkClass('/route')}>Route</a>
+            <a href="/stream" class={linkClass('/stream')}>Stream</a>
             <a href="/respond" class={linkClass('/respond')}>Respond</a>
             <a href="/consume" class={linkClass('/consume')}>Consume</a>
             <a href="/auth/dashboard" class={linkClass('/auth')}>Auth</a>

@@ -16,9 +16,9 @@ import type { Pages } from '../types/Pages.ts'
 import type { RemoteFunction } from '../types/RemoteFunction.ts'
 import type { RemoteRoutes } from '../types/RemoteRoutes.ts'
 import type { RequestStore } from '../types/RequestStore.ts'
-import type { SocketRoutes } from '../types/SocketRoutes.ts'
+import type { StreamRoutes } from '../types/StreamRoutes.ts'
 import { cacheControlForAsset } from './cacheControlForAsset.ts'
-import { createSocketRouteDispatcher } from './createSocketRouteDispatcher.ts'
+import { createStreamDispatcher } from './createStreamDispatcher.ts'
 import { requestContext } from './requestContext.ts'
 import { serializeCacheSnapshot } from './serializeCacheSnapshot.ts'
 import { setActiveServer } from './serverSlot.ts'
@@ -31,7 +31,7 @@ function wantsJson(req: Request): boolean {
     return (req.headers.get('accept') ?? '').includes('application/json')
 }
 
-const SOCKET_PATH = '/__belte/socket'
+const STREAM_PATH = '/__belte/stream'
 const SSR_CACHE_CONTROL = 'private, no-cache'
 const NO_STORE = 'no-store'
 
@@ -50,7 +50,7 @@ RequestStore carries the cache store and request metadata.
 export async function createServer({
     pages,
     route,
-    sockets,
+    streams,
     layouts,
     shell,
     app,
@@ -60,7 +60,7 @@ export async function createServer({
 }: {
     pages: Pages
     route: RemoteRoutes
-    sockets: SocketRoutes
+    streams: StreamRoutes
     layouts?: Layouts
     shell: string
     app?: AppModule
@@ -351,24 +351,26 @@ export async function createServer({
     }
 
     /*
-    Belte's only native WebSocket surface is SOCKET-bound routes: all sockets
-    multiplex onto one framework-owned connection per client at
-    /__belte/socket. The dispatcher owns the open/message/close handlers
-    below; user code never sees the raw ws lifecycle.
+    Belte's only native WebSocket surface is the stream hub: every Stream
+    declared under src/stream/ multiplexes onto one framework-owned
+    connection per client at /__belte/stream. The dispatcher owns the
+    open/message/close handlers below; user code never sees the raw ws
+    lifecycle. Steady-state fan-out rides Bun's native server.publish so
+    a busy stream doesn't iterate JS per subscriber per message.
     */
-    const socketDispatcher = createSocketRouteDispatcher(sockets)
+    const streamDispatcher = createStreamDispatcher(streams)
     server = Bun.serve({
         port,
 
         websocket: {
             open(ws) {
-                socketDispatcher.open(ws)
+                streamDispatcher.open(ws)
             },
             message(ws, data) {
-                socketDispatcher.message(ws, data)
+                streamDispatcher.message(ws, data)
             },
             close(ws) {
-                socketDispatcher.close(ws)
+                streamDispatcher.close(ws)
             },
         },
 
@@ -376,7 +378,7 @@ export async function createServer({
 
         async fetch(req, srv) {
             const url = new URL(req.url)
-            if (url.pathname === SOCKET_PATH) {
+            if (url.pathname === STREAM_PATH) {
                 if (srv.upgrade(req, { data: {} })) {
                     return undefined as unknown as Response
                 }

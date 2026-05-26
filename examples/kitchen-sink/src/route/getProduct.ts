@@ -1,5 +1,5 @@
+import { error, json } from 'belte/respond'
 import { GET } from 'belte/route'
-import { json, error } from 'belte/respond'
 
 /*
 Stand-in for a products table. Used by /route/product/[id] to show how a

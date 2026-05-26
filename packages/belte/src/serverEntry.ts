@@ -11,7 +11,7 @@ import { route } from './_virtual/route.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
 import { shell } from './_virtual/shell.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
-import { sockets } from './_virtual/sockets.ts'
+import { streams } from './_virtual/streams.ts'
 import { createServer } from './lib/server/createServer.ts'
 import { requestContext } from './lib/server/requestContext.ts'
 import { setCacheStoreResolver } from './lib/shared/activeCacheStore.ts'
@@ -21,7 +21,7 @@ setCacheStoreResolver(() => requestContext.getStore()?.cache)
 await createServer({
     pages,
     route,
-    sockets,
+    streams,
     layouts,
     shell,
     app: appMod,
