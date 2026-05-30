@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { build } from '../src/build.ts'
 import { buildCli } from '../src/buildCli.ts'
+import { bundleApp } from '../src/bundleApp.ts'
 import { compile } from '../src/compile.ts'
 import { normalizeTarget } from '../src/lib/shared/normalizeTarget.ts'
 import { scaffold } from '../src/scaffold.ts'
@@ -68,17 +69,16 @@ async function compileCmd(): Promise<void> {
     })
 }
 
-// Builds the standalone CLI binary. Defaults to full (backend embedded, runs
-// locally); `--thin` builds the remote client (manifest only, needs APP_URL
-// at runtime). Discovery walks the rpc registry to bake the manifest in.
-// `--platforms a,b,c` cross-compiles per target — thin binaries land in
-// dist/cli-thin/<platform>/ (the layout the /__belte/cli download endpoint
-// streams), full binaries in dist/cli/<platform>/.
+// Builds the standalone CLI binary — a thin remote client that talks to a
+// running server (manifest baked in, needs APP_URL at runtime). Discovery
+// walks the rpc registry to bake the manifest in. `--platforms a,b,c`
+// cross-compiles per target into dist/cli-thin/<platform>/ — the layout the
+// /__belte/cli download endpoint streams. For an embedded backend, use
+// `belte compile` (standalone server binary) instead.
 async function cliCmd(): Promise<void> {
     const targetFlag = parseFlag('target')
     const outFlag = parseFlag('out')
     const platformsFlag = parseFlag('platforms')
-    const thin = rest.includes('--thin')
     const platforms = platformsFlag
         ? platformsFlag.split(',').map((value) => normalizeTarget(value.trim()))
         : undefined
@@ -87,8 +87,15 @@ async function cliCmd(): Promise<void> {
         target: targetFlag ? normalizeTarget(targetFlag) : undefined,
         outfile: outFlag,
         platforms,
-        thin,
     })
+}
+
+// Assembles a movable, self-contained app bundle for the host platform —
+// the server binary, the launcher, and the webview lib together (a .app on
+// macOS, a flat directory elsewhere). Unsigned; for distribution to other
+// users the bundle still needs platform signing/notarization.
+async function bundleCmd(): Promise<void> {
+    await bundleApp({ cwd })
 }
 
 // Scaffolds the bundled template into a new project directory.
@@ -111,10 +118,14 @@ function usage(): never {
             '  belte start                          run the production server against dist/\n' +
             '  belte compile [--target=<bun-...>] [--out=<path>]\n' +
             '                                       build a standalone server executable\n' +
-            '  belte cli [--thin] [--target=<bun-...>] [--out=<path>] [--platforms=<a,b,c>]\n' +
-            '                                       build the cli binary (full by default — runs\n' +
-            '                                       locally; --thin builds the remote client;\n' +
-            '                                       --platforms cross-compiles per platform)',
+            '  belte cli [--target=<bun-...>] [--out=<path>] [--platforms=<a,b,c>]\n' +
+            '                                       build the cli binary — a thin remote client\n' +
+            '                                       that talks to a running server (needs APP_URL;\n' +
+            '                                       --platforms cross-compiles per platform)\n' +
+            '  belte bundle                         build a movable, self-contained app\n' +
+            '                                       bundle for this platform (unsigned). Boots\n' +
+            '                                       into a connect screen — start the embedded\n' +
+            '                                       server or connect to a remote one',
     )
     process.exit(1)
 }
@@ -131,6 +142,8 @@ if (command === 'scaffold') {
     await compileCmd()
 } else if (command === 'cli') {
     await cliCmd()
+} else if (command === 'bundle') {
+    await bundleCmd()
 } else {
     usage()
 }

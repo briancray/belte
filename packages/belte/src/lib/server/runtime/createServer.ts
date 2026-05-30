@@ -23,11 +23,12 @@ import type { RemoteFunction } from '../rpc/types/RemoteFunction.ts'
 import type { RemoteRoutes } from '../rpc/types/RemoteRoutes.ts'
 import { createSocketDispatcher } from '../sockets/createSocketDispatcher.ts'
 import type { SocketRoutes } from '../sockets/types/SocketRoutes.ts'
+import { acceptsZstd } from './acceptsZstd.ts'
 import { buildOpenApiSpec } from './buildOpenApiSpec.ts'
 import { cacheControlForAsset } from './cacheControlForAsset.ts'
 import { containsTraversal } from './containsTraversal.ts'
+import { createAssetHeaderCache } from './createAssetHeaderCache.ts'
 import { createPublicAssetServer } from './createPublicAssetServer.ts'
-import { mimeForExtension } from './mimeForExtension.ts'
 import { ensureRegistriesLoaded, setRegistryManifests } from './registryManifests.ts'
 import { requestContext } from './requestContext.ts'
 import { safeJsonForScript } from './safeJsonForScript.ts'
@@ -36,18 +37,38 @@ import { setActiveServer } from './setActiveServer.ts'
 import type { Assets } from './types/Assets.ts'
 import type { RequestStore } from './types/RequestStore.ts'
 
-function acceptsZstd(req: Request): boolean {
-    return (req.headers.get('accept-encoding') ?? '').toLowerCase().includes('zstd')
-}
-
 function wantsJson(req: Request): boolean {
     return (req.headers.get('accept') ?? '').includes('application/json')
 }
 
+/*
+The framework's default 500 response — a `<pre>` stack dump. Shared by the
+per-request catch and Bun.serve's global error() fallback so the two can't
+drift. Only reached when the app supplies no `handleError` hook.
+*/
+function internalErrorResponse(err: unknown): Response {
+    return new Response(`<pre>${String((err as Error)?.stack ?? err)}</pre>`, {
+        status: 500,
+        headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': NO_STORE,
+        },
+    })
+}
+
+const IDENTITY_PATH = '/__belte/identity'
 const SOCKETS_PATH = '/__belte/sockets'
 const MCP_PATH = '/__belte/mcp'
 const CLI_PATH = '/__belte/cli'
 const CLI_DOWNLOAD_PREFIX = '/__belte/cli/'
+/*
+Unlike the framework's own plumbing routes above (the socket multiplex, MCP
+endpoint, CLI download), the OpenAPI document describes the app's public HTTP
+surface — the /rpc/* verbs — rather than belte internals, so it sits at the
+conventional root path where external tooling and scanners expect to find it
+(/openapi.json, alongside /swagger.json, /.well-known/*) rather than under the
+/__belte/ namespace.
+*/
 const OPENAPI_PATH = '/openapi.json'
 
 type AnyRemoteFunction = RemoteFunction<unknown, unknown>
@@ -105,12 +126,6 @@ export async function createServer({
     const cliName = cliProgramName ?? 'app'
     const cliCwd = process.cwd()
     const servePublicAsset = createPublicAssetServer({ publicDir, publicAssets })
-    /*
-    Forward-declared so the per-request closures below can reference it. The
-    value is assigned by Bun.serve() further down; closures only fire after
-    that, so the read-before-write is safe at runtime.
-    */
-    let server!: Server<unknown>
     const layoutPrefixes = layouts ? normalizeLayoutPrefixes(Object.keys(layouts)) : []
 
     const diskZstdPaths = new Set<string>(
@@ -150,32 +165,8 @@ export async function createServer({
 
     const logRequests = isDebugEnabled('belte')
 
-    /*
-    Header objects for a pathname depend only on the pathname's extension
-    and the immutable HASHED test. Cache them so repeat hits on the same
-    chunk reuse a single frozen header bag instead of allocating per
-    request.
-    */
-    type AssetHeaderBundle = {
-        base: HeadersInit
-        zstd: HeadersInit
-    }
-    const assetHeaderCache = new Map<string, AssetHeaderBundle>()
-    function headersForAsset(pathname: string): AssetHeaderBundle {
-        const cached = assetHeaderCache.get(pathname)
-        if (cached) {
-            return cached
-        }
-        const base: HeadersInit = {
-            'Content-Type': mimeForExtension(pathname),
-            Vary: 'Accept-Encoding',
-            'Cache-Control': cacheControlForAsset(pathname),
-        }
-        const zstd: HeadersInit = { ...base, 'Content-Encoding': 'zstd' }
-        const bundle = { base, zstd }
-        assetHeaderCache.set(pathname, bundle)
-        return bundle
-    }
+    // Per-pathname asset header bundles, hashed-chunk-aware Cache-Control.
+    const headersForAsset = createAssetHeaderCache(cacheControlForAsset)
 
     async function serveStaticAsset(req: Request, url: URL): Promise<Response> {
         /*
@@ -206,7 +197,7 @@ export async function createServer({
             if (wantsZstd) {
                 return new Response(compressed, { headers: zstdHeaders })
             }
-            return new Response(Bun.zstdDecompressSync(compressed), { headers: baseHeaders })
+            return new Response(await Bun.zstdDecompress(compressed), { headers: baseHeaders })
         }
         const diskPath = distDir + url.pathname
         if (wantsZstd && diskZstdPaths.has(url.pathname)) {
@@ -374,9 +365,7 @@ export async function createServer({
         const store: RequestStore = {
             url,
             req,
-            signal: req.signal,
             cache: createCacheStore(),
-            server,
         }
         return requestContext.run(store, async () => {
             const start = logRequests ? Bun.nanoseconds() : 0
@@ -388,16 +377,7 @@ export async function createServer({
                     response = await app.handleError(error, req)
                 } else {
                     log.error(error)
-                    response = new Response(
-                        `<pre>${String((error as Error)?.stack ?? error)}</pre>`,
-                        {
-                            status: 500,
-                            headers: {
-                                'Content-Type': 'text/html; charset=utf-8',
-                                'Cache-Control': NO_STORE,
-                            },
-                        },
-                    )
+                    response = internalErrorResponse(error)
                 }
             }
             if (logRequests) {
@@ -417,7 +397,8 @@ export async function createServer({
     a busy socket doesn't iterate JS per subscriber per message.
     */
     const socketDispatcher = createSocketDispatcher(sockets)
-    server = Bun.serve({
+    // Server<unknown> pins Bun's WebSocketData generic so upgrade({ data: {} }) typechecks.
+    const server: Server<unknown> = Bun.serve({
         port,
 
         websocket: {
@@ -436,6 +417,23 @@ export async function createServer({
 
         async fetch(req, bunServer) {
             const url = new URL(req.url)
+            /*
+            Identity probe — answered directly, ahead of any app.handle middleware,
+            so the bundle's connect screen can confirm a URL really is a belte
+            server (and which app) before pointing the desktop window at it. It
+            must stay reachable even when the app guards everything behind auth,
+            hence the early return that bypasses dispatchRequest.
+            */
+            if (url.pathname === IDENTITY_PATH) {
+                return Response.json(
+                    {
+                        belte: true,
+                        name: appInfo?.name ?? cliName,
+                        version: appInfo?.version ?? '0.0.0',
+                    },
+                    { headers: { 'Cache-Control': NO_STORE } },
+                )
+            }
             if (url.pathname === SOCKETS_PATH) {
                 if (bunServer.upgrade(req, { data: {} })) {
                     return undefined as unknown as Response
@@ -515,13 +513,7 @@ export async function createServer({
 
         error(err) {
             log.error(err)
-            return new Response(`<pre>${String(err.stack ?? err)}</pre>`, {
-                status: 500,
-                headers: {
-                    'Content-Type': 'text/html; charset=utf-8',
-                    'Cache-Control': NO_STORE,
-                },
-            })
+            return internalErrorResponse(err)
         },
     })
 

@@ -6,14 +6,17 @@ import type { CliManifest } from './types/CliManifest.ts'
 
 /*
 Top-level CLI driver. Loaded by the standalone binary's entry; expects
-the bundler-emitted manifest plus the raw argv tail. Flow:
+the bundler-emitted manifest plus the raw argv tail. The binary is a
+thin remote client — it carries no handler code, so it always talks to a
+running server over HTTP and APP_URL must be set. Flow:
 
   1. Read .env next to the binary so APP_URL / APP_TOKEN are picked up
      for the common install-tarball case.
   2. Pull the first positional as the subcommand.
   3. --help and `<cmd> --help` print and exit zero.
-  4. Otherwise parse the rest of the argv against the manifest entry's
-     JSON Schema and dispatch via createClient.
+  4. Require APP_URL before dispatching a command.
+  5. Otherwise parse the rest of the argv against the manifest entry's
+     JSON Schema and dispatch via createClient against APP_URL.
 
 Streaming responses aren't a thing at this layer yet — every RPC tool
 goes through decodeResponse (text/JSON). Streaming verbs (jsonl/sse)
@@ -62,6 +65,12 @@ export async function runCli({
     }
 
     const appUrl = process.env.APP_URL
+    if (!appUrl) {
+        console.error(
+            `${programName}: APP_URL is not set — the cli talks to a running server, so point it at one (e.g. APP_URL=http://localhost:3000)`,
+        )
+        return 1
+    }
     const appToken = process.env.APP_TOKEN
     const client = createClient({ url: appUrl, token: appToken, manifest })
 

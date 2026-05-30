@@ -1,10 +1,9 @@
+import { findVerbByCommandName } from '../server/rpc/findVerbByCommandName.ts'
 import type { HttpVerb } from '../server/rpc/types/HttpVerb.ts'
 import { verbRegistry } from '../server/rpc/verbRegistry.ts'
 import { buildRpcRequest } from '../shared/buildRpcRequest.ts'
-import { commandNameForUrl } from '../shared/commandNameForUrl.ts'
 import { decodeResponse } from '../shared/decodeResponse.ts'
 import type { CliManifest } from './types/CliManifest.ts'
-import type { CliManifestEntry } from './types/CliManifestEntry.ts'
 
 type AnyApi = Record<string, (args?: unknown) => Promise<unknown>>
 
@@ -23,8 +22,11 @@ decided at construction:
 
 The `manifest` is the bundler-emitted CLI manifest baked into the thin
 binary. In in-process mode it's optional (registry is the source of
-truth). Both can be supplied to support a binary that talks remote by
-default but falls back to in-process when APP_URL is unset.
+truth); in remote mode it supplies the method + url per command without
+needing the rpc modules loaded. The mode is chosen solely by whether
+`url` is set — the shipped CLI binary (see runCli) always passes `url`,
+so it runs remote-only; in-process mode is for same-project scripts and
+tests that import this directly without a `url`.
 */
 export function createClient<Api extends AnyApi = AnyApi>(opts?: {
     url?: string
@@ -45,55 +47,45 @@ export function createClient<Api extends AnyApi = AnyApi>(opts?: {
         if (entry) {
             return { method: entry.method, url: entry.url }
         }
-        for (const value of verbRegistry.values()) {
-            if (commandNameForUrl(value.remote.url) === name) {
-                return { method: value.remote.method, url: value.remote.url }
-            }
-        }
-        return undefined
+        const found = findVerbByCommandName(name)
+        return found ? { method: found.remote.method, url: found.remote.url } : undefined
     }
 
-    async function callRemote(
+    /*
+    Single call path for both modes — only the base URL and how the Request
+    is dispatched differ. Remote mode fetches over the network; in-process
+    mode looks the verb up in the registry and runs verb.fetch (no hop).
+    */
+    async function call(
         method: HttpVerb,
         path: string,
         args: unknown,
         baseUrl: string,
+        dispatch: (request: Request) => Promise<Response>,
     ): Promise<unknown> {
         const headers = new Headers()
         if (token) {
             headers.set('authorization', `Bearer ${token}`)
         }
         const request = buildRpcRequest({ method, url: path, args, baseUrl, headers })
-        const response = await fetch(request)
+        const response = await dispatch(request)
         if (!response.ok) {
             throw new Error(`${method} ${path} failed: ${response.status} ${response.statusText}`)
         }
         return decodeResponse(response)
     }
 
-    async function callInProcess(method: HttpVerb, path: string, args: unknown): Promise<unknown> {
-        const entry = verbRegistry.get(path)
-        if (!entry) {
-            throw new Error(
-                `RPC ${path} not loaded — import the module first or set APP_URL to use remote mode`,
-            )
+    // In-process dispatch: resolve the verb from the registry and run its fetch.
+    function inProcessDispatch(path: string): (request: Request) => Promise<Response> {
+        return (request) => {
+            const entry = verbRegistry.get(path)
+            if (!entry) {
+                throw new Error(
+                    `RPC ${path} not loaded — import the module first or set APP_URL to use remote mode`,
+                )
+            }
+            return entry.remote.fetch(request)
         }
-        const headers = new Headers()
-        if (token) {
-            headers.set('authorization', `Bearer ${token}`)
-        }
-        const request = buildRpcRequest({
-            method,
-            url: path,
-            args,
-            baseUrl: 'http://localhost/',
-            headers,
-        })
-        const response = await entry.remote.fetch(request)
-        if (!response.ok) {
-            throw new Error(`${method} ${path} failed: ${response.status} ${response.statusText}`)
-        }
-        return decodeResponse(response)
     }
 
     /*
@@ -116,8 +108,14 @@ export function createClient<Api extends AnyApi = AnyApi>(opts?: {
             const invoker = resolved
                 ? (args?: unknown) =>
                       url
-                          ? callRemote(resolved.method, resolved.url, args, url)
-                          : callInProcess(resolved.method, resolved.url, args)
+                          ? call(resolved.method, resolved.url, args, url, fetch)
+                          : call(
+                                resolved.method,
+                                resolved.url,
+                                args,
+                                'http://localhost/',
+                                inProcessDispatch(resolved.url),
+                            )
                 : undefined
             invokerCache.set(prop, invoker)
             return invoker

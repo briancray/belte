@@ -1,11 +1,10 @@
-import type { BunPlugin } from 'bun'
-import { belteResolverPlugin } from './belteResolverPlugin.ts'
 import { build } from './build.ts'
 import type { CompileTarget } from './lib/server/runtime/types/CompileTarget.ts'
 import { detectTarget } from './lib/shared/detectTarget.ts'
+import { exitOnBuildFailure } from './lib/shared/exitOnBuildFailure.ts'
 import { loadSvelteConfig } from './lib/shared/loadSvelteConfig.ts'
 import { log } from './lib/shared/log.ts'
-import { sveltePlugin } from './sveltePlugin.ts'
+import { serverBuildPlugins } from './serverBuildPlugins.ts'
 
 const SERVER_ENTRY = new URL('./serverEntry.ts', import.meta.url).pathname
 
@@ -31,11 +30,6 @@ export async function compile({
 
     const outPath = outfile ?? `${cwd}/dist/app${target.includes('windows') ? '.exe' : ''}`
 
-    const plugins: BunPlugin[] = [
-        sveltePlugin({ generate: 'server', svelteConfig }),
-        belteResolverPlugin({ cwd, embedAssets: true, target: 'server' }),
-    ]
-
     const result = await Bun.build({
         entrypoints: [SERVER_ENTRY],
         target: 'bun',
@@ -49,15 +43,10 @@ export async function compile({
         */
         bytecode: true,
         compile: { target, outfile: outPath },
-        plugins,
+        plugins: serverBuildPlugins({ cwd, svelteConfig, embedAssets: true }),
     })
 
-    if (!result.success) {
-        for (const entry of result.logs) {
-            log.error(entry)
-        }
-        process.exit(1)
-    }
+    exitOnBuildFailure(result)
 
     log.success(`compiled standalone binary: ${outPath} (target: ${target})`)
     return outPath
