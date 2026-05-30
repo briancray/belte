@@ -134,8 +134,8 @@ async function start(): Promise<void> {
 }
 </script>
 
-<main class="flex min-h-screen items-center justify-center bg-gray-50 p-6 text-gray-900">
-    <div class="w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200">
+<main class="flex min-h-screen items-center justify-center bg-gray-50 p-6 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+    <div class="w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-800">
         {#if logo}
             <img src={logo} alt="" class="mx-auto mb-5 h-16 w-16 rounded-xl object-contain" />
         {/if}
@@ -153,38 +153,38 @@ async function start(): Promise<void> {
                 bind:value={url}
                 {placeholder}
                 autocomplete="url"
-                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:focus:border-gray-100 dark:focus:ring-gray-100"
             />
             <button
                 type="submit"
-                class="w-full rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
+                class="w-full rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
             >
                 Connect
             </button>
         </form>
 
-        <div class="my-5 flex items-center gap-3 text-xs text-gray-400">
-            <span class="h-px flex-1 bg-gray-200"></span>
+        <div class="my-5 flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+            <span class="h-px flex-1 bg-gray-200 dark:bg-gray-800"></span>
             or
-            <span class="h-px flex-1 bg-gray-200"></span>
+            <span class="h-px flex-1 bg-gray-200 dark:bg-gray-800"></span>
         </div>
 
         <button
             type="button"
             onclick={() => void start()}
             disabled={starting}
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:hover:bg-gray-800"
         >
             {starting ? 'Starting…' : 'Start server'}
         </button>
 
         {#if error}
-            <p class="mt-4 text-center text-sm text-red-600">{error}</p>
+            <p class="mt-4 text-center text-sm text-red-600 dark:text-red-400">{error}</p>
         {/if}
 
-        <p class="mt-8 text-center text-xs text-gray-400">
+        <p class="mt-8 text-center text-xs text-gray-400 dark:text-gray-500">
             made with
-            <a href="https://github.com/briancray/belte" class="underline hover:text-gray-600">
+            <a href="https://github.com/briancray/belte" class="underline hover:text-gray-600 dark:hover:text-gray-300">
                 belte
             </a>
         </p>
