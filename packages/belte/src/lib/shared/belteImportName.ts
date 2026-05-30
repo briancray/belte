@@ -7,7 +7,7 @@ belte directly (`@briancray/belte`) or behind a package alias
 (`"belte": "npm:@briancray/belte@..."`, or `workspace:@briancray/belte@*`
 inside this repo). An alias-only install resolves only under the alias key and
 a direct install only under the canonical name, so the generated rpc / socket
-/ prompt modules must import under whichever name the project actually
+/ prompt modules must import under whichever name the project
 declared.
 
 Prefers a `belte` alias (the ergonomic surface the docs use) when present, then

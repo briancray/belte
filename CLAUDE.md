@@ -21,6 +21,7 @@
 * use descriptive variable names instead of abbrevations
 * write short descriptive comments above each function and above code blocks that need explanation
 * use /* and */ for multiline comments and // for single line comments
+* comment as if every word costs money but losing a technical detail or its nuance costs more. no filler words
 * write svelte 5 components
 * always use full known types where possible instead of creating adhoc one-use types
 * if a function is shared, add it to the proper  folder and check library folders for existing functionality before writing one

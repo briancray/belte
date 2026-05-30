@@ -18,6 +18,11 @@ belte — isomorphic multimodal HTTP framework for humans and machines, one Bun 
 * Machines: mcp + cli
 * cli serves both — humans run it, machines script it)
 
+* Try it (place right after the intro)
+    * easiest way - start with  prebuilt examples
+    * scaffold: `bunx @briancray/belte scaffold my-app` → `cd my-app && bun install` → `bun dev`
+    * kitchen-sink (every feature in one app): clone repo url → `cd examples/kitchen-sink && bun dev`
+
 * What is an isomorphic multimodal framework
     * a single runtime
     * declare rpc once, use anywhere for free (browser/http, mcp, cli, bundle)

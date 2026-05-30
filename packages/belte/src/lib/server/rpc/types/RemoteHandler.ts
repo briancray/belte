@@ -15,7 +15,7 @@ carries the body shape through the function's inferred return type so the
 verb helper can infer `Return` automatically — no need to annotate
 `GET<Args, Return>` when the handler returns one of the respond helpers.
 A bare `new Response(...)` is still acceptable: the brand is optional, so
-untagged Responses simply fall back to `Return = unknown`.
+untagged Responses fall back to `Return = unknown`.
 
 Handlers that need the inbound Request (headers, `request.signal`, …) read
 it via `request()` from `belte/server` rather than a handler parameter, so

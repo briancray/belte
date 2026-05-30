@@ -176,7 +176,7 @@ async function* parseJsonLines<T>(response: Response): AsyncGenerator<T> {
 Builds the Subscribable returned by `fn.stream(args)`. The carried
 `name` is the cache-style key for (method, url, args) so subscribe()
 dedupes multiple subscribers to identical args into one underlying
-fetch. The fetch is deferred until the first iterator pull so simply
+fetch. The fetch is deferred until the first iterator pull so
 constructing the Subscribable (which happens on every $derived
 re-evaluation) doesn't open a connection — subscribe()'s registry
 short-circuits the second instance before it iterates.
