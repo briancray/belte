@@ -1,4 +1,3 @@
-import { existsSync, statSync } from 'node:fs'
 import { NO_STORE } from '../../shared/cacheControlValues.ts'
 import { log } from '../../shared/log.ts'
 import { normalizeTarget } from '../../shared/normalizeTarget.ts'
@@ -55,8 +54,9 @@ async function computeBinary(
     didn't run `belte cli` again. Other source paths (project lib,
     transitive imports) fall back to manual rebuild.
     */
-    if (existsSync(binaryPath)) {
-        const binaryMtime = statSync(binaryPath).mtimeMs
+    const binaryFile = Bun.file(binaryPath)
+    if (await binaryFile.exists()) {
+        const binaryMtime = (await binaryFile.stat()).mtimeMs
         const sourceMtime = await maxSourceMtime(cwd)
         if (binaryMtime >= sourceMtime) {
             return binaryPath
@@ -71,9 +71,8 @@ async function computeBinary(
         await buildCli({
             cwd,
             platforms: [normalizeTarget(platform)],
-            thin: true,
         })
-        return existsSync(binaryPath) ? binaryPath : undefined
+        return (await binaryFile.exists()) ? binaryPath : undefined
     } catch (error) {
         log.error(error)
         return undefined

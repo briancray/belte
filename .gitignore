@@ -3,3 +3,4 @@ dist
 .belte
 .DS_Store
 bun.lockb
+packages/belte/src/lib/bundle/native/.cache
