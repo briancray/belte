@@ -2,6 +2,7 @@
 import { existsSync, statSync } from 'node:fs'
 import type { BunPlugin } from 'bun'
 import { Glob } from 'bun'
+import { belteImportName } from './lib/shared/belteImportName.ts'
 import { fileStem } from './lib/shared/fileStem.ts'
 import { jsonSchemaForPromptArguments } from './lib/shared/jsonSchemaForPromptArguments.ts'
 import { log } from './lib/shared/log.ts'
@@ -128,6 +129,13 @@ export function belteResolverPlugin({
     const scanSocketsOnce = once(() => scanSockets(socketsDir))
     const scanPromptsOnce = once(() => scanPrompts(promptsDir))
     const loadShellOnce = once(() => loadShell(cwd))
+    /*
+    The bare specifier the project imports belte under (canonical
+    `@briancray/belte` or a package alias). Resolved once from the project's
+    package.json and threaded into every generated module so the codegen's
+    imports resolve regardless of which install style the project uses.
+    */
+    const belteImportNameOnce = once(() => belteImportName(cwd))
 
     const rpcFilter = new RegExp(`^${escapeRegex(rpcDir)}/.*\\.ts$`)
     const socketsFilter = new RegExp(`^${escapeRegex(socketsDir)}/.*\\.ts$`)
@@ -176,7 +184,8 @@ export function belteResolverPlugin({
                 const relativePath = args.path.slice(rpcDir.length + 1)
                 const source = await Bun.file(args.path).text()
                 const url = rpcUrlForFile(relativePath)
-                const prepared = prepareRpcModule(source)
+                const importName = await belteImportNameOnce()
+                const prepared = prepareRpcModule(source, importName)
                 if (!prepared) {
                     throw new Error(
                         `[belte] src/server/rpc/${relativePath} has no \`export const <name> = <VERB>(...)\` — every $rpc module must declare exactly one remote function`,
@@ -196,7 +205,7 @@ export function belteResolverPlugin({
                 so page imports resolve identically on both sides.
                 */
                 if (target === 'client') {
-                    const contents = `import { remoteProxy as __belteRemoteProxy__ } from 'belte/browser/remoteProxy';
+                    const contents = `import { remoteProxy as __belteRemoteProxy__ } from '${importName}/browser/remoteProxy';
 export const ${prepared.exportName} = __belteRemoteProxy__(${JSON.stringify(prepared.verb)}, ${JSON.stringify(url)});
 `
                     return { contents, loader: 'ts' }
@@ -211,7 +220,7 @@ export const ${prepared.exportName} = __belteRemoteProxy__(${JSON.stringify(prep
                 tokenizer-driven so `GET` mentions inside strings and
                 comments are left alone.
                 */
-                const banner = `import { defineVerb as __belteDefineVerb__ } from 'belte/server/rpc/defineVerb';
+                const banner = `import { defineVerb as __belteDefineVerb__ } from '${importName}/server/rpc/defineVerb';
 `
                 return { contents: `${banner}${prepared.rewriteForServer(url)}`, loader: 'ts' }
             })
@@ -223,7 +232,8 @@ export const ${prepared.exportName} = __belteRemoteProxy__(${JSON.stringify(prep
                 const relativePath = args.path.slice(socketsDir.length + 1)
                 const source = await Bun.file(args.path).text()
                 const name = socketNameForFile(relativePath)
-                const prepared = prepareSocketModule(source)
+                const importName = await belteImportNameOnce()
+                const prepared = prepareSocketModule(source, importName)
                 if (!prepared) {
                     throw new Error(
                         `[belte] src/server/sockets/${relativePath} has no \`export const <name> = socket(...)\` — every $sockets module must declare exactly one socket`,
@@ -241,12 +251,12 @@ export const ${prepared.exportName} = __belteRemoteProxy__(${JSON.stringify(prep
                     clientPublish) are server-side state and don't
                     affect the client's wire behaviour.
                     */
-                    const contents = `import { socketProxy as __belteSocketProxy__ } from 'belte/browser/socketProxy';
+                    const contents = `import { socketProxy as __belteSocketProxy__ } from '${importName}/browser/socketProxy';
 export const ${prepared.exportName} = __belteSocketProxy__(${JSON.stringify(name)});
 `
                     return { contents, loader: 'ts' }
                 }
-                const banner = `import { defineSocket as __belteDefineSocket__ } from 'belte/server/sockets/defineSocket';
+                const banner = `import { defineSocket as __belteDefineSocket__ } from '${importName}/server/sockets/defineSocket';
 `
                 return {
                     contents: `${banner}${prepared.rewriteForServer(name)}`,
@@ -277,6 +287,7 @@ export const ${prepared.exportName} = __belteSocketProxy__(${JSON.stringify(name
                 const relativePath = args.path.slice(promptsDir.length + 1)
                 const source = await Bun.file(args.path).text()
                 const name = promptNameForFile(relativePath)
+                const importName = await belteImportNameOnce()
                 const parsed = parsePromptMarkdown(source)
                 const jsonSchema = jsonSchemaForPromptArguments(parsed.arguments)
                 const optionLines = [
@@ -288,8 +299,8 @@ export const ${prepared.exportName} = __belteSocketProxy__(${JSON.stringify(name
                 ]
                     .filter((line) => line !== undefined)
                     .join('\n')
-                const contents = `import { definePrompt as __belteDefinePrompt__ } from 'belte/server/prompts/definePrompt'
-import { renderPromptTemplate as __belteRenderPromptTemplate__ } from 'belte/server/prompts/renderPromptTemplate'
+                const contents = `import { definePrompt as __belteDefinePrompt__ } from '${importName}/server/prompts/definePrompt'
+import { renderPromptTemplate as __belteRenderPromptTemplate__ } from '${importName}/server/prompts/renderPromptTemplate'
 const __template__ = ${JSON.stringify(parsed.body)}
 export const prompt = __belteDefinePrompt__(${JSON.stringify(name)}, {
 ${optionLines}
@@ -574,9 +585,9 @@ export const footer = ${JSON.stringify(footer)}
                     from src/mcp/resources. createMcpServer is internal; there
                     is no user-authored server module.
                     */
+                    const importName = await belteImportNameOnce()
                     return {
-                        contents:
-                            "import { createMcpServer } from 'belte/mcp/createMcpServer'\nexport default createMcpServer()\n",
+                        contents: `import { createMcpServer } from '${importName}/mcp/createMcpServer'\nexport default createMcpServer()\n`,
                         loader: 'js',
                     }
                 }
