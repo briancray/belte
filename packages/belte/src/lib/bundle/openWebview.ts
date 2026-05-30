@@ -62,8 +62,15 @@ export async function openWebview({
         webview_destroy: { args: [FFIType.ptr], returns: FFIType.void },
     })
 
-    // The second arg is an optional parent window handle; null means a fresh window.
-    const handle = symbols.webview_create(0, null)
+    /*
+    First arg is the webview's `debug` flag: 1 enables the native inspector
+    (WKWebView's Web Inspector, WebView2 DevTools, WebKitGTK inspector) so a JS
+    error on the loaded page — otherwise silent in a bare bundle window — can be
+    read via right-click → Inspect. Gated behind BELTE_INSPECT so release bundles
+    ship without it. The second arg is an optional parent handle; null = fresh window.
+    */
+    const debug = process.env.BELTE_INSPECT ? 1 : 0
+    const handle = symbols.webview_create(debug, null)
     symbols.webview_set_title(handle, cString(title))
     symbols.webview_set_size(handle, width, height, WEBVIEW_HINT_NONE)
     /*
