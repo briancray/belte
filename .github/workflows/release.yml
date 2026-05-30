@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Full history so the GitHub changelog generator can link commits.
           fetch-depth: 0
@@ -36,7 +36,7 @@ jobs:
       # setup-node writes the auth-token .npmrc that `changeset publish` reads, and provides a
       # recent npm CLI for provenance generation.
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
