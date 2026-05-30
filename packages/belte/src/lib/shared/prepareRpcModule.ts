@@ -1,10 +1,10 @@
 import type { HttpVerb } from '../server/rpc/types/HttpVerb.ts'
+import { beltePackageName } from './beltePackageName.ts'
 import { findExportCallSite } from './findExportCallSite.ts'
 import { stripImport } from './stripImport.ts'
 
 const VERB_NAMES = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'] as const
 const VERB_SET = new Set<string>(VERB_NAMES)
-const VERB_IMPORT_PATHS = VERB_NAMES.map((verb) => `belte/server/${verb}`)
 
 const SINGLE_EXPORT_ERROR =
     '[belte] $rpc module contains more than one `<VERB>(...)` export — each file must declare exactly one remote function'
@@ -27,14 +27,24 @@ A regex pass would be tidier but it can't tell a `GET` mention inside a
 docstring or template literal from the real call, and it can't follow
 nested generics like `GET<Map<K, V>>(`.
 */
-export function prepareRpcModule(source: string): PreparedRpcModule | undefined {
+export function prepareRpcModule(
+    source: string,
+    importName: string,
+): PreparedRpcModule | undefined {
     /*
     The "no barrels" surface places each verb at its own path
     (`belte/server/GET`, `belte/server/POST`, …) — strip every one so
     the user's verb import doesn't linger and side-effect-load the
-    stub module into the server bundle.
+    stub module into the server bundle. The user may import under the
+    project's chosen name or the canonical package name, so strip both.
     */
-    const stripped = VERB_IMPORT_PATHS.reduce((current, path) => stripImport(current, path), source)
+    const importNames =
+        importName === beltePackageName ? [beltePackageName] : [importName, beltePackageName]
+    const stripped = importNames.reduce(
+        (current, name) =>
+            VERB_NAMES.reduce((acc, verb) => stripImport(acc, `${name}/server/${verb}`), current),
+        source,
+    )
     const site = findExportCallSite(stripped, (ident) => VERB_SET.has(ident), SINGLE_EXPORT_ERROR)
     if (!site) {
         return undefined

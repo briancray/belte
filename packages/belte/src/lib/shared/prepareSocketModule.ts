@@ -1,3 +1,4 @@
+import { beltePackageName } from './beltePackageName.ts'
 import { findExportCallSite } from './findExportCallSite.ts'
 import { stripImport } from './stripImport.ts'
 
@@ -17,8 +18,21 @@ original source). The single scan replaces the prior separate
 extract + rewrite passes, so the resolver plugin only walks each source
 character-by-character once.
 */
-export function prepareSocketModule(source: string): PreparedSocketModule | undefined {
-    const stripped = stripImport(source, 'belte/server/socket')
+export function prepareSocketModule(
+    source: string,
+    importName: string,
+): PreparedSocketModule | undefined {
+    /*
+    Strip the user's `socket` import under the project's chosen name and the
+    canonical package name so the dead import can't side-effect-load the
+    socket helper into the server bundle.
+    */
+    const importNames =
+        importName === beltePackageName ? [beltePackageName] : [importName, beltePackageName]
+    const stripped = importNames.reduce(
+        (current, name) => stripImport(current, `${name}/server/socket`),
+        source,
+    )
     const site = findExportCallSite(stripped, (ident) => ident === 'socket', SINGLE_EXPORT_ERROR)
     if (!site) {
         return undefined
