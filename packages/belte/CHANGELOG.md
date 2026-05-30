@@ -1,5 +1,15 @@
 # @briancray/belte
 
+## 0.3.1
+
+### Patch Changes
+
+- [`63fe0b6`](https://github.com/briancray/belte/commit/63fe0b6cdec4d1073252a68c8185f86b74ebe48e) - Default bundle connect screen now follows the OS dark-mode setting. Added
+  Tailwind `dark:` variants (driven by `prefers-color-scheme`) across the
+  background, card, input, buttons, divider, and footer — all grayscale except the
+  red error message. A project that ships its own `src/bundle/disconnected.svelte`
+  is unaffected.
+
 ## 0.3.0
 
 ### Minor Changes
