@@ -1,4 +1,4 @@
-# @briancray/belte
+# belte
 
 ## 0.2.0
 
