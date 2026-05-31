@@ -5,7 +5,21 @@ import { buildRpcRequest } from '../shared/buildRpcRequest.ts'
 import { decodeResponse } from '../shared/decodeResponse.ts'
 import type { CliManifest } from './types/CliManifest.ts'
 
-type AnyApi = Record<string, (args?: unknown) => Promise<unknown>>
+/*
+Each property of the client is a callable: invoking it decodes the body
+(plain call), while `.raw(args)` returns the underlying Response without
+decoding or throwing on non-2xx — the escape hatch the CLI uses to sniff
+the Content-Type and stream sse/jsonl bodies frame-by-frame instead of
+buffering through decodeResponse.
+*/
+type ClientInvoker = ((args?: unknown) => Promise<unknown>) & {
+    raw: (args?: unknown) => Promise<Response>
+}
+
+type AnyApi = Record<string, ClientInvoker>
+
+// A command resolved to its HTTP shape — the manifest/registry lookup result.
+type ResolvedCommand = { method: HttpVerb; url: string; accept?: string }
 
 /*
 Builds a typed proxy over the project's RPCs for use in scripts, tests,
@@ -42,35 +56,56 @@ export function createClient<Api extends AnyApi = AnyApi>(opts?: {
     baked-in source of truth); registry is the in-process fallback for
     use in same-project code where defineVerb has run.
     */
-    function resolve(name: string): { method: HttpVerb; url: string } | undefined {
+    function resolve(name: string): ResolvedCommand | undefined {
         const entry = manifest?.[name]
         if (entry) {
-            return { method: entry.method, url: entry.url }
+            return { method: entry.method, url: entry.url, accept: entry.accept }
         }
         const found = findVerbByCommandName(name)
         return found ? { method: found.remote.method, url: found.remote.url } : undefined
     }
 
     /*
-    Single call path for both modes — only the base URL and how the Request
-    is dispatched differ. Remote mode fetches over the network; in-process
-    mode looks the verb up in the registry and runs verb.fetch (no hop).
+    Single dispatch path for both modes — only the base URL and how the
+    Request is sent differ. Remote mode fetches over the network;
+    in-process mode looks the verb up in the registry and runs verb.fetch
+    (no hop). Returns the raw Response; callers decode or stream it.
     */
-    async function call(
-        method: HttpVerb,
-        path: string,
+    function send(
+        resolved: ResolvedCommand,
         args: unknown,
         baseUrl: string,
         dispatch: (request: Request) => Promise<Response>,
-    ): Promise<unknown> {
+    ): Promise<Response> {
         const headers = new Headers()
         if (token) {
             headers.set('authorization', `Bearer ${token}`)
         }
-        const request = buildRpcRequest({ method, url: path, args, baseUrl, headers })
-        const response = await dispatch(request)
+        if (resolved.accept) {
+            headers.set('accept', resolved.accept)
+        }
+        const request = buildRpcRequest({
+            method: resolved.method,
+            url: resolved.url,
+            args,
+            baseUrl,
+            headers,
+        })
+        return dispatch(request)
+    }
+
+    // Decoding plain-call path: throws on non-2xx, returns the decoded body.
+    async function call(
+        resolved: ResolvedCommand,
+        args: unknown,
+        baseUrl: string,
+        dispatch: (request: Request) => Promise<Response>,
+    ): Promise<unknown> {
+        const response = await send(resolved, args, baseUrl, dispatch)
         if (!response.ok) {
-            throw new Error(`${method} ${path} failed: ${response.status} ${response.statusText}`)
+            throw new Error(
+                `${resolved.method} ${resolved.url} failed: ${response.status} ${response.statusText}`,
+            )
         }
         return decodeResponse(response)
     }
@@ -94,10 +129,24 @@ export function createClient<Api extends AnyApi = AnyApi>(opts?: {
     manifest + registry are fixed for a client's lifetime, so a resolved
     invoker (or its absence) never changes.
     */
-    const invokerCache = new Map<string, ((args?: unknown) => Promise<unknown>) | undefined>()
+    const invokerCache = new Map<string, ClientInvoker | undefined>()
+
+    /*
+    Build a memoised invoker for a resolved command. The plain call and
+    `.raw` share one dispatch — remote mode hits the network, in-process
+    mode runs verb.fetch — so the two can't diverge on URL/headers.
+    */
+    function buildInvoker(resolved: ResolvedCommand): ClientInvoker {
+        const baseUrl = url ?? 'http://localhost/'
+        const dispatch = url ? fetch : inProcessDispatch(resolved.url)
+        const invoker = ((args?: unknown) =>
+            call(resolved, args, baseUrl, dispatch)) as ClientInvoker
+        invoker.raw = (args?: unknown) => send(resolved, args, baseUrl, dispatch)
+        return invoker
+    }
 
     return new Proxy({} as Api, {
-        get(_target, prop): ((args?: unknown) => Promise<unknown>) | undefined {
+        get(_target, prop): ClientInvoker | undefined {
             if (typeof prop !== 'string') {
                 return undefined
             }
@@ -105,18 +154,7 @@ export function createClient<Api extends AnyApi = AnyApi>(opts?: {
                 return invokerCache.get(prop)
             }
             const resolved = resolve(prop)
-            const invoker = resolved
-                ? (args?: unknown) =>
-                      url
-                          ? call(resolved.method, resolved.url, args, url, fetch)
-                          : call(
-                                resolved.method,
-                                resolved.url,
-                                args,
-                                'http://localhost/',
-                                inProcessDispatch(resolved.url),
-                            )
-                : undefined
+            const invoker = resolved ? buildInvoker(resolved) : undefined
             invokerCache.set(prop, invoker)
             return invoker
         },

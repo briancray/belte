@@ -1,6 +1,10 @@
 import type { ServerWebSocket } from 'bun'
 import { log } from '../../shared/log.ts'
+import { error } from '../error.ts'
+import { json } from '../json.ts'
+import { sse } from '../sse.ts'
 import { lookupSocket } from './lookupSocket.ts'
+import { recentHistory } from './recentHistory.ts'
 import type { SocketClientFrame } from './types/SocketClientFrame.ts'
 import type { SocketRoutes } from './types/SocketRoutes.ts'
 import type { SocketServerFrame } from './types/SocketServerFrame.ts'
@@ -12,6 +16,7 @@ type SocketDispatcher = {
     open(ws: ServerWebSocket<unknown>): void
     message(ws: ServerWebSocket<unknown>, data: string | Buffer): void
     close(ws: ServerWebSocket<unknown>): void
+    rest(req: Request, name: string): Promise<Response>
 }
 
 /*
@@ -154,14 +159,9 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
         a number is clamped to the buffer length so the client can ask
         for "as many as available, up to N".
         */
-        const history = entry.snapshotHistory()
-        const replayCount =
-            frame.replay === undefined ? history.length : Math.min(frame.replay, history.length)
-        if (replayCount > 0) {
-            history.slice(history.length - replayCount).forEach((message) => {
-                send(ws, { type: 'msg', socket: frame.socket, message })
-            })
-        }
+        recentHistory(entry, frame.replay).forEach((message) => {
+            send(ws, { type: 'msg', socket: frame.socket, message })
+        })
     }
 
     function handleUnsub(
@@ -225,7 +225,70 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
         void ws
     }
 
+    /*
+    HTTP face of the sockets hub at `/__belte/sockets/<name>`, for the CLI
+    and MCP (which can't speak the ws multiplex protocol):
+
+      GET  text/event-stream → live SSE stream; `?tail=N` replays the last
+           N buffered messages before tailing live (default 0 = live only).
+      GET  otherwise         → JSON array of the recent history buffer
+           (`?tail=N` caps it; default all).
+      POST                   → publish the JSON body, gated by the socket's
+           clientPublish policy and validated against its schema.
+
+    Loads the socket module on first hit (same cache the ws path uses) so
+    its defineSocket call populates the registry.
+    */
+    async function rest(req: Request, name: string): Promise<Response> {
+        const loader = ensureLoaded(name)
+        if (!loader) {
+            return error(404)
+        }
+        try {
+            await loader
+        } catch (loadError) {
+            log.error(loadError)
+            return error(500, 'socket failed to load')
+        }
+        const entry = lookupSocket(name)
+        if (!entry) {
+            return error(404)
+        }
+        const tailParam = new URL(req.url).searchParams.get('tail')
+        const count = tailParam !== null ? Number(tailParam) : undefined
+        if (req.method === 'GET' || req.method === 'HEAD') {
+            if ((req.headers.get('accept') ?? '').includes('text/event-stream')) {
+                return sse(entry.socket.tail(count ?? 0))
+            }
+            return json(recentHistory(entry, count))
+        }
+        if (req.method === 'POST') {
+            if (!entry.allowClientPublish) {
+                return error(403, 'publishing not allowed')
+            }
+            let message: unknown
+            try {
+                message = await req.json()
+            } catch {
+                return error(400, 'body must be JSON')
+            }
+            try {
+                // publish() validates against the socket schema and throws on a bad payload.
+                entry.socket.publish(message)
+            } catch (publishError) {
+                return error(
+                    422,
+                    publishError instanceof Error ? publishError.message : String(publishError),
+                )
+            }
+            return json({ ok: true })
+        }
+        return error(405, undefined, { headers: { Allow: 'GET, POST' } })
+    }
+
     return {
+        rest,
+
         open(ws) {
             connections.set(ws, { subToSocket: new Map(), socketSubs: new Map() })
         },

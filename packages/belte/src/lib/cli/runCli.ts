@@ -1,8 +1,23 @@
+import { decodeResponse } from '../shared/decodeResponse.ts'
+import { isStreamingResponse } from '../shared/isStreamingResponse.ts'
+import { responseErrorText } from '../shared/responseErrorText.ts'
+import { streamResponse } from '../shared/streamResponse.ts'
 import { createClient } from './createClient.ts'
 import { loadEnvFromBinaryDir } from './loadEnvFromBinaryDir.ts'
 import { parseArgvForRpc } from './parseArgvForRpc.ts'
 import { printCommandHelp, printTopLevelHelp } from './printHelp.ts'
 import type { CliManifest } from './types/CliManifest.ts'
+
+// String results print verbatim (with a trailing newline); everything else as a JSON line.
+function printValue(value: unknown, pretty: boolean): void {
+    if (typeof value === 'string') {
+        process.stdout.write(value.endsWith('\n') ? value : `${value}\n`)
+        return
+    }
+    if (value !== undefined) {
+        process.stdout.write(`${JSON.stringify(value, null, pretty ? 2 : undefined)}\n`)
+    }
+}
 
 /*
 Top-level CLI driver. Loaded by the standalone binary's entry; expects
@@ -18,9 +33,10 @@ running server over HTTP and APP_URL must be set. Flow:
   5. Otherwise parse the rest of the argv against the manifest entry's
      JSON Schema and dispatch via createClient against APP_URL.
 
-Streaming responses aren't a thing at this layer yet — every RPC tool
-goes through decodeResponse (text/JSON). Streaming verbs (jsonl/sse)
-will be added when the CLI grows watch/publish subcommands for sockets.
+Streaming responses are handled by sniffing the response Content-Type:
+sse/jsonl bodies (a streaming verb, or a socket `tail` command) are
+printed frame-by-frame as NDJSON to stdout; everything else is decoded
+and pretty-printed once.
 */
 export async function runCli({
     programName,
@@ -74,21 +90,27 @@ export async function runCli({
     const appToken = process.env.APP_TOKEN
     const client = createClient({ url: appUrl, token: appToken, manifest })
 
+    const fn = client[first]
+    if (!fn) {
+        console.error(`${programName}: command "${first}" not in client`)
+        return 1
+    }
     try {
-        const fn = (client as Record<string, (args?: unknown) => Promise<unknown>>)[first]
-        if (!fn) {
-            console.error(`${programName}: command "${first}" not in client`)
-            return 1
-        }
-        const result = await fn(args)
-        if (typeof result === 'string') {
-            process.stdout.write(result)
-            if (!result.endsWith('\n')) {
-                process.stdout.write('\n')
+        const response = await fn.raw(args)
+        if (isStreamingResponse(response)) {
+            /*
+            Stream frame-by-frame to stdout as NDJSON. streamResponse
+            throws a clear HttpError on a non-2xx body, caught below.
+            */
+            for await (const frame of streamResponse(response)) {
+                printValue(frame, false)
             }
-        } else if (result !== undefined) {
-            process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+            return 0
         }
+        if (!response.ok) {
+            throw new Error(await responseErrorText(response))
+        }
+        printValue(await decodeResponse(response), true)
         return 0
     } catch (error) {
         console.error(`${programName}: ${error instanceof Error ? error.message : String(error)}`)

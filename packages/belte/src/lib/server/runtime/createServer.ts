@@ -58,6 +58,7 @@ function internalErrorResponse(err: unknown): Response {
 
 const IDENTITY_PATH = '/__belte/identity'
 const SOCKETS_PATH = '/__belte/sockets'
+const SOCKETS_REST_PREFIX = '/__belte/sockets/'
 const MCP_PATH = '/__belte/mcp'
 const CLI_PATH = '/__belte/cli'
 const CLI_DOWNLOAD_PREFIX = '/__belte/cli/'
@@ -439,6 +440,17 @@ export async function createServer({
                     return undefined as unknown as Response
                 }
                 return new Response('Upgrade failed', { status: 400 })
+            }
+            /*
+            HTTP face of a socket (`/__belte/sockets/<name>`) — tail over
+            SSE / JSON and publish — for the CLI and MCP. Runs through
+            dispatchRequest so app.handle auth applies, like the rpc paths.
+            The socket name may contain `/` (nested files), so it's the
+            whole remaining pathname, percent-decoded.
+            */
+            if (url.pathname.startsWith(SOCKETS_REST_PREFIX)) {
+                const name = decodeURIComponent(url.pathname.slice(SOCKETS_REST_PREFIX.length))
+                return dispatchRequest(req, {}, async () => socketDispatcher.rest(req, name))
             }
             if (url.pathname === MCP_PATH && mcp) {
                 return dispatchRequest(req, {}, async () => mcp.handle(req))

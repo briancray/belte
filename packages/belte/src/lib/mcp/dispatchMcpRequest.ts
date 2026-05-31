@@ -3,13 +3,17 @@ import { findVerbByCommandName } from '../server/rpc/findVerbByCommandName.ts'
 import type { VerbRegistryEntry } from '../server/rpc/types/VerbRegistryEntry.ts'
 import { verbRegistry } from '../server/rpc/verbRegistry.ts'
 import { ensureRegistriesLoaded } from '../server/runtime/registryManifests.ts'
+import { recentHistory } from '../server/sockets/recentHistory.ts'
+import { socketOperations } from '../server/sockets/socketOperations.ts'
+import { socketRegistry } from '../server/sockets/socketRegistry.ts'
 import { buildRpcRequest } from '../shared/buildRpcRequest.ts'
 import { NO_STORE } from '../shared/cacheControlValues.ts'
 import { commandNameForUrl } from '../shared/commandNameForUrl.ts'
-import { decodeResponse } from '../shared/decodeResponse.ts'
 import { forwardHeaders } from '../shared/forwardHeaders.ts'
 import { jsonSchemaForSchema } from '../shared/jsonSchemaForSchema.ts'
+import { annotationsForMethod } from './annotationsForMethod.ts'
 import { getMcpResourceServer } from './mcpResourceServerSlot.ts'
+import { toolResultFromResponse } from './toolResultFromResponse.ts'
 import type { JsonRpcRequest } from './types/JsonRpcRequest.ts'
 import type { JsonRpcResponse } from './types/JsonRpcResponse.ts'
 import type { McpServerOptions } from './types/McpServerOptions.ts'
@@ -33,6 +37,8 @@ type ToolDescriptor = {
     name: string
     description: string
     inputSchema: Record<string, unknown>
+    outputSchema?: Record<string, unknown>
+    annotations?: Record<string, boolean>
 }
 
 type PromptDescriptor = {
@@ -42,10 +48,18 @@ type PromptDescriptor = {
 }
 
 /*
-Builds the array of MCP tool descriptors. Every rpc with clients.mcp=true
-becomes one tool named after the export's URL (folder segments joined
-with `-`), regardless of HTTP verb — GET reads and mutating verbs alike.
-Sockets are never exposed to MCP.
+Builds the array of MCP tool descriptors.
+
+RPCs: every verb with clients.mcp=true becomes one tool named after the
+export's URL (folder segments joined with `-`). The HTTP verb feeds the
+tool's annotations (readOnlyHint / destructiveHint / idempotentHint) so
+a model can tell a read from a write; reads auto-expose while mutating
+verbs require an explicit clients.mcp (see resolveClientFlags). When the
+verb declares an `outputSchema` it's advertised as the tool outputSchema.
+
+Sockets: every socket with clients.mcp=true contributes a `<base>-tail`
+read tool (recent buffered messages) and, when clientPublish is set, a
+`<base>-publish` tool.
 */
 function buildTools(): ToolDescriptor[] {
     const tools: ToolDescriptor[] = []
@@ -59,14 +73,51 @@ function buildTools(): ToolDescriptor[] {
         falling back to `method url` so the tool is still labelled when
         the schema has none.
         */
-        const inputSchema = jsonSchemaForSchema(entry.schema, entry.jsonSchema)
-        tools.push({
+        const inputSchema = jsonSchemaForSchema(entry.inputSchema, entry.inputJsonSchema)
+        const tool: ToolDescriptor = {
             name: commandNameForUrl(entry.remote.url),
             description:
                 (inputSchema.description as string | undefined) ??
                 `${entry.remote.method} ${entry.remote.url}`,
             inputSchema,
-        })
+            annotations: annotationsForMethod(entry.remote.method),
+        }
+        if (entry.outputSchema) {
+            tool.outputSchema = jsonSchemaForSchema(entry.outputSchema, entry.outputJsonSchema)
+        }
+        tools.push(tool)
+    }
+    for (const entry of socketRegistry.values()) {
+        if (!entry.clients.mcp) {
+            continue
+        }
+        const payloadSchema = jsonSchemaForSchema(entry.schema, entry.jsonSchema)
+        for (const operation of socketOperations(entry)) {
+            if (operation.kind === 'tail') {
+                tools.push({
+                    name: operation.name,
+                    description: `Read recent messages from the "${operation.socketName}" socket`,
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            count: { type: 'number', description: 'max recent messages to return' },
+                        },
+                    },
+                    outputSchema: {
+                        type: 'object',
+                        properties: { frames: { type: 'array', items: payloadSchema } },
+                    },
+                    annotations: { readOnlyHint: true, destructiveHint: false },
+                })
+                continue
+            }
+            tools.push({
+                name: operation.name,
+                description: `Publish a message to the "${operation.socketName}" socket`,
+                inputSchema: payloadSchema,
+                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+            })
+        }
     }
     return tools
 }
@@ -95,10 +146,12 @@ function buildPrompts(): PromptDescriptor[] {
 }
 
 /*
-Tool dispatch. Synthesizes a Request (with forwarded auth headers) and
-pipes it through verb.fetch — the same code path the HTTP router uses, so
-validation + handler + error helpers behave identically. Every rpc is a
-tool regardless of verb.
+Tool dispatch. RPC tools synthesize a Request (with forwarded auth
+headers) and pipe it through verb.fetch — the same code path the HTTP
+router uses, so validation + handler + error helpers behave identically;
+the response (buffered or streaming) is framed by toolResultFromResponse.
+Socket tools (`<base>-tail` / `<base>-publish`) fall through to the
+socket dispatcher.
 */
 async function callTool(
     toolName: string,
@@ -106,30 +159,59 @@ async function callTool(
     inbound: Request,
 ): Promise<Record<string, unknown>> {
     const entry = findVerbByCommandName(toolName)
-    if (!entry?.clients.mcp) {
-        throw new Error(`unknown tool: ${toolName}`)
+    if (entry?.clients.mcp) {
+        const response = await dispatchVerb(entry, args, inbound)
+        return toolResultFromResponse(response)
     }
-    const response = await dispatchVerb(entry, args, inbound)
-    if (!response.ok) {
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: `${response.status} ${response.statusText}: ${await response.text()}`,
-                },
-            ],
-            isError: true,
+    const socketResult = callSocketTool(toolName, args)
+    if (socketResult) {
+        return socketResult
+    }
+    throw new Error(`unknown tool: ${toolName}`)
+}
+
+function textResult(text: string, isError = false): Record<string, unknown> {
+    return { content: [{ type: 'text', text }], ...(isError ? { isError: true } : {}) }
+}
+
+/*
+Dispatches the socket tail / publish tools by matching the tool name
+against each mcp-exposed socket's operations (socketOperations is the same
+projection tools/list advertised, so the publish op only exists when the
+socket allows it). tail returns the recent history buffer (request/response
+can't hold a live subscription); publish validates against the socket
+schema and fans out. Returns undefined when the name isn't a known socket
+tool so callTool can fall through to "unknown tool".
+*/
+function callSocketTool(
+    toolName: string,
+    args: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+    for (const entry of socketRegistry.values()) {
+        if (!entry.clients.mcp) {
+            continue
         }
+        const operation = socketOperations(entry).find((op) => op.name === toolName)
+        if (!operation) {
+            continue
+        }
+        if (operation.kind === 'tail') {
+            const count = typeof args?.count === 'number' ? args.count : undefined
+            const frames = recentHistory(entry, count)
+            return {
+                content: [{ type: 'text', text: frames.map((f) => JSON.stringify(f)).join('\n') }],
+                structuredContent: { frames },
+            }
+        }
+        try {
+            // publish() validates the payload against the socket schema and throws on failure.
+            entry.socket.publish(args)
+        } catch (error) {
+            return textResult(error instanceof Error ? error.message : String(error), true)
+        }
+        return textResult('ok')
     }
-    const body = await decodeResponse(response)
-    return {
-        content: [
-            {
-                type: 'text',
-                text: typeof body === 'string' ? body : JSON.stringify(body),
-            },
-        ],
-    }
+    return undefined
 }
 
 /*

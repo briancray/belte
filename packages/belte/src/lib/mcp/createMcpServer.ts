@@ -1,3 +1,4 @@
+import { NO_STORE } from '../shared/cacheControlValues.ts'
 import { dispatchMcpRequest, MCP_NO_STORE_HEADERS } from './dispatchMcpRequest.ts'
 import type { McpServer } from './types/McpServer.ts'
 import type { McpServerOptions } from './types/McpServerOptions.ts'
@@ -12,13 +13,14 @@ object whose `handle(request)` is the function the bun route at
 default-constructs it; there is no user-authored server module. Server
 name/version default from package.json.
 
-Tools are derived from every verb with `clients.mcp: true` (auto-on when
-the verb carries a schema) — one tool per rpc regardless of HTTP verb.
-Sockets are not exposed to MCP. Auth inherits from the inbound request —
-bearer / cookie headers
-flow into the synthesized Request that hits each rpc handler. An optional
-`authorize` hook in opts can short-circuit the request before any tool
-dispatches.
+Tools are derived from every verb with `clients.mcp: true` (auto-on for
+read-only verbs that carry a schema; mutating verbs opt in explicitly)
+and from every socket with `clients.mcp: true` (a `<base>-tail` read tool
+plus a `<base>-publish` tool when clientPublish is set). The HTTP verb
+feeds each rpc tool's annotations. Auth inherits from the inbound request
+— bearer / cookie headers flow into the synthesized Request that hits
+each rpc handler. An optional `authorize` hook in opts can short-circuit
+the request before any tool dispatches.
 */
 export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     const serverInfo = {
@@ -30,7 +32,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
             if (request.method !== 'POST') {
                 return new Response('Method Not Allowed', {
                     status: 405,
-                    headers: { Allow: 'POST', 'Cache-Control': 'no-store' },
+                    headers: { Allow: 'POST', 'Cache-Control': NO_STORE },
                 })
             }
             const envelope = await dispatchMcpRequest(request, opts, serverInfo)
