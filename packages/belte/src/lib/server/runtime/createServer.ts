@@ -30,6 +30,7 @@ import { createAssetHeaderCache } from './createAssetHeaderCache.ts'
 import { createPublicAssetServer } from './createPublicAssetServer.ts'
 import { globToPathSet } from './globToPathSet.ts'
 import { logBrowserOnlyRoutes } from './logBrowserOnlyRoutes.ts'
+import { parsePort } from './parsePort.ts'
 import { ensureRegistriesLoaded, setRegistryManifests } from './registryManifests.ts'
 import { requestContext } from './requestContext.ts'
 import { safeJsonForScript } from './safeJsonForScript.ts'
@@ -103,7 +104,7 @@ export async function createServer({
     distDir = `${process.cwd()}/dist`,
     publicDir = `${process.cwd()}/src/browser/public`,
     resourcesDir = `${process.cwd()}/src/mcp/resources`,
-    port = Number(process.env.PORT ?? 3000),
+    port = parsePort(process.env.PORT) ?? 3000,
 }: {
     pages: Pages
     rpc: RemoteRoutes
@@ -546,21 +547,28 @@ export async function createServer({
     */
     setActiveServer(server)
 
-    if (app?.init) {
-        const cleanup = await app.init({ server })
+    const cleanup = app?.init ? await app.init({ server }) : undefined
+    /*
+    Close the listener deterministically on shutdown. Always registered (even
+    with no init cleanup) so the socket is released via server.stop rather than
+    left to abrupt process exit — which leaves the port in TIME_WAIT and races
+    a fast restart. A watchdog force-exits if a user cleanup hangs, so a stuck
+    cleanup can't keep the process (and its port) alive.
+    */
+    const shutdown = async () => {
+        server.stop(true)
         if (typeof cleanup === 'function') {
-            const shutdown = async () => {
-                try {
-                    await cleanup()
-                } catch (err) {
-                    log.error(err)
-                }
-                process.exit(0)
+            setTimeout(() => process.exit(0), 3000).unref()
+            try {
+                await cleanup()
+            } catch (err) {
+                log.error(err)
             }
-            process.once('SIGINT', shutdown)
-            process.once('SIGTERM', shutdown)
         }
+        process.exit(0)
     }
+    process.once('SIGINT', shutdown)
+    process.once('SIGTERM', shutdown)
 
     log.success(`ready at http://localhost:${server.port}`)
     /*

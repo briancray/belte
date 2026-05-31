@@ -70,8 +70,7 @@ async function fetchInstaller() {
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
     <h2 class="text-sm font-semibold">Server-side install endpoint</h2>
     <p class="mt-1 text-sm text-slate-600">
-        <code class="font-mono">createServer</code> registers two CLI routes for any client that
-        wants to install the binary.
+        The server exposes two CLI routes for any client that wants to install the binary.
     </p>
     <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200">
         <table class="w-full text-sm">

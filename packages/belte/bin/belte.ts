@@ -27,6 +27,26 @@ function parseFlag(name: string): string | undefined {
 }
 
 /*
+Runs the server as a child and owns its shutdown. Ctrl+C delivers SIGINT to
+the whole foreground process group, so without a parent handler the parent's
+default action kills it instantly — abandoning the `await child.exited` and
+orphaning the child, which can then linger holding the port. Forwarding the
+signal and awaiting the child's exit (with a SIGKILL watchdog for a wedged
+child) guarantees the child is reaped before the parent leaves. Mirrors the
+child's exit code so callers and CI see the real result.
+*/
+async function runServerChild(cmd: string[]): Promise<never> {
+    const child = Bun.spawn({ cmd, cwd, stdio: ['inherit', 'inherit', 'inherit'] })
+    const forward = (signal: NodeJS.Signals) => {
+        child.kill(signal)
+        setTimeout(() => child.kill('SIGKILL'), 3000).unref()
+    }
+    process.on('SIGINT', () => forward('SIGINT'))
+    process.on('SIGTERM', () => forward('SIGTERM'))
+    process.exit(await child.exited)
+}
+
+/*
 Spawns the server under `bun --watch` against the dev entry. The dev entry
 re-runs the client build and eagerly imports every page/layout/rpc/socket
 module on each boot, so Bun's watcher sees them from the start and
@@ -34,12 +54,7 @@ restarts the whole process whenever any file in the graph changes. The
 browser is not auto-reloaded — refresh manually after the server is back.
 */
 async function dev(): Promise<void> {
-    const child = Bun.spawn({
-        cmd: ['bun', '--watch', '--preload', PRELOAD, DEV_ENTRY],
-        cwd,
-        stdio: ['inherit', 'inherit', 'inherit'],
-    })
-    process.exit(await child.exited)
+    await runServerChild(['bun', '--watch', '--preload', PRELOAD, DEV_ENTRY])
 }
 
 // Performs a single client build with no server attached (for CI / static deploys).
@@ -48,14 +63,8 @@ async function buildOnce(): Promise<void> {
 }
 
 // Starts the production server against an already-built dist directory.
-// Awaits the child process so the parent's exit code mirrors the server's.
 async function start(): Promise<void> {
-    const child = Bun.spawn({
-        cmd: ['bun', '--preload', PRELOAD, SERVER_ENTRY],
-        cwd,
-        stdio: ['inherit', 'inherit', 'inherit'],
-    })
-    process.exit(await child.exited)
+    await runServerChild(['bun', '--preload', PRELOAD, SERVER_ENTRY])
 }
 
 // Parses the --target and --out flags and produces a standalone executable.
