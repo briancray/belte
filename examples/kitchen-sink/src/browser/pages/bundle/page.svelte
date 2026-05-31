@@ -11,11 +11,12 @@ import CodeBlock from '$browser/CodeBlock.svelte'
 </p>
 
 <section class="mt-6">
-    <h2 class="text-sm font-semibold">Connect screen</h2>
+    <h2 class="text-sm font-semibold">Launch</h2>
     <p class="mt-1 text-xs text-slate-500">
-        The launcher boots into a connect screen — no server is assumed. An always-installed File
-        menu (Start server / Connect / Disconnect) drives which server the window points at; the
-        screen's form is where you enter a remote URL.
+        The launcher records the last connection in a per-user data dir and, on relaunch, boots or
+        probes it <em>before</em> opening the window — so a configured app opens straight at the live
+        server, no connect-screen flash. The connect screen shows only when there's a real choice to
+        make: first run, missing required config, or a dead/forgotten server.
     </p>
     <div class="mt-2 overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table class="w-full text-sm">
@@ -30,11 +31,11 @@ import CodeBlock from '$browser/CodeBlock.svelte'
                     <td class="px-4 py-2 font-mono text-slate-600">Start server</td>
                     <td class="px-4 py-2 text-slate-600">
                         spawn the sibling server binary on a free local port, then point the window
-                        at it
+                        at it; opens the setup modal first when the app declares config (below)
                     </td>
                 </tr>
                 <tr>
-                    <td class="px-4 py-2 font-mono text-slate-600">Connect</td>
+                    <td class="px-4 py-2 font-mono text-slate-600">Connect (form)</td>
                     <td class="px-4 py-2 text-slate-600">
                         probe the entered URL is a belte server, then point the window at it
                     </td>
@@ -42,15 +43,17 @@ import CodeBlock from '$browser/CodeBlock.svelte'
                 <tr>
                     <td class="px-4 py-2 font-mono text-slate-600">Disconnect</td>
                     <td class="px-4 py-2 text-slate-600">
-                        reap any embedded server and return to the connect screen
+                        reap any embedded server, forget the saved connection, return to the connect
+                        screen
                     </td>
                 </tr>
             </tbody>
         </table>
     </div>
     <p class="mt-2 text-xs text-slate-500">
-        A liveness watch bounces the window back to the connect screen if the connected server stops
-        responding. Override the screen itself with
+        The always-installed File menu drives Start server / Disconnect; the connect screen's form is
+        where you point at a remote URL. A liveness watch bounces the window back if the connected
+        server stops responding. Override the screen itself with
         <code class="font-mono">src/bundle/disconnected.svelte</code>
         .
     </p>
@@ -89,9 +92,32 @@ import CodeBlock from '$browser/CodeBlock.svelte'
                         custom top-level menus, inserted between Edit and Window
                     </td>
                 </tr>
+                <tr>
+                    <td class="px-4 py-2 font-mono">config</td>
+                    <td class="px-4 py-2 text-slate-600">—</td>
+                    <td class="px-4 py-2 text-slate-600">
+                        Standard Schema of env the embedded server needs; drives the first-run setup
+                        modal
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
+</section>
+
+<section class="mt-6 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600">
+    <h2 class="text-sm font-semibold text-slate-900">First-run config</h2>
+    <p class="mt-1">
+        A <code class="font-mono">config</code> schema on the window declares the env the embedded
+        server needs. Its JSON Schema drives a setup modal on the connect screen — each property is
+        one env var the server reads via <code class="font-mono">Bun.env</code>, and the standard
+        slots map to the form: <code class="font-mono">title</code> → label,
+        <code class="font-mono">description</code> → hint,
+        <code class="font-mono">format: 'password'</code> → masked input,
+        <code class="font-mono">default</code> → prefill. Answers persist to a per-user data-dir
+        <code class="font-mono">.env</code>; a required key with no default is what makes the modal
+        appear when you click Start.
+    </p>
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600">
@@ -132,6 +158,7 @@ import CodeBlock from '$browser/CodeBlock.svelte'
     <CodeBlock
         title="src/bundle/window.ts — this app's window config"
         code={`import type { BundleWindow } from '@briancray/belte/bundle/BundleWindow'
+import { z } from 'zod'
 
 export default {
     title: 'belte kitchen-sink',
@@ -147,6 +174,12 @@ export default {
             ],
         },
     ],
+    config: z.object({
+        // required, no default → forces the setup modal on first Start
+        HOST_ROOT: z.string().meta({ title: 'Content folder', description: 'Absolute path the server reads content from' }),
+        API_KEY: z.string().optional().meta({ title: 'API key', format: 'password' }),
+        WELCOME_MESSAGE: z.string().default('Hello from the kitchen sink').optional().meta({ title: 'Welcome message' }),
+    }),
 } satisfies BundleWindow`} />
 
     <CodeBlock
@@ -161,6 +194,10 @@ $effect(() => onMenu('open-mcp', () => void navigate('/mcp')))
 
 // or catch-all: every name through one handler
 // $effect(() => onMenu((name) => { ... }))`} />
+
+    <CodeBlock
+        title="any server handler reads config straight off the env"
+        code={`const root = Bun.env.HOST_ROOT   // delivered by the setup modal → data-dir .env`} />
 
     <CodeBlock
         title="build the bundle (host platform)"
