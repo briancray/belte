@@ -1,3 +1,4 @@
+import { dirname } from 'node:path'
 import { buildDisconnected } from './buildDisconnected.ts'
 import { compile } from './compile.ts'
 import { ensureWebviewLib } from './lib/bundle/ensureWebviewLib.ts'
@@ -11,6 +12,7 @@ import { exitOnBuildFailure } from './lib/shared/exitOnBuildFailure.ts'
 import { loadSvelteConfig } from './lib/shared/loadSvelteConfig.ts'
 import { log } from './lib/shared/log.ts'
 import { programNameForPackage } from './lib/shared/programNameForPackage.ts'
+import { shippedEnvPath } from './lib/shared/shippedEnvPath.ts'
 import { serverBuildPlugins } from './serverBuildPlugins.ts'
 
 const APP_ENTRY = new URL('./appEntry.ts', import.meta.url).pathname
@@ -57,15 +59,19 @@ export async function bundleApp({ cwd = process.cwd() }: { cwd?: string } = {}):
     await compile({ cwd, target, outfile: `${binDir}/${serverBinaryFilename()}` })
 
     /*
-    Opt-in: ship the project's `.env.bundle` as the binary-dir `.env`, which the
+    Opt-in: ship the project's `.env.bundle` as the shipped `.env`, which the
     server loads at boot (loadEnvFromBinaryDir) as its default config layer. A
     dedicated file, never the working `.env` — a compiled bundle is extractable,
     so only ship-safe defaults belong here; user-specific/secret values come from
-    the data-dir `.env` instead. Skipped when absent.
+    the data-dir `.env` instead. shippedEnvPath places it under Contents/Resources
+    in a macOS `.app` (sealed as a resource, so it survives codesign) and beside
+    the binaries otherwise. Skipped when absent.
     */
     const bundleEnv = Bun.file(`${cwd}/.env.bundle`)
     if (await bundleEnv.exists()) {
-        await Bun.write(`${binDir}/.env`, bundleEnv)
+        const envPath = shippedEnvPath(binDir)
+        await Bun.$`mkdir -p ${dirname(envPath)}`.quiet()
+        await Bun.write(envPath, bundleEnv)
     }
 
     // 2. Connect screen — bake dist/bundle-disconnected.html before the launcher
