@@ -1,5 +1,11 @@
 # @briancray/belte
 
+## 0.5.2
+
+### Patch Changes
+
+- [#15](https://github.com/briancray/belte/pull/15) [`7e3c96c`](https://github.com/briancray/belte/commit/7e3c96cd969e3f59c4be0e773478e56d21688874) Thanks [@briancray](https://github.com/briancray)! - Ship the bundle's `.env` under `Contents/Resources/` in a macOS `.app` instead of `Contents/MacOS/`. `codesign` seals `Contents/MacOS/` as code, so a data file there couldn't survive signing and reloading; `Resources` is sealed as a resource. A new `shippedEnvPath` helper centralizes the layout so the build writer and both boot readers agree on the path. The flat (non-macOS) layout is unchanged.
+
 ## 0.5.1
 
 ### Patch Changes
