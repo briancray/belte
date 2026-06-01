@@ -14,6 +14,7 @@ import { appDataDir } from './lib/shared/appDataDir.ts'
 import { log } from './lib/shared/log.ts'
 import { readEnvFile } from './lib/shared/readEnvFile.ts'
 import { serializeEnv } from './lib/shared/serializeEnv.ts'
+import { shippedEnvPath } from './lib/shared/shippedEnvPath.ts'
 
 /*
 The bundle's control server, run in a Worker so it owns its own thread.
@@ -285,9 +286,11 @@ function dataDirEnvPath(): string {
     return join(appDataDir(programName), '.env')
 }
 
-// The shipped `.env` beside the server binary (the bundle's default config layer).
+// The bundle's shipped `.env` (its default config layer), resolved from the binary
+// directory — same source loadEnvFromBinaryDir reads at boot (dirname of the running
+// binary): beside the binary in the flat layout, under Resources in a `.app`.
 function binaryDirEnvPath(): string {
-    return join(dirname(resolveServerBinary()), '.env')
+    return shippedEnvPath(dirname(process.execPath))
 }
 
 /*
