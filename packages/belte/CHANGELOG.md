@@ -1,5 +1,13 @@
 # @briancray/belte
 
+## 0.5.3
+
+### Patch Changes
+
+- extract shared build helpers and centralize bundle layout ([`64d71de`](https://github.com/briancray/belte/commit/64d71de9d4b28130775545f1047fa985545b3aaa))
+
+- [#18](https://github.com/briancray/belte/pull/18) [`90a1713`](https://github.com/briancray/belte/commit/90a17136f53bab6f860c486e415547364fd54ca5) Thanks [@briancray](https://github.com/briancray)! - Extract repeated build-time logic into single-purpose shared helpers and collapse the per-virtual manifest codegen. `manifestModule` builds the `belte:rpc`/`sockets`/`prompts`/`pages`/`layouts` virtual modules from one path; `bundleLayout` derives `libDir`/`resourcesDir`/`envPath` from `binDir` (replacing the narrower `shippedEnvPath`) so the build writer and boot readers agree; `readPackageJson`, `exeSuffix`, `browserClientFlags`, and `memoizeByKey` deduplicate the package.json reader, the windows `.exe` suffix, the browser proxies, and the server route loaders. No public API change; behaviour preserved.
+
 ## 0.5.2
 
 ### Patch Changes
