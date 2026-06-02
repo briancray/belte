@@ -1,5 +1,13 @@
 # @briancray/belte
 
+## 0.7.0
+
+### Minor Changes
+
+- [#23](https://github.com/briancray/belte/pull/23) [`46f62ef`](https://github.com/briancray/belte/commit/46f62efebcdd9415b97435f17a70c91a0319a402) Thanks [@briancray](https://github.com/briancray)! - `cache()`'s `scope` option now accepts an array of tags, not just a single tag, so a call can join multiple invalidation groups (`scope: ['media', 'sources']`). `cache.invalidate({ scope })` drops every entry sharing any of the requested tags, and a re-read merges new tags into an entry rather than replacing them.
+  </content>
+  </invoke>
+
 ## 0.6.0
 
 ### Minor Changes
