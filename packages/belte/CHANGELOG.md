@@ -1,5 +1,21 @@
 # @briancray/belte
 
+## 0.8.0
+
+### Minor Changes
+
+- keep streams alive past Bun's idle timeout ([`9339175`](https://github.com/briancray/belte/commit/9339175a4b73d336704bbd8ff61ecf88f8582cfa))
+
+- [#27](https://github.com/briancray/belte/pull/27) [`78305d1`](https://github.com/briancray/belte/commit/78305d18392cd916e39475a37eaafc486d3cdabf) Thanks [@briancray](https://github.com/briancray)! - Streaming responses (sse / jsonl / socket SSE tail) now opt out of Bun's per-connection idle timeout, so a stream that stays quiet between frames is no longer closed mid-flight. A new `idleTimeout` option (and `BELTE_IDLE_TIMEOUT` env, 0–255 seconds, default 10) sets the floor for ordinary unary handlers that legitimately compute longer than Bun's 10s default.
+
+### Patch Changes
+
+- dedup env-int parsing and route-dispatch 405s ([`617cc3c`](https://github.com/briancray/belte/commit/617cc3c0c5a763cd8d5e8c4bb0e74ee852500a94))
+
+- extract route dispatch into a testable createRouteDispatcher ([`a684227`](https://github.com/briancray/belte/commit/a6842275a3fa444162571c6fccfcbadd13b712a5))
+
+- extract request-scope runner into a testable seam ([`ce6f65c`](https://github.com/briancray/belte/commit/ce6f65c6cde3f070d4d55574979d21b362765aee))
+
 ## 0.7.0
 
 ### Minor Changes
