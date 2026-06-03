@@ -1,5 +1,17 @@
 # @briancray/belte
 
+## 0.9.0
+
+### Minor Changes
+
+- [#31](https://github.com/briancray/belte/pull/31) [`7f43099`](https://github.com/briancray/belte/commit/7f43099e6d9bab1d3de50b37ce241c4b3e171849) Thanks [@briancray](https://github.com/briancray)! - The standalone CLI (`belte cli`) now ships the compiled server beside it and gains an interactive session. `<app> /connect <url>` connects to a remote server, `<app> /start` boots a local instance, `<app> /disconnect` forgets the saved connection, and `<app>` alone resumes it — each opening a prompt where bare words run RPC commands and `/connect` / `/start` / `/disconnect` / `/help` / `/exit` manage the connection. One-shot dispatch (`<app> <command> --flags`) is unchanged for scripting. The connection is remembered in the per-user data dir; with none saved the CLI uses the baked `APP_URL`. The download tarball now bundles the server binary so `/start` works out of the box.
+
+- [#31](https://github.com/briancray/belte/pull/31) [`9f4500a`](https://github.com/briancray/belte/commit/9f4500a953579534088396c11da14538b56edb65) Thanks [@briancray](https://github.com/briancray)! - `belte bundle` now reads the shipped default-config file from `bundle.env` instead of `.env.bundle`. The old name masqueraded as a member of Bun's `.env.*` autoload family, implying `bun dev`/`bun start` would load it (they never did) and that it should be gitignored like `.env` (it should be committed — it's ship-safe defaults, and a compiled bundle is extractable anyway). The new name reflects what the file is: a build input, not a runtime env overlay. Rename your project's `.env.bundle` to `bundle.env`.
+
+### Patch Changes
+
+- [#31](https://github.com/briancray/belte/pull/31) [`a03d4ac`](https://github.com/briancray/belte/commit/a03d4acfbc6e2d596a9d7e9481fb91e437378ca7) Thanks [@briancray](https://github.com/briancray)! - `belte dev` and `belte start` no longer load the bundle's config layers (the per-user data-dir `.env` and the shipped binary-dir `bundle.env`). Those layers exist for the compiled standalone app — a bundle launched via `open` has cwd `/` and gets its config there — but the server entry loaded them unconditionally, so dev/start would also inherit them. A `PORT` saved in the data-dir `.env` (written by a bundle's connect screen) then defeated dev's auto port-scan, binding that exact port and throwing `EADDRINUSE` instead of moving on. Dev/start now keep to their project-local CWD `.env` alone; the data-dir/binary-dir layers load only when running as a `bun build --compile` standalone binary.
+
 ## 0.8.1
 
 ### Patch Changes
