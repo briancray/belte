@@ -15,7 +15,11 @@ function fakeServer(): { server: Server<unknown>; calls: Array<[Request, number]
 
 describe('disableIdleTimeoutForStream', () => {
     test('clears the idle timeout for the streaming content types', () => {
-        for (const contentType of ['text/event-stream; charset=utf-8', 'application/jsonl']) {
+        for (const contentType of [
+            'text/event-stream; charset=utf-8',
+            'application/jsonl',
+            'application/x-ndjson',
+        ]) {
             const { server, calls } = fakeServer()
             const req = new Request('https://test.local/feed')
             const response = new Response(new ReadableStream(), {

@@ -293,9 +293,9 @@ export async function createServer({
         ) => Promise<Response>,
     ): Promise<Response> {
         return runWithRequestScope(req, { app, logRequests }, async (store) => {
-            const response = !app?.handle
-                ? await handler(req, pathParams, store)
-                : await app.handle(req, (next) => handler(next, pathParams, store))
+            const response = app?.handle
+                ? await app.handle(req, (next) => handler(next, pathParams, store))
+                : await handler(req, pathParams, store)
             // Streaming bodies (sse/jsonl, socket tail) opt out of the idle timeout.
             return disableIdleTimeoutForStream(server, req, response)
         })

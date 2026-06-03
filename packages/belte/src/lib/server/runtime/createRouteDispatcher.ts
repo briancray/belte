@@ -22,6 +22,14 @@ type RenderPage = (
     store: RequestStore,
 ) => Promise<Response>
 
+/* The framework's 405 — `Allow` names the permitted verb(s), body and NO_STORE shared so the rpc and page branches can't drift. */
+function methodNotAllowed(allow: string): Response {
+    return new Response('Method Not Allowed', {
+        status: 405,
+        headers: { Allow: allow, 'Cache-Control': NO_STORE },
+    })
+}
+
 /*
 Owns route dispatch: deciding, per registered URL, whether a request hits an
 rpc verb, a page render, or nothing — and the method-matching that picks the
@@ -75,21 +83,11 @@ export function createRouteDispatcher({
                 if (fn && fn.method === method) {
                     return fn.fetch(req)
                 }
-                const allow = fn ? fn.method : ''
-                return new Response('Method Not Allowed', {
-                    status: 405,
-                    headers: {
-                        Allow: allow,
-                        'Cache-Control': NO_STORE,
-                    },
-                })
+                return methodNotAllowed(fn ? fn.method : '')
             }
             if (hasPage) {
                 if (method !== 'GET' && method !== 'HEAD') {
-                    return new Response('Method Not Allowed', {
-                        status: 405,
-                        headers: { Allow: 'GET, HEAD', 'Cache-Control': NO_STORE },
-                    })
+                    return methodNotAllowed('GET, HEAD')
                 }
                 return renderPage(routeUrl, pathParams, store)
             }
