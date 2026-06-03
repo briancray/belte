@@ -8,18 +8,14 @@ import { createMcpResourceServer } from '../../mcp/createMcpResourceServer.ts'
 import { setMcpResourceServer } from '../../mcp/mcpResourceServerSlot.ts'
 import type { McpServer } from '../../mcp/types/McpServer.ts'
 import { NO_STORE, SSR_CACHE_CONTROL } from '../../shared/cacheControlValues.ts'
-import { createCacheStore } from '../../shared/createCacheStore.ts'
 import { isDebugEnabled } from '../../shared/isDebugEnabled.ts'
 import { log } from '../../shared/log.ts'
-import { memoizeByKey } from '../../shared/memoizeByKey.ts'
 import { nearestLayoutPrefix, normalizeLayoutPrefixes } from '../../shared/nearestLayoutPrefix.ts'
 import { toBunRoutePattern } from '../../shared/toBunRoutePattern.ts'
 import type { AppModule } from '../AppModule.ts'
 import { handleCliDownload } from '../cli/handleCliDownload.ts'
 import { handleCliInstall } from '../cli/handleCliInstall.ts'
 import type { PromptRoutes } from '../prompts/types/PromptRoutes.ts'
-import type { HttpVerb } from '../rpc/types/HttpVerb.ts'
-import type { RemoteFunction } from '../rpc/types/RemoteFunction.ts'
 import type { RemoteRoutes } from '../rpc/types/RemoteRoutes.ts'
 import { createSocketDispatcher } from '../sockets/createSocketDispatcher.ts'
 import type { SocketRoutes } from '../sockets/types/SocketRoutes.ts'
@@ -29,12 +25,14 @@ import { cacheControlForAsset } from './cacheControlForAsset.ts'
 import { containsTraversal } from './containsTraversal.ts'
 import { createAssetHeaderCache } from './createAssetHeaderCache.ts'
 import { createPublicAssetServer } from './createPublicAssetServer.ts'
+import { createRouteDispatcher } from './createRouteDispatcher.ts'
 import { findOpenPort } from './findOpenPort.ts'
 import { globToPathSet } from './globToPathSet.ts'
+import { internalErrorResponse } from './internalErrorResponse.ts'
 import { logBrowserOnlyRoutes } from './logBrowserOnlyRoutes.ts'
 import { parsePort } from './parsePort.ts'
 import { ensureRegistriesLoaded, setRegistryManifests } from './registryManifests.ts'
-import { requestContext } from './requestContext.ts'
+import { runWithRequestScope } from './runWithRequestScope.ts'
 import { safeJsonForScript } from './safeJsonForScript.ts'
 import { serializeCacheSnapshot } from './serializeCacheSnapshot.ts'
 import { setActiveServer } from './setActiveServer.ts'
@@ -47,21 +45,6 @@ function wantsJson(req: Request): boolean {
 
 // SSR placeholders the shell carries; filled in a single pass per render.
 const SSR_MARKER = /<!--ssr:(head|body|state)-->/g
-
-/*
-The framework's default 500 response — a `<pre>` stack dump. Shared by the
-per-request catch and Bun.serve's global error() fallback so the two can't
-drift. Only reached when the app supplies no `handleError` hook.
-*/
-function internalErrorResponse(err: unknown): Response {
-    return new Response(`<pre>${String((err as Error)?.stack ?? err)}</pre>`, {
-        status: 500,
-        headers: {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': NO_STORE,
-        },
-    })
-}
 
 const IDENTITY_PATH = '/__belte/identity'
 const SOCKETS_PATH = '/__belte/sockets'
@@ -78,8 +61,6 @@ conventional root path where external tooling and scanners expect to find it
 /__belte/ namespace.
 */
 const OPENAPI_PATH = '/openapi.json'
-
-type AnyRemoteFunction = RemoteFunction<unknown, unknown>
 
 /*
 Starts a Bun HTTP server that ties together the framework conventions:
@@ -152,26 +133,6 @@ export async function createServer({
               '**/*.zst',
               (file) => `/_app/${file.replace(/\.zst$/, '')}`,
           )
-
-    const loadRpc = memoizeByKey((url): Promise<AnyRemoteFunction | undefined> | undefined => {
-        const loader = rpc[url]
-        if (!loader) {
-            return undefined
-        }
-        /*
-        Each $rpc module has exactly one named export, validated at build
-        time. Pick the first export that looks like a RemoteFunction so the
-        framework stays tolerant of incidental re-exports.
-        */
-        return loader().then((mod) => {
-            for (const value of Object.values(mod)) {
-                if (typeof value === 'function' && 'method' in value && 'url' in value) {
-                    return value as AnyRemoteFunction
-                }
-            }
-            return undefined
-        })
-    })
 
     const logRequests = isDebugEnabled('belte')
 
@@ -274,51 +235,11 @@ export async function createServer({
     }
 
     /*
-    Per-route handler bound by buildRoutes(). Receives a BunRequest with
-    `params` filled from the route pattern (only pages use path params;
-    $rpc URLs are flat). Page URLs (under src/browser/pages/) serve GET/HEAD by
-    rendering; rpc URLs (under src/server/rpc/, prefixed with `/rpc/`) dispatch
-    to the single declared verb-bound handler. URLs are disjoint by
-    construction so each path goes to exactly one branch.
+    Route dispatch — rpc-vs-page-vs-404 resolution and method matching — lives
+    behind createRouteDispatcher; renderPage is injected so those decisions stay
+    testable without SSR. buildRoutes() below binds the returned handler per URL.
     */
-    function buildRouteHandler(routeUrl: string) {
-        const hasPage = pages[routeUrl] !== undefined
-        const hasRpc = rpc[routeUrl] !== undefined
-        return async function routeHandler(
-            req: Request,
-            pathParams: Record<string, string>,
-            store: RequestStore,
-        ): Promise<Response> {
-            const method = req.method as HttpVerb
-            if (hasRpc) {
-                const fn = await loadRpc(routeUrl)
-                if (fn && fn.method === method) {
-                    return fn.fetch(req)
-                }
-                const allow = fn ? fn.method : ''
-                return new Response('Method Not Allowed', {
-                    status: 405,
-                    headers: {
-                        Allow: allow,
-                        'Cache-Control': NO_STORE,
-                    },
-                })
-            }
-            if (hasPage) {
-                if (method !== 'GET' && method !== 'HEAD') {
-                    return new Response('Method Not Allowed', {
-                        status: 405,
-                        headers: { Allow: 'GET, HEAD', 'Cache-Control': NO_STORE },
-                    })
-                }
-                return renderPage(routeUrl, pathParams, store)
-            }
-            return new Response('Not Found', {
-                status: 404,
-                headers: { 'Cache-Control': NO_STORE },
-            })
-        }
-    }
+    const buildRouteHandler = createRouteDispatcher({ pages, rpc, renderPage })
 
     /*
     Page URLs (folder paths, e.g. `/media/[id]`) get translated to Bun's
@@ -361,42 +282,11 @@ export async function createServer({
             store: RequestStore,
         ) => Promise<Response>,
     ): Promise<Response> {
-        return runWithStore(req, async (store) => {
+        return runWithRequestScope(req, { app, logRequests }, async (store) => {
             if (!app?.handle) {
                 return handler(req, pathParams, store)
             }
             return app.handle(req, (next) => handler(next, pathParams, store))
-        })
-    }
-
-    function runWithStore(
-        req: Request,
-        body: (store: RequestStore) => Promise<Response>,
-    ): Promise<Response> {
-        const url = new URL(req.url)
-        const store: RequestStore = {
-            url,
-            req,
-            cache: createCacheStore(),
-        }
-        return requestContext.run(store, async () => {
-            const start = logRequests ? Bun.nanoseconds() : 0
-            let response: Response
-            try {
-                response = await body(store)
-            } catch (error) {
-                if (app?.handleError) {
-                    response = await app.handleError(error, req)
-                } else {
-                    log.error(error)
-                    response = internalErrorResponse(error)
-                }
-            }
-            if (logRequests) {
-                const ms = (Bun.nanoseconds() - start) / 1e6
-                log.request(req.method, `${url.pathname}${url.search}`, response.status, ms)
-            }
-            return response
         })
     }
 
