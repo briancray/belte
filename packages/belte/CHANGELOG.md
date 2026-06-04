@@ -1,5 +1,11 @@
 # @briancray/belte
 
+## 0.9.1
+
+### Patch Changes
+
+- [#33](https://github.com/briancray/belte/pull/33) [`e8c6d74`](https://github.com/briancray/belte/commit/e8c6d74be8c4033c58fb4b23fd1861a68df640ca) Thanks [@briancray](https://github.com/briancray)! - Root-absolute `url()` references in bundled stylesheets (e.g. `url(/fonts/x.woff2)`) are now marked external instead of being resolved against the project root at build time. Those paths are served from `public/` at the site root at runtime, so Bun's CSS bundler previously failed the whole build trying to find them on disk. The literal `/…` path now survives into the emitted CSS, where the public asset server serves it. Relative `url()`s still resolve and bundle as before.
+
 ## 0.9.0
 
 ### Minor Changes
