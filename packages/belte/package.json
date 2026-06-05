@@ -48,6 +48,7 @@
         "./server/request": "./src/lib/server/request.ts",
         "./server/cookies": "./src/lib/server/cookies.ts",
         "./server/env": "./src/lib/server/env.ts",
+        "./server/appDataDir": "./src/lib/server/appDataDir.ts",
         "./server/server": "./src/lib/server/server.ts",
         "./server/AppModule": "./src/lib/server/AppModule.ts",
         "./server/rpc/defineVerb": "./src/lib/server/rpc/defineVerb.ts",

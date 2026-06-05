@@ -30,7 +30,7 @@ a bare word runs a command:
   <cmd> [--flags]                 → one-shot RPC against the resumed target
 
 The connection verbs are `/`-prefixed only — no bare aliases — so a bare word is
-always an RPC command and never collides. Env layers APP_URL/APP_TOKEN (shell >
+always an RPC command and never collides. Env layers BELTE_APP_URL/BELTE_APP_TOKEN (shell >
 data-dir > binary-dir) supply the baked default a fresh download resumes against.
 */
 export async function runCli({

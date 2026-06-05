@@ -94,10 +94,10 @@ async function computeBinary(
 /*
 Handles GET /__belte/cli/<platform> — streams a gzipped tarball
 containing the platform-specific thin binary + a `.env` carrying
-APP_URL (and APP_TOKEN if the inbound request was authenticated).
+BELTE_APP_URL (and BELTE_APP_TOKEN if the inbound request was authenticated).
 
 Thin binaries live at `dist/cli-thin/<platform>/<programName>`
-(produced by `belte cli` with APP_URL set). Missing platforms produce
+(produced by `belte cli` with BELTE_APP_URL set). Missing platforms produce
 404 — the install script reports it, doesn't try to fall back.
 */
 export async function handleCliDownload(
