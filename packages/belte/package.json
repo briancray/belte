@@ -53,15 +53,13 @@
         "./server/rpc/defineVerb": "./src/lib/server/rpc/defineVerb.ts",
         "./server/sockets/defineSocket": "./src/lib/server/sockets/defineSocket.ts",
         "./server/prompts/definePrompt": "./src/lib/server/prompts/definePrompt.ts",
-        "./server/prompts/renderPromptTemplate": "./src/lib/server/prompts/renderPromptTemplate.ts",
         "./browser/page": "./src/lib/browser/page.svelte.ts",
         "./browser/navigate": "./src/lib/browser/page.svelte.ts",
         "./browser/subscribe": "./src/lib/browser/subscribe.ts",
-        "./browser/remoteProxy": "./src/lib/browser/remoteProxy.ts",
-        "./browser/socketProxy": "./src/lib/browser/socketProxy.ts",
         "./shared/cache": "./src/lib/shared/cache.ts",
         "./shared/HttpError": "./src/lib/shared/HttpError.ts",
         "./shared/withJsonSchema": "./src/lib/shared/withJsonSchema.ts",
+        "./shared/log": "./src/lib/shared/log.ts",
         "./mcp/createMcpServer": "./src/lib/mcp/createMcpServer.ts",
         "./bundle/BundleWindow": "./src/lib/bundle/BundleWindow.ts",
         "./bundle/BundleMenu": "./src/lib/bundle/BundleMenu.ts",
@@ -69,12 +67,17 @@
         "./bundle/onMenu": "./src/lib/bundle/onMenu.ts",
         "./test/createTestClient": "./src/lib/test/createTestClient.ts",
         "./test/clearVerbRegistry": "./src/lib/test/clearVerbRegistry.ts",
+        "./tsconfig": "./tsconfig.app.json",
+
         "./build": "./src/build.ts",
         "./compile": "./src/compile.ts",
         "./preload": "./src/preload.ts",
         "./svelte-plugin": "./src/sveltePlugin.ts",
         "./resolver-plugin": "./src/belteResolverPlugin.ts",
-        "./tsconfig": "./tsconfig.app.json"
+
+        "./browser/remoteProxy": "./src/lib/browser/remoteProxy.ts",
+        "./browser/socketProxy": "./src/lib/browser/socketProxy.ts",
+        "./server/prompts/renderPromptTemplate": "./src/lib/server/prompts/renderPromptTemplate.ts"
     },
     "bin": {
         "belte": "./bin/belte.ts"
