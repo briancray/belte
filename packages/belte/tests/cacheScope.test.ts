@@ -79,33 +79,6 @@ describe('cache.invalidate selector', () => {
         expect(store.entries.size).toBe(1)
     })
 
-    test('{ key } drops the single entry stored under that key override', async () => {
-        const getPosts = fakeRemote<undefined>('GET', '/rpc/posts')
-        const getTags = fakeRemote<undefined>('GET', '/rpc/tags')
-        const store = cacheStoreSlot.fallback!
-
-        await cache(getPosts, { key: 'home-feed' })()
-        await cache(getTags, { key: 'sidebar' })()
-        expect(store.entries.size).toBe(2)
-
-        cache.invalidate({ key: 'home-feed' })
-        expect(Array.from(store.entries.keys())).toEqual(['sidebar'])
-    })
-
-    test('{ key, scope } drops the union of both criteria', async () => {
-        const getPosts = fakeRemote<undefined>('GET', '/rpc/posts')
-        const getTags = fakeRemote<undefined>('GET', '/rpc/tags')
-        const getUser = fakeRemote<undefined>('GET', '/rpc/user')
-        const store = cacheStoreSlot.fallback!
-
-        await cache(getPosts, { key: 'home-feed' })()
-        await cache(getTags, { scope: 'dashboard' })()
-        await cache(getUser, { scope: 'profile' })()
-
-        cache.invalidate({ key: 'home-feed', scope: 'dashboard' })
-        expect(Array.from(store.entries.keys())).toEqual(['GET /rpc/user'])
-    })
-
     test('a re-read with a scope tags an entry that was created without one', async () => {
         const getPosts = fakeRemote<undefined>('GET', '/rpc/posts')
         const store = cacheStoreSlot.fallback!

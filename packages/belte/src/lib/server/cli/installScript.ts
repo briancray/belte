@@ -5,7 +5,7 @@ platform-specific tarball and extracts it into `$BELTE_INSTALL_DIR`
 (default `~/.local/bin`). The tarball already contains the `.env` next
 to the binary — no separate config write step in the script.
 
-The script is rendered server-side so `<APP_URL>` is the request's own
+The script is rendered server-side so `<BELTE_APP_URL>` is the request's own
 origin and the embedded curl URL needs no escaping or quoting beyond
 basic shell hygiene.
 */

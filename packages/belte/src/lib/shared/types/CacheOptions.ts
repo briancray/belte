@@ -1,12 +1,13 @@
 /*
-Options for cache(). `key` overrides the auto-derived key (method+url+args for a
-remote function, producer-reference+args for a plain producer) — useful when
-sharing entries across calls or stripping noisy args. `ttl` is the
+Options for cache(). The key is always auto-derived (method+url+args for a remote
+function, producer-reference+args for a plain producer): hoist a producer to a
+stable reference to share its entry across calls. `ttl` is the
 milliseconds-past-resolve that the entry stays live: omitted = forever, 0 =
 dedupe only (entry dropped once the promise settles), any other number = TTL.
 `scope` is one or more free-form tags grouping unrelated calls so one
 `cache.invalidate({ scope })` drops every entry sharing any of them — pass an
-array when a call belongs to multiple invalidation groups.
+array when a call belongs to multiple invalidation groups. A unique tag (e.g. a
+uuid) shared by a set of calls gives them their own private invalidation group.
 
 `global` opts the entry into the process-level store instead of the default
 request-scoped one (server) — so a value computed in one request is reused by
@@ -25,7 +26,6 @@ refetch-after-invalidate; the first fetch and arg-change fetches stay immediate.
 Set at most one.
 */
 export type CacheOptions = {
-    key?: string | unknown[] | Record<string, unknown>
     ttl?: number
     scope?: string | string[]
     global?: boolean

@@ -2,8 +2,8 @@ import { serializeEnv } from '../../shared/serializeEnv.ts'
 
 /*
 Generates the `.env` file content shipped alongside the CLI binary in
-the download tarball. APP_URL is always present (derived from the
-inbound request's origin); APP_TOKEN is included only when the inbound
+the download tarball. BELTE_APP_URL is always present (derived from the
+inbound request's origin); BELTE_APP_TOKEN is included only when the inbound
 request carried an Authorization: Bearer header, so an authenticated
 download bakes the caller's credential into the binary's env.
 
@@ -13,7 +13,7 @@ arrives back in subsequent calls.
 */
 export function buildEnvContent(appUrl: string, bearerToken: string | undefined): string {
     return serializeEnv({
-        APP_URL: appUrl,
-        ...(bearerToken ? { APP_TOKEN: bearerToken } : {}),
+        BELTE_APP_URL: appUrl,
+        ...(bearerToken ? { BELTE_APP_TOKEN: bearerToken } : {}),
     })
 }

@@ -15,7 +15,7 @@ Reads the saved intent:
   - embedded         → boot a fresh local instance (bounded; undefined on failure)
   - url, still alive → connect to it
   - url, now dead    → warn, undefined (caller shows the not-connected prompt)
-  - nothing recorded → the baked/shell APP_URL default, else undefined
+  - nothing recorded → the baked/shell BELTE_APP_URL default, else undefined
 Returns undefined when there's nothing live to talk to.
 */
 export async function resolveCliTarget(programName: string): Promise<CliTarget | undefined> {
@@ -37,12 +37,12 @@ export async function resolveCliTarget(programName: string): Promise<CliTarget |
     if (last?.kind === 'url') {
         const identity = await probeBelteServer(last.url)
         if (identity) {
-            return { url: last.url, token: process.env.APP_TOKEN, name: identity.name }
+            return { url: last.url, token: process.env.BELTE_APP_TOKEN, name: identity.name }
         }
         log.warn(`last server at ${last.url} is not responding`)
         return undefined
     }
     // Nothing recorded — fall back to the baked default / shell override.
-    const appUrl = process.env.APP_URL
-    return appUrl ? { url: appUrl, token: process.env.APP_TOKEN } : undefined
+    const appUrl = process.env.BELTE_APP_URL
+    return appUrl ? { url: appUrl, token: process.env.BELTE_APP_TOKEN } : undefined
 }

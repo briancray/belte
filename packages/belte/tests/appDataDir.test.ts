@@ -19,3 +19,17 @@ test('roots under the platform-standard per-user data location', () => {
               : (process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'))
     expect(dir).toBe(join(expectedRoot, 'chill'))
 })
+
+test('BELTE_DATA_DIR overrides the platform default as-is, no program name appended', () => {
+    const previous = process.env.BELTE_DATA_DIR
+    process.env.BELTE_DATA_DIR = '/tmp/belte-devdata'
+    try {
+        expect(appDataDir('chill')).toBe('/tmp/belte-devdata')
+    } finally {
+        if (previous === undefined) {
+            delete process.env.BELTE_DATA_DIR
+        } else {
+            process.env.BELTE_DATA_DIR = previous
+        }
+    }
+})

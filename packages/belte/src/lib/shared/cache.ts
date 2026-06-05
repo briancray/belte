@@ -33,10 +33,9 @@ returning a Promise:
 Remote calls key on fn.method + fn.url + args and store the underlying Response
 (the decoded view is derived on the way out for the non-raw variant; both share
 one entry). Producers have no wire identity, so they key on the producer's
-reference + args — pass a hoisted/stable function (an inline arrow is a new
-reference every call and never dedupes) or an explicit `options.key`, and the
-promise is stored and handed back as-is (no Response, no decode, no SSR
-snapshot).
+reference + args — pass a hoisted/stable function to dedupe (an inline arrow is a
+new reference every call and never does), and the promise is stored and handed
+back as-is (no Response, no decode, no SSR snapshot).
 
 `options.global` puts the entry in the process-level store instead of the
 request-scoped one, so a value computed in one request is reused by later
@@ -104,7 +103,8 @@ export function cache<Args, Return>(
         if (!isRemote) {
             return invokeProducer(store, fn as Producer<Args, Return>, args, options)
         }
-        const key = resolveKey(rawFn as RawRemoteFunction<Args>, args, options?.key)
+        const remote = rawFn as RawRemoteFunction<Args>
+        const key = keyForRemoteCall(remote.method, remote.url, args)
         store.subscribe(key)
         const existing = store.entries.get(key)
         if (existing) {
@@ -150,9 +150,9 @@ export function cache<Args, Return>(
 }
 
 /*
-Producer path: key on the producer's reference + args (or an explicit override),
-share the in-flight/retained promise on hit, and store the value promise as-is
-on miss — no Response, no decode, no SSR request metadata.
+Producer path: key on the producer's reference + args, share the
+in-flight/retained promise on hit, and store the value promise as-is on miss — no
+Response, no decode, no SSR request metadata.
 */
 function invokeProducer<Args, Return>(
     store: CacheStore,
@@ -160,7 +160,7 @@ function invokeProducer<Args, Return>(
     args: Args | undefined,
     options: CacheOptions | undefined,
 ): Promise<Return> {
-    const key = options?.key !== undefined ? canonicalKey(options.key) : producerKey(producer, args)
+    const key = producerKey(producer, args)
     store.subscribe(key)
     const existing = store.entries.get(key)
     if (existing) {
@@ -279,7 +279,7 @@ function shareable(promise: Promise<Response>): Promise<Response> {
 type Selector<Args, Return> =
     | AnyRemote<Args, Return>
     | Producer<Args, Return>
-    | Pick<CacheOptions, 'key' | 'scope'>
+    | Pick<CacheOptions, 'scope'>
 
 /*
 Compiles a selector into an entry predicate shared by invalidate() and
@@ -293,10 +293,8 @@ pending() so both interpret the call shapes identically:
   producer fn          → that producer's calls (reference id prefix). Matches
                          only if the producer was cached at least once (else it
                          has no id and nothing matches).
-  { key?, scope? }     → the named entry and/or any entry sharing a scope tag;
-                         both fields present → the union. `key` is canonicalised
-                         like the cache() option. An empty selector matches
-                         nothing.
+  { scope }            → any entry sharing one of the requested scope tags. An
+                         empty selector matches nothing.
 */
 function selectorMatcher<Args, Return>(
     arg?: Selector<Args, Return>,
@@ -315,13 +313,11 @@ function selectorMatcher<Args, Return>(
             entry.key.startsWith(`${prefix}?`) ||
             entry.key.startsWith(`${prefix} `)
     }
-    const target = arg.key !== undefined ? canonicalKey(arg.key) : undefined
-    const requestedScopes = arg.scope === undefined ? undefined : toScopeSet(arg.scope)
-    return (entry) =>
-        (target !== undefined && entry.key === target) ||
-        (requestedScopes !== undefined &&
-            entry.scope !== undefined &&
-            intersects(entry.scope, requestedScopes))
+    if (arg.scope === undefined) {
+        return () => false
+    }
+    const requestedScopes = toScopeSet(arg.scope)
+    return (entry) => entry.scope !== undefined && intersects(entry.scope, requestedScopes)
 }
 
 /* Active + process-level stores, deduped (one tab store on the client). */
@@ -438,7 +434,7 @@ function fireRefetch(store: CacheStore, entry: CacheEntry): void {
 Reactive in-flight probe sharing invalidate's selector grammar:
   pending()                  → any rpc in flight (global progress bar)
   pending(fn)                → that function's calls (per-route spinner)
-  pending({ key?, scope? })  → a named entry and/or tagged group
+  pending({ scope })         → a tagged group
 Returns true while any matching entry's promise is unsettled across the
 request/tab and process-level stores. The read taps each store's lifecycle
 channel (track both before checking, so neither is skipped by short-circuit), so
@@ -464,17 +460,6 @@ function markLifecycle(store: CacheStore): void {
     store.events.dispatchEvent(new Event('lifecycle'))
 }
 
-function resolveKey<Args>(
-    rawFn: RawRemoteFunction<Args>,
-    args: Args | undefined,
-    override: CacheOptions['key'],
-): string {
-    if (override !== undefined) {
-        return canonicalKey(override)
-    }
-    return keyForRemoteCall(rawFn.method, rawFn.url, args)
-}
-
 /*
 Producers have no wire identity, so each is assigned a stable id on first use,
 kept in a WeakMap so it's collected with the function. The cache key is that id
@@ -495,13 +480,6 @@ function producerKey(producer: object, args: unknown): string {
 /* The producer's id without assigning one — for selectors matching prior entries. */
 function existingProducerId(producer: object): string | undefined {
     return producerIds.get(producer)
-}
-
-function canonicalKey(value: CacheOptions['key']): string {
-    if (typeof value === 'string') {
-        return value
-    }
-    return canonicalJson(value)
 }
 
 /* Normalizes a scope option (one tag or many) to a Set for O(1) membership. */
@@ -528,7 +506,7 @@ function tagScope(entry: CacheEntry, scope: CacheOptions['scope']): void {
 
 /* True when an entry's tags and the requested tags overlap on any tag. */
 function intersects(entryScopes: Set<string>, requestedScopes: Set<string>): boolean {
-    return Array.from(requestedScopes).some((scope) => entryScopes.has(scope))
+    return requestedScopes.values().some((scope) => entryScopes.has(scope))
 }
 
 function emit(store: ReturnType<typeof activeCacheStore>, keys: string[]): void {

@@ -19,5 +19,5 @@ export async function connectToServer(
         return undefined
     }
     await writeLastConnection(programName, { kind: 'url', url })
-    return { url, token: process.env.APP_TOKEN, name: identity.name }
+    return { url, token: process.env.BELTE_APP_TOKEN, name: identity.name }
 }

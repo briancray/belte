@@ -10,7 +10,7 @@ import { runCli } from './lib/cli/runCli.ts'
 Standalone CLI binary entry. Compiled with `bun build --compile` into
 `dist/cli` (or `dist/cli-thin/<platform>/` for cross-builds). The CLI is
 a thin remote client — no handler code is bundled; it talks to a running
-server over HTTP (APP_URL at runtime). The bundler emits:
+server over HTTP (BELTE_APP_URL at runtime). The bundler emits:
   - belte:cli-manifest — the per-rpc manifest (method, url, jsonSchema)
   - belte:cli-name     — the program name from package.json
   - belte:cli-chrome   — optional banner/footer text from src/cli/

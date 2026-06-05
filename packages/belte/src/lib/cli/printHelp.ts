@@ -74,8 +74,8 @@ export function printTopLevelHelp(
     console.log(`\n  --help, -h           show this help`)
     console.log(`  <command> --help     show help for a specific command`)
     console.log(`\nenv:`)
-    console.log(`  APP_URL              default server URL (baked at install; shell-overridable)`)
-    console.log(`  APP_TOKEN            sent as Authorization: Bearer <value>`)
+    console.log(`  BELTE_APP_URL        default server URL (baked at install; shell-overridable)`)
+    console.log(`  BELTE_APP_TOKEN      sent as Authorization: Bearer <value>`)
     if (footer.trim()) {
         console.log('')
         printTrimmed(footer)

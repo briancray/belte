@@ -90,7 +90,7 @@ belte — isomorphic multimodal HTTP framework for humans and machines, one Bun 
         * icon.png
 
 * Some details
-    * config/env
+    * config/env/appDataDir
     * app hooks
     * project layout
         * also suggest lib/ folders under each surface for handling lib
