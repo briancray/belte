@@ -38,14 +38,6 @@ describe('cache() producer', () => {
         expect(cacheStoreSlot.fallback!.entries.size).toBe(2)
     })
 
-    test('an explicit key dedupes across references', async () => {
-        const a = await cache(counter(), { key: 'shared' })()
-        const b = await cache(counter(), { key: 'shared' })()
-        expect(a).toBe(1)
-        expect(b).toBe(1)
-        expect(Array.from(cacheStoreSlot.fallback!.entries.keys())).toEqual(['shared'])
-    })
-
     test('args fold into the key so the same producer keys per-arg', async () => {
         const double = (n?: number) => Promise.resolve((n ?? 0) * 2)
         expect(await cache(double)(2)).toBe(4)

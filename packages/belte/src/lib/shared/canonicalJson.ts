@@ -2,8 +2,8 @@
 Stable JSON stringify: object keys are sorted recursively so equivalent values
 produce identical strings regardless of insertion order. Non-JSON values
 (functions, symbols) are dropped the same way native JSON.stringify drops them.
-Used to derive deterministic cache keys from explicit-key overrides and from
-auto-keyed POST/PUT/PATCH bodies. Walks the value once using JSON.stringify's
+Used to derive deterministic cache keys from producer args and from auto-keyed
+POST/PUT/PATCH bodies. Walks the value once using JSON.stringify's
 replacer so no intermediate copies are allocated per level.
 */
 export function canonicalJson(value: unknown): string {

@@ -64,14 +64,14 @@ describe('cache() invalidate throttle / debounce', () => {
         let index = 0
         const producer = () => values[index++]
 
-        expect(await cache(producer, { key: 'swr', invalidate: { debounce: 10 } })()).toBe(1)
-        cache.invalidate({ key: 'swr' })
+        expect(await cache(producer, { invalidate: { debounce: 10 } })()).toBe(1)
+        cache.invalidate(producer)
         await wait(30) // debounce fired; the refetch is in flight (unresolved)
 
-        expect(await cache(producer, { key: 'swr' })()).toBe(1) // stale held
+        expect(await cache(producer)()).toBe(1) // stale held
         resolveSecond(2)
         await settle()
-        expect(await cache(producer, { key: 'swr' })()).toBe(2) // fresh swapped in
+        expect(await cache(producer)()).toBe(2) // fresh swapped in
     })
 
     test('a rejected refetch keeps the stale value', async () => {
@@ -80,11 +80,11 @@ describe('cache() invalidate throttle / debounce', () => {
             calls += 1
             return calls === 1 ? Promise.resolve('ok') : Promise.reject(new Error('boom'))
         }
-        expect(await cache(producer, { key: 'keep', invalidate: { debounce: 10 } })()).toBe('ok')
+        expect(await cache(producer, { invalidate: { debounce: 10 } })()).toBe('ok')
 
-        cache.invalidate({ key: 'keep' })
+        cache.invalidate(producer)
         await wait(30)
-        expect(await cache(producer, { key: 'keep' })()).toBe('ok')
+        expect(await cache(producer)()).toBe('ok')
     })
 
     test('without a policy, invalidate still drops the entry immediately', async () => {
