@@ -1,6 +1,6 @@
 {
     "name": "@briancray/belte",
-    "version": "0.11.0",
+    "version": "0.11.1",
     "type": "module",
     "description": "Isomorphic multimodal HTTP framework built for humans and machines in a single Bun runtime",
     "license": "MIT",
@@ -68,13 +68,11 @@
         "./test/createTestClient": "./src/lib/test/createTestClient.ts",
         "./test/clearVerbRegistry": "./src/lib/test/clearVerbRegistry.ts",
         "./tsconfig": "./tsconfig.app.json",
-
         "./build": "./src/build.ts",
         "./compile": "./src/compile.ts",
         "./preload": "./src/preload.ts",
         "./svelte-plugin": "./src/sveltePlugin.ts",
         "./resolver-plugin": "./src/belteResolverPlugin.ts",
-
         "./browser/remoteProxy": "./src/lib/browser/remoteProxy.ts",
         "./browser/socketProxy": "./src/lib/browser/socketProxy.ts",
         "./server/prompts/renderPromptTemplate": "./src/lib/server/prompts/renderPromptTemplate.ts"

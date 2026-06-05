@@ -1,5 +1,11 @@
 # @briancray/belte
 
+## 0.11.1
+
+### Patch Changes
+
+- [#38](https://github.com/briancray/belte/pull/38) [`cb22ce9`](https://github.com/briancray/belte/commit/cb22ce91b83b755e480f2ff0abdb8a246f5e7ff9) Thanks [@briancray](https://github.com/briancray)! - Restore `belte/shared/log` as a public export. The 0.11 switch from `./shared/*` globs to an explicit allowlist dropped this isomorphic utility along with the genuinely-internal machinery: `log` is the framework's `[belte]` logger (browser + server, color-aware, with `log.debug(scope, message)` gated by `DEBUG`), documented public surface rather than an internal, so it is listed again. The `isDebugEnabled` matcher stays internal — `log.debug` already gates on it, so consumers reach for `log.debug`/`console.debug`, never the matcher directly.
+
 ## 0.11.0
 
 ### Minor Changes
