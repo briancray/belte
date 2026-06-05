@@ -4,6 +4,7 @@ import {
     nearestLayoutPrefix,
     normalizeLayoutPrefixes,
 } from '../shared/nearestLayoutPrefix.ts'
+import { abortPageStream } from './pageStreamController.ts'
 import type { Layouts } from './types/Layouts.ts'
 import type { Pages } from './types/Pages.ts'
 
@@ -183,6 +184,9 @@ async function applyTarget(
         syncUrl()
         return
     }
+    /* Leaving this page: cancel its still-open resolution stream (if any) so the
+    connection frees instead of running to completion for a page that's gone. */
+    abortPageStream()
     const response = await safeResolveFetch(fullTarget)
     if (!response) {
         window.location.href = fullTarget

@@ -11,6 +11,7 @@ import { NO_STORE, SSR_CACHE_CONTROL } from '../../shared/cacheControlValues.ts'
 import { isDebugEnabled } from '../../shared/isDebugEnabled.ts'
 import { log } from '../../shared/log.ts'
 import { nearestLayoutPrefix, normalizeLayoutPrefixes } from '../../shared/nearestLayoutPrefix.ts'
+import { resolveStreamPath } from '../../shared/resolveStreamPath.ts'
 import { toBunRoutePattern } from '../../shared/toBunRoutePattern.ts'
 import type { AppModule } from '../AppModule.ts'
 import { handleCliDownload } from '../cli/handleCliDownload.ts'
@@ -34,10 +35,12 @@ import { logBrowserOnlyRoutes } from './logBrowserOnlyRoutes.ts'
 import { parseIdleTimeout } from './parseIdleTimeout.ts'
 import { parsePort } from './parsePort.ts'
 import { ensureRegistriesLoaded, setRegistryManifests } from './registryManifests.ts'
+import { resolveStreamResponse } from './resolveStreamResponse.ts'
 import { runWithRequestScope } from './runWithRequestScope.ts'
 import { safeJsonForScript } from './safeJsonForScript.ts'
 import { serializeCacheSnapshot } from './serializeCacheSnapshot.ts'
 import { setActiveServer } from './setActiveServer.ts'
+import { stashPendingStream } from './streamStash.ts'
 import type { Assets } from './types/Assets.ts'
 import type { RequestStore } from './types/RequestStore.ts'
 
@@ -223,11 +226,34 @@ export async function createServer({
                 },
             },
         })
-        const cacheSnapshot = await serializeCacheSnapshot(store.cache)
+        /*
+        Settled entries (awaited reads render() blocked on) inline into the
+        first chunk; pending entries ({#await} reads) stream a resolve script
+        each as their fetch lands. A page with no pending reads stays a plain
+        buffered Response — no streaming overhead when nothing's deferred.
+        */
+        const { inline, pending } = await serializeCacheSnapshot(store.cache)
+        /*
+        Settled reads inline into `__SSR__`. Pending {#await} reads ship their
+        keys in `__SSR__.streaming` (so the client pre-creates placeholders that
+        cache() hits instead of re-fetching) plus a single-use `streamToken`; the
+        in-flight promises are stashed under that token for the out-of-band
+        resolve endpoint to drain. The document itself is a plain buffered
+        response — it closes immediately, so hydration isn't gated on the stream.
+        */
+        const streaming = pending.map((entry) => ({
+            key: entry.key,
+            url: entry.request.url,
+            method: entry.request.method,
+        }))
+        const streamToken =
+            pending.length > 0 ? stashPendingStream(store.cache, pending) : undefined
         const stateTag = `<script>window.__SSR__ = ${safeJsonForScript({
             route: routeUrl,
             params,
-            cache: cacheSnapshot,
+            cache: inline,
+            streaming,
+            streamToken,
         })};</script>`
         const fills: Record<string, string> = {
             head: rendered.head,
@@ -372,6 +398,17 @@ export async function createServer({
                 if (url.pathname.startsWith(SOCKETS_REST_PREFIX)) {
                     const name = decodeURIComponent(url.pathname.slice(SOCKETS_REST_PREFIX.length))
                     return dispatchRequest(req, {}, async () => socketDispatcher.rest(req, name))
+                }
+                /*
+                Out-of-band resolution stream for a streamed page's pending
+                {#await} reads. Answered directly (no app.handle / request scope):
+                it drains promises stashed during SSR, and the random single-use
+                token gates access. Returning here bypasses
+                disableIdleTimeoutForStream so it inherits the bounded idleTimeout
+                rather than the long-lived-stream disable.
+                */
+                if (url.pathname.startsWith(resolveStreamPath)) {
+                    return resolveStreamResponse(url.pathname.slice(resolveStreamPath.length))
                 }
                 if (url.pathname === MCP_PATH && mcp) {
                     return dispatchRequest(req, {}, async () => mcp.handle(req))

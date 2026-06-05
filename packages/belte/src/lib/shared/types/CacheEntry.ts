@@ -15,6 +15,12 @@ leave it undefined and take the async decode path.
 `scope` holds the cache() call's scope tags as a Set so
 `cache.invalidate({ scope })` can drop every entry sharing any tag with O(1)
 membership; a re-read merges new tags in rather than replacing them.
+
+`settled` flips true once the stored promise resolves. SSR snapshot
+serialization reads it after `render()` returns to partition entries: ones
+settled by then were consumed via `await` (render blocked on them) and inline
+into `__SSR__`; ones still pending were consumed via `{#await}` (render emitted
+the pending branch without blocking) and stream a resolve chunk instead.
 */
 export type CacheEntry = {
     key: string
@@ -24,4 +30,5 @@ export type CacheEntry = {
     expiresAt: number | undefined
     value?: unknown
     scope?: Set<string>
+    settled?: boolean
 }

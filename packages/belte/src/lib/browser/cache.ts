@@ -7,6 +7,7 @@ import { getRemoteMeta } from '../shared/getRemoteMeta.ts'
 import { keyForRemoteCall } from '../shared/keyForRemoteCall.ts'
 import type { CacheEntry } from '../shared/types/CacheEntry.ts'
 import type { CacheOptions } from '../shared/types/CacheOptions.ts'
+import type { CacheStore } from '../shared/types/CacheStore.ts'
 
 type AnyRemote<Args, Return> = RemoteFunction<Args, Return> | RawRemoteFunction<Args>
 
@@ -35,6 +36,26 @@ registers the surrounding $derived / $effect scope. Invalidating the key
 then re-runs that scope, which calls cache() again and gets a fresh entry.
 Outside a tracking scope subscribe() is a no-op, so cache() works the same
 in server code and plain client code.
+
+SSR: how you consume the call decides inline vs streaming, per Svelte's
+documented {#await} rule (only the pending branch renders during SSR):
+
+  const post = await cache(getPost)({ id })   // blocks render → baked into
+                                              // the initial SSR HTML
+  {#await cache(getPost)({ id })}             // renders pending → shell flushes
+                                              // now, value streams in on the
+                                              // same response when it resolves
+
+The two don't mix within one component. A top-level `await` flips Svelte's
+async render into await-everything mode and sweeps in every promise created
+in that same component instance — so a sibling {#await} (or a
+<svelte:boundary pending>) gets awaited and inlined too, buffering the whole
+response to the slowest read. The markup form doesn't change this: a boundary
+renders its pending branch but render() still blocks. To get both on one page,
+isolate each blocking (top-level await) read in its own child component and
+keep streaming reads in a parent that never top-level awaits — the
+await-everything mode is per component instance, so a child's await blocks only
+the child.
 */
 export function cache<Args, Return>(
     fn: RemoteFunction<Args, Return>,
@@ -113,7 +134,7 @@ function invokeWithCache<Args>(
         )
     }
     const ttl = options?.ttl
-    const entry = {
+    const entry: CacheEntry = {
         key,
         promise,
         request,
@@ -122,12 +143,22 @@ function invokeWithCache<Args>(
         scope: options?.scope === undefined ? undefined : toScopeSet(options.scope),
     }
     store.entries.set(key, entry)
+    markLifecycle(store)
     function deleteIfCurrent() {
         if (store.entries.get(key) === entry) {
             store.entries.delete(key)
+            markLifecycle(store)
         }
     }
     promise.then(() => {
+        /*
+            Mark settled so SSR snapshot serialization can tell awaited entries
+            (resolved by the time render() returns → inline) from {#await} ones
+            (still pending → stream). Set before the ttl branches below since a
+            ttl=0 server entry stays in the store for the snapshot.
+            */
+        entry.settled = true
+        markLifecycle(store)
         /*
             On the server the cache store is request-scoped and gets GC'd
             with the response; skip ttl=0 eviction so the SSR snapshot can
@@ -161,60 +192,88 @@ function shareable(promise: Promise<Response>): Promise<Response> {
     return promise.then((response) => response.clone())
 }
 
+type Selector<Args, Return> = AnyRemote<Args, Return> | Pick<CacheOptions, 'key' | 'scope'>
+
 /*
-Three call shapes:
-  invalidate()                  → drop everything
-  invalidate(fn)                → drop one function's calls (method+url prefix)
-  invalidate({ key?, scope? })  → drop one entry by key and/or tagged groups
-A selector with both fields drops the union; an empty or unmatched selector
-is a no-op. `key` accepts the same string/array/object the cache() `key`
-option does and is canonicalised the same way. `scope` accepts one tag or an
-array; an entry is dropped when its tag set shares any tag with the request.
+Compiles a selector into an entry predicate shared by invalidate() and
+pending() so both interpret the three call shapes identically:
+  undefined            → every entry
+  fn                   → that function's calls (method+url prefix). `arg.url` is
+                         the route template; per-call args appear as `?...`
+                         (GET/DELETE) or after a space (canonical-json body) —
+                         see keyForRemoteCall. `fn` and `fn.raw` match the same
+                         set since they share method+url.
+  { key?, scope? }     → the named entry and/or any entry sharing a scope tag;
+                         both fields present → the union. `key` is canonicalised
+                         like the cache() option. An empty selector matches
+                         nothing.
 */
-function invalidate<Args, Return>(
-    arg?: AnyRemote<Args, Return> | Pick<CacheOptions, 'key' | 'scope'>,
-): void {
-    const store = activeCacheStore()
+function selectorMatcher<Args, Return>(
+    arg?: Selector<Args, Return>,
+): (entry: CacheEntry) => boolean {
     if (arg === undefined) {
-        const keys = Array.from(store.entries.keys())
-        store.entries.clear()
-        emit(store, keys)
-        return
+        return () => true
     }
     if (typeof arg === 'function') {
-        /*
-        `arg.url` is the route template; per-call args appear as `?...`
-        (GET/DELETE) or after a space (canonical-json body) — see
-        keyForRemoteCall. Passing either `fn` or `fn.raw` invalidates the
-        same set because they share method+url.
-        */
         const prefix = `${arg.method} ${arg.url}`
-        const affected = Array.from(store.entries.keys()).filter(
-            (key) => key === prefix || key.startsWith(`${prefix}?`) || key.startsWith(`${prefix} `),
-        )
-        affected.forEach((key) => store.entries.delete(key))
-        emit(store, affected)
-        return
+        return (entry) =>
+            entry.key === prefix ||
+            entry.key.startsWith(`${prefix}?`) ||
+            entry.key.startsWith(`${prefix} `)
     }
     const target = arg.key !== undefined ? canonicalKey(arg.key) : undefined
-    const byKey = target !== undefined && store.entries.has(target) ? [target] : []
     const requestedScopes = arg.scope === undefined ? undefined : toScopeSet(arg.scope)
-    const byScope =
-        requestedScopes === undefined
-            ? []
-            : Array.from(store.entries.values())
-                  .filter(
-                      (entry) =>
-                          entry.scope !== undefined && intersects(entry.scope, requestedScopes),
-                  )
-                  .map((entry) => entry.key)
-    /* emit() dedupes via a Set, so a key matching both criteria is harmless. */
-    const affected = [...byKey, ...byScope]
+    return (entry) =>
+        (target !== undefined && entry.key === target) ||
+        (requestedScopes !== undefined &&
+            entry.scope !== undefined &&
+            intersects(entry.scope, requestedScopes))
+}
+
+/*
+Drops every entry matching the selector (see selectorMatcher) and notifies
+readers. An empty or unmatched selector is a no-op on the cache; the lifecycle
+ping still fires but recomputes pending() to the same value.
+*/
+function invalidate<Args, Return>(arg?: Selector<Args, Return>): void {
+    const store = activeCacheStore()
+    const matches = selectorMatcher(arg)
+    const affected = Array.from(store.entries.values())
+        .filter(matches)
+        .map((entry) => entry.key)
     affected.forEach((key) => store.entries.delete(key))
     emit(store, affected)
+    markLifecycle(store)
 }
 
 cache.invalidate = invalidate
+
+/*
+Reactive in-flight probe sharing invalidate's selector grammar:
+  pending()                  → any rpc in flight (global progress bar)
+  pending(fn)                → that function's calls (per-route spinner)
+  pending({ key?, scope? })  → a named entry and/or tagged group
+Returns true while any matching entry's promise is unsettled. The read taps the
+store's lifecycle channel, so a $derived re-runs when a matching call starts or
+settles. Outside a tracking scope (plain client code, SSR) the tap is a no-op
+and it returns the current value — SSR loading state is driven by {#await}, not
+this.
+*/
+function pending<Args, Return>(arg?: Selector<Args, Return>): boolean {
+    const store = activeCacheStore()
+    store.trackLifecycle()
+    const matches = selectorMatcher(arg)
+    return Array.from(store.entries.values()).some(
+        (entry) => entry.settled !== true && matches(entry),
+    )
+}
+
+cache.pending = pending
+
+/* Signals cache.pending readers that in-flight membership changed. */
+function markLifecycle(store: CacheStore): void {
+    store.events.dispatchEvent(new Event('lifecycle'))
+}
 
 function resolveKey<Args>(
     rawFn: RawRemoteFunction<Args>,

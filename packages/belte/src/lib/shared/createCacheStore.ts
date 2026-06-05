@@ -47,5 +47,27 @@ export function createCacheStore(): CacheStore {
         registered()
     }
 
-    return { entries, events, subscribe }
+    /*
+    Store-wide tap for in-flight lifecycle. cache.pending selectors match many
+    entries (or all), so they re-derive by scanning `entries` and only need a
+    single "something changed" signal rather than per-key granularity. One
+    lazily-created subscriber for the whole store, evicted when its last reader
+    tears down — mirroring subscribe(key) and subscribe.ts.
+    */
+    let lifecycle: (() => void) | undefined
+    function trackLifecycle(): void {
+        if (!lifecycle) {
+            lifecycle = createSubscriber((update) => {
+                const onLifecycle = () => update()
+                events.addEventListener('lifecycle', onLifecycle)
+                return () => {
+                    events.removeEventListener('lifecycle', onLifecycle)
+                    lifecycle = undefined
+                }
+            })
+        }
+        lifecycle()
+    }
+
+    return { entries, events, subscribe, trackLifecycle }
 }

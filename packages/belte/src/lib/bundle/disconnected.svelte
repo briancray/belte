@@ -252,68 +252,67 @@ async function saveConfig(): Promise<void> {
 {#if phase === 'splash'}
     <!-- Neutral splash shown while an auto-start/auto-reconnect resolves, so the
     connect screen never flashes before it redirects. Same background as the card. -->
-    <div
-        class="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
+    <div class="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
         {#if logo}
             <img src={logo} alt="" class="h-16 w-16 rounded-xl object-contain opacity-90">
         {/if}
     </div>
 {:else}
-<main
-    class="flex min-h-screen items-center justify-center bg-gray-50 p-6 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-    <div
-        class="w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-800">
-        {#if logo}
-            <img src={logo} alt="" class="mx-auto mb-5 h-16 w-16 rounded-xl object-contain">
-        {/if}
-        <h1 class="mb-6 text-center text-xl font-semibold tracking-tight">{heading}</h1>
+    <main
+        class="flex min-h-screen items-center justify-center bg-gray-50 p-6 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+        <div
+            class="w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-800">
+            {#if logo}
+                <img src={logo} alt="" class="mx-auto mb-5 h-16 w-16 rounded-xl object-contain">
+            {/if}
+            <h1 class="mb-6 text-center text-xl font-semibold tracking-tight">{heading}</h1>
 
-        <form
-            class="flex flex-col gap-3"
-            onsubmit={(event) => {
+            <form
+                class="flex flex-col gap-3"
+                onsubmit={(event) => {
                 event.preventDefault()
                 void connect()
             }}>
-            <input
-                type="url"
-                bind:value={url}
-                {placeholder}
-                autocomplete="url"
-                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:focus:border-gray-100 dark:focus:ring-gray-100">
+                <input
+                    type="url"
+                    bind:value={url}
+                    {placeholder}
+                    autocomplete="url"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:focus:border-gray-100 dark:focus:ring-gray-100">
+                <button
+                    type="submit"
+                    class="w-full rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300">
+                    Connect
+                </button>
+            </form>
+
+            <div class="my-5 flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+                <span class="h-px flex-1 bg-gray-200 dark:bg-gray-800"></span>
+                or
+                <span class="h-px flex-1 bg-gray-200 dark:bg-gray-800"></span>
+            </div>
+
             <button
-                type="submit"
-                class="w-full rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300">
-                Connect
+                type="button"
+                onclick={() => void start()}
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+                Start server
             </button>
-        </form>
 
-        <div class="my-5 flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
-            <span class="h-px flex-1 bg-gray-200 dark:bg-gray-800"></span>
-            or
-            <span class="h-px flex-1 bg-gray-200 dark:bg-gray-800"></span>
+            {#if error}
+                <p class="mt-4 text-center text-sm text-red-600 dark:text-red-400">{error}</p>
+            {/if}
+
+            <p class="mt-8 text-center text-xs text-gray-400 dark:text-gray-500">
+                made with
+                <a
+                    href="https://github.com/briancray/belte"
+                    class="underline hover:text-gray-600 dark:hover:text-gray-300">
+                    belte
+                </a>
+            </p>
         </div>
-
-        <button
-            type="button"
-            onclick={() => void start()}
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
-            Start server
-        </button>
-
-        {#if error}
-            <p class="mt-4 text-center text-sm text-red-600 dark:text-red-400">{error}</p>
-        {/if}
-
-        <p class="mt-8 text-center text-xs text-gray-400 dark:text-gray-500">
-            made with
-            <a
-                href="https://github.com/briancray/belte"
-                class="underline hover:text-gray-600 dark:hover:text-gray-300">
-                belte
-            </a>
-        </p>
-    </div>
-</main>
+    </main>
 {/if}
 
 {#if showConfig}
@@ -322,7 +321,7 @@ async function saveConfig(): Promise<void> {
         class="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-6 text-gray-900 dark:text-gray-100">
         <div
             class="w-full max-w-sm rounded-2xl bg-white p-8 shadow-lg ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-800">
-            <h2 class="mb-5 text-lg font-semibold tracking-tight">Set up {heading}</h2>
+            <h2 class="mb-5 text-lg font-semibold tracking-tight">Set up{heading}</h2>
 
             <form
                 class="flex flex-col gap-4"

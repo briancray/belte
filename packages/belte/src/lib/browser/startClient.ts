@@ -4,6 +4,10 @@ import { createCacheStore } from '../shared/createCacheStore.ts'
 import { setCacheStoreResolver } from '../shared/setCacheStoreResolver.ts'
 import type { CacheSnapshotEntry } from '../shared/types/CacheSnapshotEntry.ts'
 import type { CacheStore } from '../shared/types/CacheStore.ts'
+import type { StreamingPlaceholder } from '../shared/types/StreamingPlaceholder.ts'
+import { cacheEntryFromSnapshot } from './cacheEntryFromSnapshot.ts'
+import { installStreamingPlaceholders } from './installStreamingPlaceholders.ts'
+import { openResolveStream } from './openResolveStream.ts'
 import { bindPage, handlePopstate, navigate, page, renderState } from './page.svelte.ts'
 import type { Layouts } from './types/Layouts.ts'
 import type { Pages } from './types/Pages.ts'
@@ -14,53 +18,23 @@ declare global {
             route: string
             params: Record<string, string>
             cache?: CacheSnapshotEntry[]
+            /* Pending {#await} keys the client pre-creates placeholders for. */
+            streaming?: StreamingPlaceholder[]
+            /* Single-use token for the out-of-band resolution stream. */
+            streamToken?: string
         }
     }
 }
 
 /*
-Pre-populates the client cache store with response entries captured during
-SSR. Each entry becomes an already-resolved Response so the first hydration
-pass finds the data via cache() without issuing a network round-trip.
+Pre-populates the client cache store with response entries captured during SSR.
+Each becomes an already-resolved Response so the first hydration pass finds the
+data via cache() without a network round-trip.
 */
 function hydrateCacheFromSnapshot(store: CacheStore, snapshot: CacheSnapshotEntry[]): void {
     for (const entry of snapshot) {
-        const headers = new Headers(entry.headers)
-        const response = new Response(entry.body, {
-            status: entry.status,
-            statusText: entry.statusText,
-            headers,
-        })
-        store.entries.set(entry.key, {
-            key: entry.key,
-            promise: Promise.resolve(response),
-            request: new Request(entry.url, { method: entry.method }),
-            ttl: undefined,
-            expiresAt: undefined,
-            value: warmValueFromSnapshot(entry.status, headers, entry.body),
-        })
+        store.entries.set(entry.key, cacheEntryFromSnapshot(entry))
     }
-}
-
-/*
-Synchronously decodes a snapshot body so the warm entry reads without a
-microtask hop on first render. Mirrors decodeResponse for the textual cases
-the snapshot ships; non-2xx and 204 yield no warm value and fall back to the
-async path, which throws HttpError / returns undefined exactly as a live call
-would. Binary/xml bodies also skip the warm path and decode asynchronously.
-*/
-function warmValueFromSnapshot(status: number, headers: Headers, body: string): unknown {
-    if (status === 204 || status < 200 || status >= 300) {
-        return undefined
-    }
-    const contentType = (headers.get('content-type') ?? '').toLowerCase()
-    if (contentType.includes('json')) {
-        return JSON.parse(body)
-    }
-    if (contentType.startsWith('text/')) {
-        return body
-    }
-    return undefined
 }
 
 function isInternalLinkEvent(event: MouseEvent): HTMLAnchorElement | undefined {
@@ -122,6 +96,17 @@ export async function startClient({
     setCacheStoreResolver(() => cacheStore)
     if (window.__SSR__.cache) {
         hydrateCacheFromSnapshot(cacheStore, window.__SSR__.cache)
+    }
+
+    /*
+    Install placeholders for pending {#await} keys before hydrate(), so cache()
+    reads hit a placeholder on first evaluation instead of firing their own
+    fetch, then open the out-of-band resolution stream to settle them. The fetch
+    runs in the background — hydration doesn't wait on it.
+    */
+    const deferreds = installStreamingPlaceholders(cacheStore, window.__SSR__.streaming ?? [])
+    if (window.__SSR__.streamToken && deferreds.size > 0) {
+        void openResolveStream(window.__SSR__.streamToken, cacheStore, deferreds)
     }
 
     try {
