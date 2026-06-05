@@ -59,6 +59,7 @@
         "./shared/cache": "./src/lib/shared/cache.ts",
         "./shared/HttpError": "./src/lib/shared/HttpError.ts",
         "./shared/withJsonSchema": "./src/lib/shared/withJsonSchema.ts",
+        "./shared/log": "./src/lib/shared/log.ts",
         "./mcp/createMcpServer": "./src/lib/mcp/createMcpServer.ts",
         "./bundle/BundleWindow": "./src/lib/bundle/BundleWindow.ts",
         "./bundle/BundleMenu": "./src/lib/bundle/BundleMenu.ts",
