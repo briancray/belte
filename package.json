@@ -20,7 +20,7 @@
         "@changesets/changelog-github": "^0.7.0",
         "@changesets/cli": "^2.29.7",
         "@types/bun": "latest",
-        "svelte": "^5.56.0",
+        "svelte": "^5.56.2",
         "typescript": "^6.0.3"
     }
 }
