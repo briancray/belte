@@ -3,6 +3,7 @@ import { cookies } from '../src/lib/server/cookies.ts'
 import { json } from '../src/lib/server/json.ts'
 import { request } from '../src/lib/server/request.ts'
 import { defineVerb } from '../src/lib/server/rpc/defineVerb.ts'
+import { server } from '../src/lib/server/server.ts'
 import { clearVerbRegistry } from '../src/lib/test/clearVerbRegistry.ts'
 import { createTestClient } from '../src/lib/test/createTestClient.ts'
 import { testSchema } from './standardSchema.ts'
@@ -28,6 +29,21 @@ describe('createTestClient', () => {
         const client = createTestClient({ baseUrl: 'https://app.test/' })
 
         expect(await client.whereami()).toEqual({ host: 'app.test' })
+    })
+
+    test('server() resolves in-process — connection idioms no-op instead of throwing', async () => {
+        defineVerb('GET', '/rpc/stream', () => {
+            // The idioms a streaming/socket handler reaches for; none has a live
+            // connection in-process, so each is a no-op the handler survives.
+            server().timeout(request(), 0)
+            return json({
+                published: server().publish('feed', 'frame'),
+                ip: server().requestIP(request()),
+            })
+        })
+        const client = createTestClient()
+
+        expect(await client.stream()).toEqual({ published: 0, ip: null })
     })
 
     test('injects headers so the handler reads inbound cookies', async () => {
