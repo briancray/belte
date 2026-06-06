@@ -72,15 +72,6 @@ async function reset() {
                     <td class="px-4 py-2 text-slate-600">expire after resolve</td>
                 </tr>
                 <tr>
-                    <td class="px-4 py-2 font-mono">key</td>
-                    <td class="px-4 py-2 font-mono text-slate-500">string / unknown[] / object</td>
-                    <td class="px-4 py-2 text-slate-600">
-                        override the auto key — method + url + args (e.g.
-                        <code class="font-mono">['post', id]</code>
-                        )
-                    </td>
-                </tr>
-                <tr>
                     <td class="px-4 py-2 font-mono">scope</td>
                     <td class="px-4 py-2 font-mono text-slate-500">string / string[]</td>
                     <td class="px-4 py-2 text-slate-600">
@@ -109,6 +100,11 @@ async function reset() {
             </tbody>
         </table>
     </div>
+    <p class="mt-2 text-xs text-slate-500">
+        The key is always auto-derived — method + url + args for a remote function, the producer's
+        reference + args for a plain producer. Hoist a producer to a stable reference to share its
+        entry across calls.
+    </p>
 </section>
 
 <section class="mt-6">
@@ -116,12 +112,12 @@ async function reset() {
     <ul class="mt-2 space-y-1 text-sm text-slate-600">
         <li><code class="font-mono">cache.invalidate()</code> — drop everything</li>
         <li>
-            <code class="font-mono">cache.invalidate(fn)</code> — drop one function's calls (fn or
-            fn.raw)
+            <code class="font-mono">cache.invalidate(fn)</code> — drop one function's calls (a
+            remote fn — fn or fn.raw — or a producer)
         </li>
         <li>
-            <code class="font-mono">{'cache.invalidate({ key?, scope? })'}</code> — drop a keyed
-            entry and/or every entry in a scope (the union)
+            <code class="font-mono">{'cache.invalidate({ scope })'}</code> — drop every entry
+            sharing any of the scope's tags
         </li>
     </ul>
 </section>
@@ -138,10 +134,7 @@ async function reset() {
     <ul class="mt-2 space-y-1 text-sm text-slate-600">
         <li><code class="font-mono">cache.pending()</code> — any rpc in flight</li>
         <li><code class="font-mono">cache.pending(fn)</code> — one function's calls</li>
-        <li>
-            <code class="font-mono">{'cache.pending({ key?, scope? })'}</code> — a keyed entry
-            and/or a tagged group
-        </li>
+        <li><code class="font-mono">{'cache.pending({ scope })'}</code> — a tagged group</li>
     </ul>
 </section>
 
@@ -217,8 +210,6 @@ async function increment() {
         code={`cache(fn)()                             // lives forever
 cache(fn, { ttl: 0 })()                 // dedupe in-flight only
 cache(fn, { ttl: 30_000 })()            // expire 30s after resolve
-cache(fn, { key: 'group' })()           // group calls under one key
-cache(fn, { key: ['post', id] })()      // override the key per arg
 cache(fn, { scope: 'orders' })()        // tag for grouped invalidation
 cache(fn, { scope: ['orders', 'feed'] })()  // join several groups
 cache(fn, { global: true })()           // process-level store (server reuse)
@@ -226,7 +217,6 @@ cache(fn, { invalidate: { throttle: 1000 } })()  // coalesce refetch bursts
 
 cache.invalidate()                      // drop everything
 cache.invalidate(fn)                    // drop one function's calls
-cache.invalidate({ key: ['post', id] }) // drop one keyed entry
 cache.invalidate({ scope: 'orders' })   // drop every entry sharing the tag
 
 const loading = $derived(cache.pending(fn))  // reactive in-flight probe

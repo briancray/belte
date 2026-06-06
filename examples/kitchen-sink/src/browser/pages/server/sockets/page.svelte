@@ -60,6 +60,22 @@ async function send() {
                         when true, browser publishes are forwarded server-side
                     </td>
                 </tr>
+                <tr>
+                    <td class="px-4 py-2 font-mono">schema</td>
+                    <td class="px-4 py-2 font-mono text-slate-500">undefined</td>
+                    <td class="px-4 py-2 text-slate-600">
+                        Standard Schema validating publish payloads;<code class="font-mono">T</code>
+                        infers from it
+                    </td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2 font-mono">clients</td>
+                    <td class="px-4 py-2 font-mono text-slate-500">browser-only</td>
+                    <td class="px-4 py-2 text-slate-600">
+                        which surfaces (browser / mcp / cli) advertise the socket; all surfaces when
+                        a schema is present
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>

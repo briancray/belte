@@ -75,7 +75,9 @@ async function fetchInstaller() {
         ,<code class="font-mono">/help</code>
         , and
         <code class="font-mono">/exit</code> manage it. The saved connection lives in the per-user
-        data dir; with none recorded the CLI resumes the baked<code class="font-mono">APP_URL</code>
+        data dir; with none recorded the CLI resumes the baked<code class="font-mono">
+            BELTE_APP_URL
+        </code>
         .
     </p>
 </section>
@@ -120,8 +122,8 @@ async function fetchInstaller() {
         </table>
     </div>
     <p class="mt-3 text-sm text-slate-600">
-        <code class="font-mono">APP_URL</code> is the default server URL (baked at install,
-        shell-overridable);<code class="font-mono">APP_TOKEN</code> is sent as
+        <code class="font-mono">BELTE_APP_URL</code> is the default server URL (baked at install,
+        shell-overridable);<code class="font-mono">BELTE_APP_TOKEN</code> is sent as
         <code class="font-mono">Authorization: Bearer &lt;value&gt;</code>
         .
     </p>
@@ -157,8 +159,9 @@ async function fetchInstaller() {
                         gzipped tarball — the cli binary, its sibling
                         <code class="font-mono">server</code> binary, and an
                         <code class="font-mono">.env</code> with the request's origin as
-                        <code class="font-mono">APP_URL</code> (and
-                        <code class="font-mono">APP_TOKEN</code> when the request was authenticated)
+                        <code class="font-mono">BELTE_APP_URL</code> (and
+                        <code class="font-mono">BELTE_APP_TOKEN</code> when the request was
+                        authenticated)
                     </td>
                 </tr>
             </tbody>
@@ -225,7 +228,7 @@ belte cli --platforms=linux-x64,darwin-arm64
     <CodeBlock
         title="one-shot dispatch — for scripting"
         lang="sh"
-        code={`APP_URL=http://localhost:3000 ./dist/cli getEcho --message=hello
+        code={`BELTE_APP_URL=http://localhost:3000 ./dist/cli getEcho --message=hello
 ./dist/cli countLog --to=5         # streaming jsonl rpc → NDJSON frames
 ./dist/cli chat-tail --tail=10     # socket: replay last 10, then stream live as NDJSON
 ./dist/cli --help

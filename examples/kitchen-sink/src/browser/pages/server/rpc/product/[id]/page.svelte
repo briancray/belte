@@ -8,7 +8,7 @@ import { getProduct } from '$server/rpc/getProduct.ts'
 let { id }: { id: string } = $props()
 
 const product = $derived(
-    await cache(getProduct, { key: ['product', id] })({ id }).catch((err) => {
+    await cache(getProduct)({ id }).catch((err) => {
         if (err instanceof HttpError && err.status === 404) return undefined
         throw err
     }),
@@ -25,8 +25,8 @@ const product = $derived(
 <h1 class="text-3xl font-bold">Product{id}</h1>
 <p class="mt-2 text-slate-600">
     Dynamic page segment<code class="font-mono">[id]</code> from the folder name — typed via the
-    generated<code class="font-mono">Routes</code> augmentation. Per-id cache key keeps products
-    from sharing one entry;<code class="font-mono">$derived</code> re-runs on nav.
+    generated<code class="font-mono">Routes</code> augmentation. The cache key folds in the call
+    args, so each id gets its own entry;<code class="font-mono">$derived</code> re-runs on nav.
 </p>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -101,8 +101,7 @@ import { getProduct } from '$server/rpc/getProduct.ts'
 
 let { id }: { id: string } = $props()    // typed via src/.belte/routes.d.ts
 
-const product = $derived(
-    await cache(getProduct, { key: ['product', id] })({ id })
-)
+// the key folds in { id }, so each product gets its own entry
+const product = $derived(await cache(getProduct)({ id }))
 </script>`} />
 </section>
