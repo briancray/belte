@@ -27,15 +27,16 @@ function parseFlag(name: string): string | undefined {
 }
 
 /*
-Runs the server as a child and owns its shutdown. Ctrl+C delivers SIGINT to
-the whole foreground process group, so without a parent handler the parent's
-default action kills it instantly — abandoning the `await child.exited` and
-orphaning the child, which can then linger holding the port. Forwarding the
-signal and awaiting the child's exit (with a SIGKILL watchdog for a wedged
-child) guarantees the child is reaped before the parent leaves. Mirrors the
-child's exit code so callers and CI see the real result.
+Runs a long-lived child (server, job, script) and owns its shutdown. Ctrl+C
+delivers SIGINT to the whole foreground process group, so without a parent
+handler the parent's default action kills it instantly — abandoning the
+`await child.exited` and orphaning the child, which (for a server) can then
+linger holding the port. Forwarding the signal and awaiting the child's exit
+(with a SIGKILL watchdog for a wedged child) guarantees the child is reaped
+before the parent leaves. Mirrors the child's exit code so callers and CI see
+the real result.
 */
-async function runServerChild(cmd: string[]): Promise<never> {
+async function runChild(cmd: string[]): Promise<never> {
     const child = Bun.spawn({ cmd, cwd, stdio: ['inherit', 'inherit', 'inherit'] })
     const forward = (signal: NodeJS.Signals) => {
         child.kill(signal)
@@ -54,7 +55,7 @@ restarts the whole process whenever any file in the graph changes. The
 browser is not auto-reloaded — refresh manually after the server is back.
 */
 async function dev(): Promise<void> {
-    await runServerChild(['bun', '--watch', '--preload', PRELOAD, DEV_ENTRY])
+    await runChild(['bun', '--watch', '--preload', PRELOAD, DEV_ENTRY])
 }
 
 // Performs a single client build with no server attached (for CI / static deploys).
@@ -64,7 +65,22 @@ async function buildOnce(): Promise<void> {
 
 // Starts the production server against an already-built dist directory.
 async function start(): Promise<void> {
-    await runServerChild(['bun', '--preload', PRELOAD, SERVER_ENTRY])
+    await runChild(['bun', '--preload', PRELOAD, SERVER_ENTRY])
+}
+
+/*
+Runs an arbitrary script under the belte preload — same runtime as the server,
+so jobs/scripts get .svelte compilation, belte/* + $server/$shared resolution,
+and the .css no-op loader for free. Everything after `run` is forwarded
+verbatim: the first token is the script, the rest are its argv (bun stops
+parsing its own flags at the script path).
+*/
+async function runCmd(): Promise<void> {
+    if (rest.length === 0) {
+        console.error('usage: belte run <file> [args...]')
+        process.exit(1)
+    }
+    await runChild(['bun', '--preload', PRELOAD, ...rest])
 }
 
 // Parses the --target and --out flags and produces a standalone executable.
@@ -125,6 +141,11 @@ function usage(): never {
             '  belte dev                            build + run with hot reload\n' +
             '  belte build                          build the client into dist/_app/\n' +
             '  belte start                          run the production server against dist/\n' +
+            '  belte run <file> [args...]           run a script under the belte preload\n' +
+            '                                       (jobs, one-off scripts — same runtime as\n' +
+            '                                       the server). For tests, add\n' +
+            '                                       preload = ["@briancray/belte/preload"] under\n' +
+            '                                       [test] in bunfig.toml and use `bun test`\n' +
             '  belte compile [--target=<bun-...>] [--out=<path>]\n' +
             '                                       build a standalone server executable\n' +
             '  belte cli [--target=<bun-...>] [--out=<path>] [--platforms=<a,b,c>]\n' +
@@ -148,6 +169,8 @@ if (command === 'scaffold') {
     await buildOnce()
 } else if (command === 'start') {
     await start()
+} else if (command === 'run') {
+    await runCmd()
 } else if (command === 'compile') {
     await compileCmd()
 } else if (command === 'cli') {
