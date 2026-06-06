@@ -1,5 +1,11 @@
 # @briancray/belte
 
+## 0.13.1
+
+### Patch Changes
+
+- [`bfbc36c`](https://github.com/briancray/belte/commit/bfbc36c940ace6422c873693258d5c409d6406e9) - Publish an up-to-date README and include `CHANGELOG.md` in the package tarball. The npm copy of the README had drifted from the maintained source; the changelog is now shipped alongside it.
+
 ## 0.13.0
 
 ### Minor Changes
