@@ -1,5 +1,11 @@
 # @briancray/belte
 
+## 0.13.2
+
+### Patch Changes
+
+- [`0dfb38f`](https://github.com/briancray/belte/commit/0dfb38f16ab42d9d25806a9fad8fdfd6846b708f) - wire bun test preload and complete belte command scripts in scaffold + examples ([`6bd497a`](https://github.com/briancray/belte/commit/6bd497a065190f0afdd4445848e7322a8b120d50))
+
 ## 0.13.1
 
 ### Patch Changes
