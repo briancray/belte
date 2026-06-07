@@ -7,7 +7,13 @@ import type { CacheStore } from '../src/lib/shared/types/CacheStore.ts'
 /* Minimal store holding entries; subscribe/events are unused by these paths. */
 function storeWith(entries: CacheEntry[]): CacheStore {
     const map = new Map(entries.map((entry) => [entry.key, entry]))
-    return { entries: map, events: new EventTarget(), subscribe: () => {} }
+    return {
+        entries: map,
+        events: new EventTarget(),
+        subscribe: () => {},
+        trackLifecycle: () => {},
+        pendingRefresh: new Set(),
+    }
 }
 
 function jsonResponse(body: unknown): Response {

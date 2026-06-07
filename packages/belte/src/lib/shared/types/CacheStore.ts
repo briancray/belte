@@ -19,4 +19,14 @@ export type CacheStore = {
     events: EventTarget
     subscribe: (key: string) => void
     trackLifecycle: () => void
+    /*
+    Keys dropped by a (policy-less) invalidate, awaiting their next read. The
+    drop erases the entry, so the next cache() call is a cold miss with no memory
+    it followed an invalidate; this set carries that signal across the gap so the
+    replacement entry is flagged a reload (cache.refreshing true) rather than a
+    first-ever load. Consumed when that entry is created; a key invalidated but
+    never re-read just lingers (bounded by distinct such keys; the server's
+    request-scoped store discards it with the response).
+    */
+    pendingRefresh: Set<string>
 }

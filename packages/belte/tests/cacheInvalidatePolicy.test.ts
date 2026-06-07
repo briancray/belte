@@ -142,4 +142,33 @@ describe('cache() invalidate throttle / debounce', () => {
         cache.invalidate(fetchValue)
         expect(cacheStoreSlot.fallback!.entries.size).toBe(0)
     })
+
+    test('without a policy, the next read after invalidate reports as a reload', async () => {
+        let resolveSecond: (value: number) => void = () => {}
+        const second = new Promise<number>((resolve) => {
+            resolveSecond = resolve
+        })
+        const values: Promise<number>[] = [Promise.resolve(1), second]
+        let index = 0
+        const producer = () => values[index++]
+
+        expect(await cache(producer)()).toBe(1)
+        /* A settled cold load is not a reload. */
+        expect(cache.refreshing(producer)).toBe(false)
+
+        cache.invalidate(producer) // drops the entry, marks the key for refresh
+
+        /* The next read is a cold miss (no stale value → also pending), but flagged
+           a reload because it follows an invalidate. */
+        const reload = cache(producer)()
+        expect(cache.refreshing(producer)).toBe(true)
+        expect(cache.pending(producer)).toBe(true)
+
+        resolveSecond(2)
+        expect(await reload).toBe(2)
+        await settle()
+        /* Reload settled → fresh value, no longer refreshing. */
+        expect(cache.refreshing(producer)).toBe(false)
+        expect(cache.pending(producer)).toBe(false)
+    })
 })

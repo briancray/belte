@@ -214,6 +214,12 @@ function registerEntry(
         policy?.throttle !== undefined || policy?.debounce !== undefined
             ? { refetch, throttle: policy.throttle, debounce: policy.debounce }
             : undefined
+    /*
+    A prior entry for this key was dropped by invalidate() and is awaiting its
+    next read — consume the marker so this replacement read reports as a reload
+    (cache.refreshing) until it settles, not as a first-ever load.
+    */
+    const refreshing = store.pendingRefresh.delete(key) || undefined
     const entry: CacheEntry = {
         key,
         promise,
@@ -221,6 +227,7 @@ function registerEntry(
         ttl,
         expiresAt: undefined,
         scope: options?.scope === undefined ? undefined : toScopeSet(options.scope),
+        refreshing,
         invalidation,
     }
     store.entries.set(key, entry)
@@ -248,6 +255,8 @@ function registerEntry(
         ttl=0 server entry stays in the store for the snapshot.
         */
         entry.settled = true
+        /* The reload finished — this entry now holds fresh data, no longer refreshing. */
+        entry.refreshing = false
         markLifecycle(store)
         if (ttl === 0) {
             if (!keepZeroTtlForSnapshot) {
@@ -331,9 +340,10 @@ function cacheStores(): CacheStore[] {
 Invalidates every entry matching the selector (see selectorMatcher) across both
 the request/tab store and the process-level store, and notifies readers. An entry
 with an invalidate throttle/debounce policy is kept and its refetch coalesced (stale served
-until it resolves); every other match is dropped so the next read refetches. An
-empty or unmatched selector is a no-op on the cache; the lifecycle ping still
-fires but recomputes pending() to the same value.
+until it resolves); every other match is dropped so the next read refetches —
+its key recorded in pendingRefresh so that read reports as a reload (cache.refreshing)
+rather than a first-ever load. An empty or unmatched selector is a no-op on the
+cache; the lifecycle ping still fires but recomputes pending() to the same value.
 */
 function invalidate<Args, Return>(arg?: Selector<Args, Return>): void {
     const matches = selectorMatcher(arg)
@@ -348,6 +358,8 @@ function invalidate<Args, Return>(arg?: Selector<Args, Return>): void {
                 scheduleInvalidationRefetch(store, entry)
             } else {
                 store.entries.delete(entry.key)
+                /* Mark so the next read of this key reports as a reload via cache.refreshing. */
+                store.pendingRefresh.add(entry.key)
                 affected.push(entry.key)
             }
         }
@@ -404,17 +416,17 @@ state. A rejected refetch keeps the stale entry (no notify).
 */
 function fireRefetch(store: CacheStore, entry: CacheEntry): void {
     const policy = entry.invalidation
-    if (!policy || policy.refreshing) {
+    if (!policy || entry.refreshing) {
         return
     }
-    policy.refreshing = true
+    entry.refreshing = true
     policy.lastFiredAt = Date.now()
     /* Ping lifecycle so cache.refreshing re-derives when revalidation begins; the settle handlers ping again when it ends. */
     markLifecycle(store)
     const inflight = policy.refetch()
     inflight.then(
         () => {
-            policy.refreshing = false
+            entry.refreshing = false
             /* Dropped or replaced while in flight — discard this result. */
             if (store.entries.get(entry.key) !== entry) {
                 return
@@ -426,7 +438,7 @@ function fireRefetch(store: CacheStore, entry: CacheEntry): void {
             emit(store, [entry.key])
         },
         () => {
-            policy.refreshing = false
+            entry.refreshing = false
             markLifecycle(store)
         },
     )
@@ -459,16 +471,18 @@ cache.pending = pending
 
 /*
 Reactive revalidation probe sharing invalidate's selector grammar:
-  refreshing()               → any entry doing a background refetch
+  refreshing()               → any entry reloading data it already had
   refreshing(fn)             → that function's calls (per-route "updating…" badge)
   refreshing({ scope })      → a tagged group
-Returns true while any matching entry is serving a stale value during a coalesced
-invalidate refetch (settled, value visible, fresh fetch in flight) — the
-stale-while-revalidate window cache.pending deliberately omits: pending answers
-"is there a value yet?", refreshing answers "is the visible value being
-replaced?". Taps each store's lifecycle channel (both before checking, so neither
-is skipped by short-circuit) so a $derived re-runs when a refresh starts or ends.
-Outside a tracking scope it returns the current value.
+Returns true while any matching entry is reloading data it previously held:
+either a policy stale-while-revalidate refetch (settled, value visible, fresh
+fetch in flight) or the default drop-then-reload (the key was invalidated and
+dropped, this read refetches it — pending is also true here). The distinction
+from cache.pending: pending answers "is any matching call in flight?" (covers
+first-ever loads), refreshing answers "is a matching call reloading data that
+was already loaded once?". Taps each store's lifecycle channel (both before
+checking, so neither is skipped by short-circuit) so a $derived re-runs when a
+refresh starts or ends. Outside a tracking scope it returns the current value.
 */
 function refreshing<Args, Return>(arg?: Selector<Args, Return>): boolean {
     const matches = selectorMatcher(arg)
@@ -477,9 +491,7 @@ function refreshing<Args, Return>(arg?: Selector<Args, Return>): boolean {
         store.trackLifecycle()
     })
     return stores.some((store) =>
-        store.entries
-            .values()
-            .some((entry) => entry.invalidation?.refreshing === true && matches(entry)),
+        store.entries.values().some((entry) => entry.refreshing === true && matches(entry)),
     )
 }
 

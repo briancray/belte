@@ -28,6 +28,12 @@ settled by then were consumed via `await` (render blocked on them) and inline
 into `__SSR__`; ones still pending were consumed via `{#await}` (render emitted
 the pending branch without blocking) and stream a resolve chunk instead.
 
+`refreshing` flips true while this entry is reloading data it already held —
+either a policy stale-while-revalidate refetch (value still visible) or the
+default drop-then-reload (the prior entry was invalidated and dropped, this is
+its replacement read). It backs cache.refreshing, distinguishing a reload from a
+first-ever load; cleared when the read settles.
+
 `invalidation` is present only when the cache() call set an `invalidate`
 throttle/debounce policy: it holds the refetch thunk (the original call captured
 with its args) plus the policy and its runtime timer state, so invalidate() can
@@ -43,6 +49,7 @@ export type CacheEntry = {
     value?: unknown
     scope?: Set<string>
     settled?: boolean
+    refreshing?: boolean
     invalidation?: InvalidationState
 }
 
@@ -51,7 +58,6 @@ export type InvalidationState = {
     refetch: () => Promise<unknown>
     throttle?: number
     debounce?: number
-    refreshing?: boolean
     lastFiredAt?: number
     timer?: ReturnType<typeof setTimeout>
 }

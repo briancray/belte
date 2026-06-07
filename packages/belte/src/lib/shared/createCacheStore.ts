@@ -23,6 +23,7 @@ export function createCacheStore(): CacheStore {
     const entries = new Map<string, CacheEntry>()
     const events = new EventTarget()
     const subscribers = new Map<string, () => void>()
+    const pendingRefresh = new Set<string>()
 
     function subscribe(key: string): void {
         const existing = subscribers.get(key)
@@ -70,5 +71,5 @@ export function createCacheStore(): CacheStore {
         lifecycle()
     }
 
-    return { entries, events, subscribe, trackLifecycle }
+    return { entries, events, subscribe, trackLifecycle, pendingRefresh }
 }
