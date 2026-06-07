@@ -1,5 +1,15 @@
 # @briancray/belte
 
+## 0.17.0
+
+### Minor Changes
+
+- [`41625d6`](https://github.com/briancray/belte/commit/41625d6be7b2e86030a9811039317b8396c1e702) - report post-invalidate reloads via cache.refreshing ([`0008664`](https://github.com/briancray/belte/commit/00086640bc957f6fb65fb5bd00a06d622dc96996))
+
+### Patch Changes
+
+- [`41625d6`](https://github.com/briancray/belte/commit/41625d6be7b2e86030a9811039317b8396c1e702) - sync examples and template with 0.16 (bundled, DEBUG=belte) ([`590152d`](https://github.com/briancray/belte/commit/590152d71cd2cba77d9f39970c6590cc8285b2e6))
+
 ## 0.16.0
 
 ### Minor Changes
