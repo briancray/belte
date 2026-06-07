@@ -142,16 +142,62 @@ async function safeResolveFetch(target: string): Promise<Response | undefined> {
     }
 }
 
+function hasRoute(route: string): boolean {
+    return Boolean(boundPages?.[route])
+}
+
+type ResolvedView = {
+    route: string
+    params: Record<string, string>
+    Page: Component
+    Layout: Component | undefined
+}
+
+/*
+Resolves a target into the Page/Layout components to render, or undefined
+when the target isn't an SPA route: the resolve fetch failed, the body wasn't
+a known route (e.g. a raw JSON endpoint that 200s on `Accept: json`), or the
+page module import threw. Callers fall back to a hard navigation in every
+undefined case. A missing/unknown route is expected and stays silent; a known
+route whose module fails to import is a real error and is surfaced.
+*/
+async function resolveView(fullTarget: string): Promise<ResolvedView | undefined> {
+    const response = await safeResolveFetch(fullTarget)
+    if (!response) {
+        return undefined
+    }
+    const result = (await response.json()) as SsrPayload
+    if (!result.route || !hasRoute(result.route)) {
+        return undefined
+    }
+    try {
+        const { Page, Layout } = await loadView(result.route)
+        return { route: result.route, params: result.params, Page, Layout }
+    } catch (err) {
+        console.error('[belte] navigation failed', err)
+        return undefined
+    }
+}
+
+function writeHistory(replace: boolean, fullTarget: string): void {
+    if (replace) {
+        window.history.replaceState(undefined, '', fullTarget)
+    } else {
+        window.history.pushState(undefined, '', fullTarget)
+    }
+}
+
 export type NavigateOptions = { replace?: boolean; scroll?: boolean }
 
 /*
-SPA navigation entrypoint. Writes history (push by default, replace on
-request), then resolves the new view. When only `search` or `hash` changes
-(same pathname), the JSON resolve fetch + loadView are skipped — only
-`page.url` is reassigned, so $derived consumers re-run without paying a
-network round-trip or remounting the page component. Falls back to a hard
-navigation if the resolve fetch or page-module import fails, mirroring the
-behaviour of the original click handler.
+SPA navigation entrypoint. When only `search` or `hash` changes (same
+pathname) the JSON resolve fetch + loadView are skipped — history is written
+and `page.url` reassigned so $derived consumers re-run without a network
+round-trip or page remount. On a pathname change the target view is resolved
+*before* history is touched: a non-SPA target (raw JSON endpoint, unknown
+route, failed import) hard-navigates cleanly via `location.href`, because a
+pushed entry whose URL no longer matches its in-memory document corrupts
+back/forward (Safari restores the stale document under the new URL).
 */
 export async function navigate(href: string, options: NavigateOptions = {}): Promise<void> {
     const { replace = false, scroll = true } = options
@@ -161,57 +207,52 @@ export async function navigate(href: string, options: NavigateOptions = {}): Pro
         return
     }
     const fullTarget = `${target.pathname}${target.search}${target.hash}`
-    if (replace) {
-        window.history.replaceState(undefined, '', fullTarget)
-    } else {
-        window.history.pushState(undefined, '', fullTarget)
-    }
-    await applyTarget(target.pathname, fullTarget, scroll && !replace)
-}
-
-/*
-Called by both navigate() (after writing history) and the popstate handler
-(history is already current). When the pathname hasn't changed, the route
-+ params + Page are the same; we just refresh `page.url`. A true pathname
-change triggers the JSON resolve fetch and a page swap.
-*/
-async function applyTarget(
-    pathname: string,
-    fullTarget: string,
-    resetScroll: boolean,
-): Promise<void> {
-    if (pathname === page.url.pathname) {
+    if (target.pathname === page.url.pathname) {
+        writeHistory(replace, fullTarget)
         syncUrl()
         return
     }
     /* Leaving this page: cancel its still-open resolution stream (if any) so the
     connection frees instead of running to completion for a page that's gone. */
     abortPageStream()
-    const response = await safeResolveFetch(fullTarget)
-    if (!response) {
+    const view = await resolveView(fullTarget)
+    if (!view) {
         window.location.href = fullTarget
         return
     }
-    const result = (await response.json()) as SsrPayload
-    try {
-        const { Page, Layout } = await loadView(result.route)
-        applyState(result.route, result.params, Page, Layout)
-        if (resetScroll) {
-            window.scrollTo(0, 0)
-        }
-    } catch (err) {
-        console.error('[belte] navigation failed', err)
-        window.location.href = fullTarget
+    writeHistory(replace, fullTarget)
+    applyState(view.route, view.params, view.Page, view.Layout)
+    if (scroll && !replace) {
+        window.scrollTo(0, 0)
     }
 }
 
 /*
-popstate fires after the browser has already restored the URL, so this just
-applies the current location without writing history again. Scroll position
-is left alone — the browser's built-in history scroll restoration wins for
-back/forward.
+popstate fires after the browser has already restored the URL, so this never
+writes history — it just applies the current location. A same-pathname change
+only refreshes `page.url`; a pathname change resolves and swaps the page, or
+hard-navigates when the restored URL isn't an SPA route.
+*/
+async function applyTarget(pathname: string, fullTarget: string): Promise<void> {
+    if (pathname === page.url.pathname) {
+        syncUrl()
+        return
+    }
+    abortPageStream()
+    const view = await resolveView(fullTarget)
+    if (!view) {
+        window.location.href = fullTarget
+        return
+    }
+    applyState(view.route, view.params, view.Page, view.Layout)
+}
+
+/*
+popstate fires after the browser has already restored the URL. Scroll
+position is left alone — the browser's built-in history scroll restoration
+wins for back/forward.
 */
 export function handlePopstate(): void {
     const fullTarget = `${window.location.pathname}${window.location.search}${window.location.hash}`
-    void applyTarget(window.location.pathname, fullTarget, false)
+    void applyTarget(window.location.pathname, fullTarget)
 }
