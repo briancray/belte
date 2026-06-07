@@ -1,5 +1,11 @@
 # @briancray/belte
 
+## 0.17.1
+
+### Patch Changes
+
+- [`e643a7e`](https://github.com/briancray/belte/commit/e643a7e74850e4d17435a868f6b71f20b37d7612) - isolate dev builds to staging dirs and reap the server child on exit ([`0f4d97e`](https://github.com/briancray/belte/commit/0f4d97e3194d6dff652a434ab78c8bb651cdefe4))
+
 ## 0.17.0
 
 ### Minor Changes
