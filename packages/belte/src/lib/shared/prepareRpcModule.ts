@@ -1,5 +1,5 @@
-import { beltePackageName } from './beltePackageName.ts'
 import { findExportCallSite } from './findExportCallSite.ts'
+import { importNamesToStrip } from './importNamesToStrip.ts'
 import { stripImport } from './stripImport.ts'
 import type { HttpVerb } from './types/HttpVerb.ts'
 
@@ -38,9 +38,7 @@ export function prepareRpcModule(
     stub module into the server bundle. The user may import under the
     project's chosen name or the canonical package name, so strip both.
     */
-    const importNames =
-        importName === beltePackageName ? [beltePackageName] : [importName, beltePackageName]
-    const stripped = importNames.reduce(
+    const stripped = importNamesToStrip(importName).reduce(
         (current, name) =>
             VERB_NAMES.reduce((acc, verb) => stripImport(acc, `${name}/server/${verb}`), current),
         source,

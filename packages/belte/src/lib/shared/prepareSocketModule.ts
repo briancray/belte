@@ -1,5 +1,5 @@
-import { beltePackageName } from './beltePackageName.ts'
 import { findExportCallSite } from './findExportCallSite.ts'
+import { importNamesToStrip } from './importNamesToStrip.ts'
 import { stripImport } from './stripImport.ts'
 
 const SINGLE_EXPORT_ERROR =
@@ -27,9 +27,7 @@ export function prepareSocketModule(
     canonical package name so the dead import can't side-effect-load the
     socket helper into the server bundle.
     */
-    const importNames =
-        importName === beltePackageName ? [beltePackageName] : [importName, beltePackageName]
-    const stripped = importNames.reduce(
+    const stripped = importNamesToStrip(importName).reduce(
         (current, name) => stripImport(current, `${name}/server/socket`),
         source,
     )
