@@ -27,11 +27,15 @@ export const FORWARDED_HEADERS = [
 
 export function forwardHeaders(source: Headers): Headers {
     const headers = new Headers()
-    for (const name of [...FORWARDED_HEADERS, ...extraForwardHeaders.get()]) {
+    // Iterate the two fixed arrays directly — both are request-invariant, so
+    // a spread-concat here would allocate a fresh array on every SSR/MCP call.
+    const copy = (name: string) => {
         const value = source.get(name)
         if (value) {
             headers.set(name, value)
         }
     }
+    FORWARDED_HEADERS.forEach(copy)
+    extraForwardHeaders.get().forEach(copy)
     return headers
 }
