@@ -1,6 +1,8 @@
 import { watch } from 'node:fs'
 import type { Subprocess } from 'bun'
 import { build } from './build.ts'
+import { defaultPort } from './lib/server/runtime/defaultPort.ts'
+import { findOpenPort } from './lib/server/runtime/findOpenPort.ts'
 import { log } from './lib/shared/log.ts'
 
 /*
@@ -41,21 +43,6 @@ function isGenerated(filename: string): boolean {
 }
 
 const buildOptions = { cwd, minify: false, compress: false, exitOnFailure: false } as const
-
-/*
-Pick a free port once and reuse it for every restart, so the browser tab keeps
-pointing at the same address. Binding a throwaway listener on port 0 lets the
-kernel choose; we read it back and release it before the real server claims it.
-*/
-async function pickDevPort(): Promise<number> {
-    const probe = Bun.serve({ port: 0, fetch: () => new Response() })
-    const { port } = probe
-    probe.stop(true)
-    if (port === undefined) {
-        throw new Error('could not acquire a dev port')
-    }
-    return port
-}
 
 let server: Subprocess | undefined
 
@@ -111,7 +98,13 @@ async function rebuild(port: number): Promise<void> {
     }
 }
 
-const port = await pickDevPort()
+/*
+Pick a free port once and reuse it for every restart, so the browser tab keeps
+pointing at the same address. Scans upward from the shared default so dev lands
+on the same predictable 3000+ address as `bun start`; reusing the number across
+restarts (not re-scanning) is what keeps the tab valid.
+*/
+const port = findOpenPort(defaultPort)
 const firstBuild = await build(buildOptions)
 if (!firstBuild) {
     log.warn('initial build failed — fix the error and save to retry')
