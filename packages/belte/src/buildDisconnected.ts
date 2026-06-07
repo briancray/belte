@@ -1,11 +1,7 @@
-import type { BunPlugin } from 'bun'
-import { belteResolverPlugin } from './belteResolverPlugin.ts'
-import { dedupeSveltePlugin } from './dedupeSveltePlugin.ts'
+import { clientBuildPlugins } from './clientBuildPlugins.ts'
 import { exitOnBuildFailure } from './lib/shared/exitOnBuildFailure.ts'
-import { isModuleNotFound } from './lib/shared/isModuleNotFound.ts'
 import { log } from './lib/shared/log.ts'
 import type { SvelteConfig } from './lib/shared/types/SvelteConfig.ts'
-import { sveltePlugin } from './sveltePlugin.ts'
 
 const ENTRY = new URL('./bundleDisconnectedEntry.ts', import.meta.url).pathname
 const CSS_ENTRY = new URL('./lib/bundle/disconnected.css', import.meta.url).pathname
@@ -43,21 +39,12 @@ export async function buildDisconnected({
     cwd?: string
     svelteConfig?: SvelteConfig
 } = {}): Promise<string> {
-    const plugins: BunPlugin[] = [
-        dedupeSveltePlugin({ cwd, conditions: ['browser', 'default'] }),
-        sveltePlugin({ generate: 'client', svelteConfig }),
-        belteResolverPlugin({ cwd, target: 'client' }),
-    ]
-    try {
-        const tailwind = (await import('bun-plugin-tailwind')).default
-        plugins.push(tailwind)
-    } catch (error) {
-        // Optional peer: swallow "not installed", surface any real load error.
-        if (!isModuleNotFound(error)) {
-            throw error
-        }
-        log.warn('bun-plugin-tailwind not installed; building connect screen without Tailwind')
-    }
+    const plugins = await clientBuildPlugins({
+        cwd,
+        svelteConfig,
+        tailwindWarning:
+            'bun-plugin-tailwind not installed; building connect screen without Tailwind',
+    })
 
     /*
     The Tailwind CSS rides as its own entrypoint rather than a `.css` import from

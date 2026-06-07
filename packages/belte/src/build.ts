@@ -1,12 +1,8 @@
-import type { BunPlugin } from 'bun'
-import { belteResolverPlugin } from './belteResolverPlugin.ts'
-import { dedupeSveltePlugin } from './dedupeSveltePlugin.ts'
+import { clientBuildPlugins } from './clientBuildPlugins.ts'
 import { exitOnBuildFailure } from './lib/shared/exitOnBuildFailure.ts'
-import { isModuleNotFound } from './lib/shared/isModuleNotFound.ts'
 import { loadSvelteConfig } from './lib/shared/loadSvelteConfig.ts'
 import { log } from './lib/shared/log.ts'
 import type { SvelteConfig } from './lib/shared/types/SvelteConfig.ts'
-import { sveltePlugin } from './sveltePlugin.ts'
 
 const CLIENT_ENTRY = new URL('./clientEntry.ts', import.meta.url).pathname
 
@@ -46,26 +42,11 @@ export async function build({
     await Bun.$`rm -rf ${distDir}`.quiet()
 
     const config = svelteConfig ?? (await loadSvelteConfig(cwd))
-    const plugins: BunPlugin[] = [
-        dedupeSveltePlugin({ cwd, conditions: ['browser', 'default'] }),
-        sveltePlugin({ generate: 'client', svelteConfig: config }),
-        belteResolverPlugin({ cwd, target: 'client' }),
-    ]
-    try {
-        const tailwind = (await import('bun-plugin-tailwind')).default
-        plugins.push(tailwind)
-    } catch (error) {
-        /*
-        Tailwind is an optional peer — a genuine "not installed" is fine and
-        builds without it. But only swallow the module-resolution failure;
-        any other error (a plugin that loaded and then threw on a real
-        misconfig) must surface, or the build silently ships unstyled.
-        */
-        if (!isModuleNotFound(error)) {
-            throw error
-        }
-        log.warn('bun-plugin-tailwind not installed; building without Tailwind')
-    }
+    const plugins = await clientBuildPlugins({
+        cwd,
+        svelteConfig: config,
+        tailwindWarning: 'bun-plugin-tailwind not installed; building without Tailwind',
+    })
 
     const result = await Bun.build({
         entrypoints: [CLIENT_ENTRY],
@@ -94,7 +75,7 @@ export async function build({
 
     // Dev skips the zstd siblings; report the bundle and let the watcher restart.
     if (!compress) {
-        log.success(`wrote ${result.outputs.length} files to ${outDir}`)
+        log.info(`wrote ${result.outputs.length} files to ${outDir}`)
         return true
     }
 
@@ -108,7 +89,7 @@ export async function build({
     )
     const compressedBytes = compressedByteLengths.reduce((total, length) => total + length, 0)
 
-    log.success(
+    log.info(
         `wrote ${result.outputs.length} files to ${outDir} (+${result.outputs.length} .zst, ${(compressedBytes / 1024).toFixed(1)} KiB total)`,
     )
     // Per-file paths are noise at startup; surface them only under DEBUG=belte:build.
