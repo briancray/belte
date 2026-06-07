@@ -7,94 +7,141 @@ import type { SvelteConfig } from './lib/shared/types/SvelteConfig.ts'
 const CLIENT_ENTRY = new URL('./clientEntry.ts', import.meta.url).pathname
 
 /*
-Builds the client-side bundle into `${cwd}/dist/_app`. Clears the dist
-directory first, then runs Bun.build with the svelte-dedupe plugin, the
-svelte loader, the virtual-module resolver, and (optionally) Tailwind.
-When `compress`, each emitted file is also written as a zstd-compressed
-`.zst` sibling (level 22 — paid once at build time) so the server can
-stream the precompressed bytes directly when the client supports it, and
-decompress on the fly for older clients. Dev skips compression (zstd-22 on
-every rebuild dwarfs the bundle itself) — the server falls back to serving
-the plain bytes when no `.zst` sibling exists.
+Builds the client-side bundle into `${cwd}/dist/_app`. Runs Bun.build with
+the svelte-dedupe plugin, the svelte loader, the virtual-module resolver,
+and (optionally) Tailwind. When `compress`, each emitted file is also
+written as a zstd-compressed `.zst` sibling (level 22 — paid once at build
+time) so the server can stream the precompressed bytes directly when the
+client supports it, and decompress on the fly for older clients. Dev skips
+compression (zstd-22 on every rebuild dwarfs the bundle itself) — the
+server falls back to serving the plain bytes when no `.zst` sibling exists.
 
-Returns whether the build succeeded. On failure it prints the diagnostics
-and, by default, exits the process (one-shot `belte build` / `compile`).
-The dev orchestrator passes `exitOnFailure: false` so a syntax error keeps
-the loop (and the last-good server) alive instead of tearing it down.
+The bundle is emitted into a per-build staging dir, then swapped into
+`_app` with two atomic renames. This keeps every build's writes isolated to
+a unique path (so a stray concurrent build can never `rm` files Bun is
+mid-flushing — the "writing sourcemap: No such file or directory" race) and
+means a long-running dev server reading `_app` lazily off disk never sees a
+half-built or emptied directory.
+
+`clean` (one-shot builds) clears the whole dist up front so downstream
+writers — the bundle's connect screen, the CLI manifest — start fresh; the
+dev orchestrator passes `clean: false` to leave the live dist untouched and
+only swap `_app` at the end.
+
+Returns whether the build succeeded. Never throws: a thrown Bun.build / fs
+error is logged and treated as a failed build, so the dev loop (and its
+last-good server) survives instead of crashing and orphaning the child. By
+default a failure exits the process (one-shot `belte build` / `compile`);
+the dev orchestrator passes `exitOnFailure: false`.
 */
 export async function build({
     cwd = process.cwd(),
     svelteConfig,
     minify = true,
     compress = true,
+    clean = true,
     exitOnFailure = true,
 }: {
     cwd?: string
     svelteConfig?: SvelteConfig
     minify?: boolean
     compress?: boolean
+    clean?: boolean
     exitOnFailure?: boolean
 } = {}): Promise<boolean> {
     const distDir = `${cwd}/dist`
     const outDir = `${distDir}/_app`
+    // Per-build staging + holding dirs; the suffix isolates concurrent builds.
+    const buildId = crypto.randomUUID().slice(0, 8)
+    const stagingDir = `${distDir}/_app.staging-${buildId}`
+    const previousDir = `${distDir}/_app.old-${buildId}`
 
-    // shell-rm is the impure boundary for "clear dist" — Bun.$ is first-party
-    await Bun.$`rm -rf ${distDir}`.quiet()
-
-    const config = svelteConfig ?? (await loadSvelteConfig(cwd))
-    const plugins = await clientBuildPlugins({
-        cwd,
-        svelteConfig: config,
-        tailwindWarning: 'bun-plugin-tailwind not installed; building without Tailwind',
-    })
-
-    const result = await Bun.build({
-        entrypoints: [CLIENT_ENTRY],
-        outdir: outDir,
-        target: 'browser',
-        splitting: true,
-        minify,
-        sourcemap: 'linked',
-        naming: {
-            entry: 'client-[hash].[ext]',
-            chunk: '[name]-[hash].[ext]',
-            asset: '[name].[ext]',
-        },
-        plugins,
-    })
-
-    if (!result.success) {
+    const fail = (): boolean => {
         if (exitOnFailure) {
-            exitOnBuildFailure(result)
+            process.exit(1)
         }
-        result.logs.forEach((entry) => {
-            log.error(entry)
-        })
         return false
     }
 
-    // Dev skips the zstd siblings; report the bundle and let the watcher restart.
-    if (!compress) {
-        log.info(`wrote ${result.outputs.length} files to ${outDir}`)
+    try {
+        // shell-rm/-mv are the impure boundary for the dist swap — Bun.$ is first-party.
+        if (clean) {
+            await Bun.$`rm -rf ${distDir}`.quiet()
+        }
+
+        const config = svelteConfig ?? (await loadSvelteConfig(cwd))
+        const plugins = await clientBuildPlugins({
+            cwd,
+            svelteConfig: config,
+            tailwindWarning: 'bun-plugin-tailwind not installed; building without Tailwind',
+        })
+
+        const result = await Bun.build({
+            entrypoints: [CLIENT_ENTRY],
+            outdir: stagingDir,
+            target: 'browser',
+            splitting: true,
+            minify,
+            sourcemap: 'linked',
+            naming: {
+                entry: 'client-[hash].[ext]',
+                chunk: '[name]-[hash].[ext]',
+                asset: '[name].[ext]',
+            },
+            plugins,
+        })
+
+        if (!result.success) {
+            await Bun.$`rm -rf ${stagingDir}`.quiet().nothrow()
+            if (exitOnFailure) {
+                exitOnBuildFailure(result)
+            }
+            result.logs.forEach((entry) => {
+                log.error(entry)
+            })
+            return false
+        }
+
+        // Dev skips the zstd siblings (paths still point into stagingDir here).
+        const compressedBytes = compress
+            ? (
+                  await Promise.all(
+                      result.outputs.map(async (output) => {
+                          const bytes = await Bun.file(output.path).bytes()
+                          const compressed = await Bun.zstdCompress(bytes, { level: 22 })
+                          await Bun.write(`${output.path}.zst`, compressed)
+                          return compressed.byteLength
+                      }),
+                  )
+              ).reduce((total, length) => total + length, 0)
+            : 0
+
+        /*
+        Swap staging into _app with two renames: move any existing _app aside,
+        then rename staging into place. The window where _app is absent is a
+        single rename, so a reader (the running dev server) never observes a
+        partial bundle. nothrow on the first move: no _app exists on the first
+        build or after `clean`.
+        */
+        await Bun.$`mv ${outDir} ${previousDir}`.quiet().nothrow()
+        await Bun.$`mv ${stagingDir} ${outDir}`.quiet()
+        await Bun.$`rm -rf ${previousDir}`.quiet().nothrow()
+
+        if (compress) {
+            log.info(
+                `wrote ${result.outputs.length} files to ${outDir} (+${result.outputs.length} .zst, ${(compressedBytes / 1024).toFixed(1)} KiB total)`,
+            )
+            // Per-file paths are noise at startup; surface them only under DEBUG=belte:build.
+            result.outputs.forEach((output) => {
+                log.debug('belte:build', `  - ${output.path.replace(stagingDir, outDir)}`)
+            })
+        } else {
+            log.info(`wrote ${result.outputs.length} files to ${outDir}`)
+        }
         return true
+    } catch (error) {
+        log.error(error)
+        await Bun.$`rm -rf ${stagingDir} ${previousDir}`.quiet().nothrow()
+        return fail()
     }
-
-    const compressedByteLengths = await Promise.all(
-        result.outputs.map(async (output) => {
-            const bytes = await Bun.file(output.path).bytes()
-            const compressed = await Bun.zstdCompress(bytes, { level: 22 })
-            await Bun.write(`${output.path}.zst`, compressed)
-            return compressed.byteLength
-        }),
-    )
-    const compressedBytes = compressedByteLengths.reduce((total, length) => total + length, 0)
-
-    log.info(
-        `wrote ${result.outputs.length} files to ${outDir} (+${result.outputs.length} .zst, ${(compressedBytes / 1024).toFixed(1)} KiB total)`,
-    )
-    // Per-file paths are noise at startup; surface them only under DEBUG=belte:build.
-    result.outputs.forEach((output) => {
-        log.debug('belte:build', `  - ${output.path}`)
-    })
-    return true
 }

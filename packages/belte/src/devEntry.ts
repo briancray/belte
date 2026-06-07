@@ -42,7 +42,15 @@ function isGenerated(filename: string): boolean {
     return filename.split(/[\\/]/).includes(GENERATED_DIR)
 }
 
-const buildOptions = { cwd, minify: false, compress: false, exitOnFailure: false } as const
+// clean:false leaves the live dist in place — each build swaps _app in atomically,
+// so the running server never serves a half-built or emptied bundle.
+const buildOptions = {
+    cwd,
+    minify: false,
+    compress: false,
+    clean: false,
+    exitOnFailure: false,
+} as const
 
 let server: Subprocess | undefined
 
@@ -128,3 +136,14 @@ const shutdown = async () => {
 }
 process.on('SIGINT', shutdown)
 process.on('SIGTERM', shutdown)
+process.on('SIGHUP', shutdown)
+
+/*
+Last-resort sync cleanup: Bun.spawn'd children aren't reaped when the parent
+dies, so a crash (uncaught error, terminal close) would otherwise leave the
+server holding the dev port. 'exit' fires for every exit path; kill is
+synchronous, which is enough to signal the child before we go.
+*/
+process.on('exit', () => {
+    server?.kill()
+})
