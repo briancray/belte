@@ -1,5 +1,11 @@
 # @briancray/belte
 
+## 0.15.0
+
+### Minor Changes
+
+- [`c9d0d8b`](https://github.com/briancray/belte/commit/c9d0d8bb3102c5baabf680cef310963626558658) - dev orchestrator with browser live-reload ([`5d2b392`](https://github.com/briancray/belte/commit/5d2b392a41a659bf3b198a29930dde4caf4f44d0))
+
 ## 0.14.0
 
 ### Minor Changes
