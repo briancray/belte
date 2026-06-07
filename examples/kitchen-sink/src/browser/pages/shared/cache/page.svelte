@@ -142,8 +142,9 @@ async function reset() {
     <h2 class="text-sm font-semibold"><code class="font-mono">cache.refreshing</code></h2>
     <p class="mt-2 text-sm text-slate-600">
         Same selector grammar, but it answers a different question than
-        <code class="font-mono">pending</code>: it is<code class="font-mono">true</code>
-        only while a matching entry serves its <em>stale</em> value during an
+        <code class="font-mono">pending</code>
+        : it is<code class="font-mono">true</code>
+        only while a matching entry serves its<em>stale</em> value during an
         <code class="font-mono">invalidate</code> refetch (the throttle/debounce
         stale-while-revalidate window).<code class="font-mono">pending</code> asks "is there a value
         yet?";<code class="font-mono">refreshing</code> asks "is the visible value being replaced?"

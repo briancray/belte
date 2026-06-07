@@ -9,8 +9,8 @@ module — no import is needed from your own code.
 */
 import type { AppModule } from '@briancray/belte/server/AppModule'
 
-export const init: AppModule['init'] = ({ server }) => {
-    console.log(`server listening on http://localhost:${server.port}`)
+export const init: AppModule['init'] = () => {
+    // one-time setup; optionally return a cleanup to run on SIGINT/SIGTERM
 }
 
 export const handle: AppModule['handle'] = async (request, next) => {

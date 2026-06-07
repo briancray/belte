@@ -137,6 +137,23 @@ import CodeBlock from '$browser/CodeBlock.svelte'
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600">
     <h2 class="text-sm font-semibold text-slate-900">
+        Detect the bundle with<code class="font-mono">bundled()</code>
+    </h2>
+    <p class="mt-1">
+        <code class="font-mono">bundled</code> from
+        <code class="font-mono">belte/shared/bundled</code> reports whether the code is running
+        inside the desktop bundle —<code class="font-mono">true</code> in the bundle's webview or
+        its embedded server process,<code class="font-mono">false</code> in a plain browser tab or a
+        standalone server binary. Same name and meaning on both sides (the client reads the
+        webview's init flag; the server reads the launcher's<code class="font-mono">
+            BELTE_PARENT_PID
+        </code>
+        ), so a page can branch desktop-only UI without threading a flag through your code.
+    </p>
+</section>
+
+<section class="mt-6 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600">
+    <h2 class="text-sm font-semibold text-slate-900">
         <code class="font-mono">belte bundle</code> vs<code class="font-mono">belte compile</code>
     </h2>
     <p class="mt-1">
@@ -198,6 +215,16 @@ $effect(() => onMenu('open-mcp', () => void navigate('/mcp')))
     <CodeBlock
         title="any server handler reads config straight off the env"
         code={`const root = Bun.env.HOST_ROOT   // delivered by the setup modal → data-dir .env`} />
+
+    <CodeBlock
+        title="src/browser/pages/page.svelte — branch desktop-only UI"
+        lang="svelte"
+        code={`import { bundled } from '@briancray/belte/shared/bundled'
+
+// true in the bundle's webview / embedded server, false in a plain browser tab
+{#if bundled()}
+    <button onclick={() => location.reload()}>Reload window</button>
+{/if}`} />
 
     <CodeBlock
         title="build the bundle (host platform)"

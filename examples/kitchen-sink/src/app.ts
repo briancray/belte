@@ -3,15 +3,15 @@ Kitchen-sink app hooks. Belte resolves this file at build time via the
 belte:app virtual module — no import is needed from your own code. Three
 hooks are exported here to show each one in action:
 
-  init        runs once after Bun.serve is up — used here to log the boot URL
+  init        runs once after Bun.serve is up — your one-time setup goes here
   handle      middleware that wraps the request pipeline — used here to stamp
               every outgoing Response with an x-server header
   handleError fallback 500 page — replaces belte's default stack-trace HTML
 */
 import type { AppModule } from '@briancray/belte/server/AppModule'
 
-export const init: AppModule['init'] = ({ server }) => {
-    console.log(`kitchen-sink listening on http://localhost:${server.port}`)
+export const init: AppModule['init'] = () => {
+    // one-time setup goes here; belte already logs the boot URL, so nothing to print
 }
 
 export const handle: AppModule['handle'] = async (request, next) => {
