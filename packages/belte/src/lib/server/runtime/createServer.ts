@@ -29,6 +29,8 @@ import { containsTraversal } from './containsTraversal.ts'
 import { createAssetHeaderCache } from './createAssetHeaderCache.ts'
 import { createPublicAssetServer } from './createPublicAssetServer.ts'
 import { createRouteDispatcher } from './createRouteDispatcher.ts'
+import { devReloadClientScript } from './devReloadClientScript.ts'
+import { devReloadResponse } from './devReloadResponse.ts'
 import { disableIdleTimeoutForStream } from './disableIdleTimeoutForStream.ts'
 import { globToPathSet } from './globToPathSet.ts'
 import { internalErrorResponse } from './internalErrorResponse.ts'
@@ -60,6 +62,8 @@ const SOCKETS_REST_PREFIX = '/__belte/sockets/'
 const MCP_PATH = '/__belte/mcp'
 const CLI_PATH = '/__belte/cli'
 const CLI_DOWNLOAD_PREFIX = '/__belte/cli/'
+// Dev-only live-reload SSE channel; mounted only when `dev` (see devEntry orchestrator).
+const DEV_RELOAD_PATH = '/__belte/dev'
 /*
 Unlike the framework's own plumbing routes above (the socket multiplex, MCP
 endpoint, CLI download), the OpenAPI document describes the app's public HTTP
@@ -109,6 +113,9 @@ export async function createServer({
     regardless of this floor.
     */
     idleTimeout = parseIdleTimeout(process.env.BELTE_IDLE_TIMEOUT) ?? 10,
+    // Under `belte dev` the orchestrator sets this: mount the live-reload SSE
+    // channel and inject its client into the served shell.
+    dev = false,
 }: {
     pages: Pages
     rpc: RemoteRoutes
@@ -129,7 +136,11 @@ export async function createServer({
     resourcesDir?: string
     port?: number
     idleTimeout?: number
+    dev?: boolean
 }): Promise<Server<unknown>> {
+    // In dev, append the live-reload client to the shell so every rendered
+    // page reconnects to /__belte/dev and reloads after a restart.
+    const activeShell = dev ? shell.replace('</body>', `${devReloadClientScript}</body>`) : shell
     setRegistryManifests({ rpc, sockets, prompts })
     setMcpResourceServer(createMcpResourceServer({ resourcesDir, mcpResources }))
     const cliName = cliProgramName ?? 'app'
@@ -206,7 +217,7 @@ export async function createServer({
             body: rendered.body,
             state: stateTag,
         }
-        return shell.replace(SSR_MARKER, (_match, key: string) => fills[key])
+        return activeShell.replace(SSR_MARKER, (_match, key: string) => fills[key])
     }
 
     /*
@@ -486,6 +497,16 @@ export async function createServer({
                         },
                         { headers: { 'Cache-Control': NO_STORE } },
                     )
+                }
+                /*
+                Dev live-reload channel — answered directly, ahead of app.handle,
+                so a restart-driven reconnect always lands even when the app guards
+                everything behind auth. Only mounted under `belte dev`.
+                */
+                if (dev && url.pathname === DEV_RELOAD_PATH) {
+                    // Long-lived SSE: opt out of the idle timeout, else Bun reaps
+                    // it and the reconnect triggers a spurious reload loop.
+                    return disableIdleTimeoutForStream(bunServer, req, devReloadResponse())
                 }
                 if (url.pathname === SOCKETS_PATH) {
                     // Reject cross-origin upgrades (CSWSH) before handing off to Bun.

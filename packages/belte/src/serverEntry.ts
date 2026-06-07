@@ -89,4 +89,6 @@ await createServer({
     mcp,
     cliProgramName,
     appInfo,
+    // Set by the dev orchestrator (devEntry); mounts the live-reload channel.
+    dev: Bun.env.BELTE_DEV === '1',
 })

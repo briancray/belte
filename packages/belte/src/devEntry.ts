@@ -1,36 +1,137 @@
-// @ts-expect-error virtual module resolved by belteResolverPlugin
-import { errors } from './_virtual/errors.ts'
-// @ts-expect-error virtual module resolved by belteResolverPlugin
-import { layouts } from './_virtual/layouts.ts'
-// @ts-expect-error virtual module resolved by belteResolverPlugin
-import { pages } from './_virtual/pages.ts'
-// @ts-expect-error virtual module resolved by belteResolverPlugin
-import { prompts } from './_virtual/prompts.ts'
-// @ts-expect-error virtual module resolved by belteResolverPlugin
-import { rpc } from './_virtual/rpc.ts'
-// @ts-expect-error virtual module resolved by belteResolverPlugin
-import { sockets } from './_virtual/sockets.ts'
+import { watch } from 'node:fs'
+import type { Subprocess } from 'bun'
 import { build } from './build.ts'
+import { log } from './lib/shared/log.ts'
 
 /*
-Dev-only entry. Each `bun --watch` restart re-runs the client build (so the
-browser-served bundle matches the freshly-evaluated server modules) and then
-eagerly invokes every dynamic loader for pages, layouts, rpc handlers, and
-sockets. That pulls those files into Bun's import graph from boot, so the
-watcher sees edits to a page or component on the *first* save instead of
-needing the page to be visited once to warm the dynamic import. Finally
-hands off to the normal server entry, which expects the same virtual
-modules — they're already cached, so it just runs createServer().
+Dev orchestrator. Replaces `bun --watch` (which only watches the import graph,
+so new files / CSS / public assets never triggered a restart) with an explicit
+loop we own end to end:
+
+  1. Build the client once — uncompressed, unminified (zstd-22 on every rebuild
+     dwarfs the bundle; the server serves the plain bytes when no .zst exists).
+  2. Spawn the server as a child against a fixed dev port and BELTE_DEV=1, which
+     makes it mount the /__belte/dev live-reload channel.
+  3. Watch src/ recursively. On any change, rebuild then restart the child. SSR
+     renders pages through Bun's module cache, so a fresh module graph (a new
+     process) is the reliable way to reflect a source edit — Bun has no stable
+     in-process invalidation. The browser reconnects to the restarted server's
+     live-reload channel and reloads itself.
+
+Restarts are serialized (a build mid-flight queues the next) and the port is
+fixed so the browser tab stays valid across restarts. A failed build keeps the
+last-good server running rather than tearing the loop down.
 */
-await build({ cwd: process.cwd(), minify: false })
+const cwd = process.cwd()
+const PRELOAD = new URL('./preload.ts', import.meta.url).pathname
+const SERVER_ENTRY = new URL('./serverEntry.ts', import.meta.url).pathname
+const SOURCE_DIR = `${cwd}/src`
+// Coalesce editor save bursts (and multi-file saves) into one rebuild.
+const REBUILD_DEBOUNCE_MS = 60
+/*
+Generated dir the build itself writes into src/ (route type declarations). It
+must be ignored or each rebuild's write retriggers the watcher — an endless
+rebuild loop.
+*/
+const GENERATED_DIR = '.belte'
 
-await Promise.all([
-    ...Object.values(pages).map((loader) => (loader as () => Promise<unknown>)()),
-    ...Object.values(layouts).map((loader) => (loader as () => Promise<unknown>)()),
-    ...Object.values(errors).map((loader) => (loader as () => Promise<unknown>)()),
-    ...Object.values(rpc).map((loader) => (loader as () => Promise<unknown>)()),
-    ...Object.values(sockets).map((loader) => (loader as () => Promise<unknown>)()),
-    ...Object.values(prompts).map((loader) => (loader as () => Promise<unknown>)()),
-])
+// True for paths under src/.belte (the build's own generated output).
+function isGenerated(filename: string): boolean {
+    return filename.split(/[\\/]/).includes(GENERATED_DIR)
+}
 
-await import('./serverEntry.ts')
+const buildOptions = { cwd, minify: false, compress: false, exitOnFailure: false } as const
+
+/*
+Pick a free port once and reuse it for every restart, so the browser tab keeps
+pointing at the same address. Binding a throwaway listener on port 0 lets the
+kernel choose; we read it back and release it before the real server claims it.
+*/
+async function pickDevPort(): Promise<number> {
+    const probe = Bun.serve({ port: 0, fetch: () => new Response() })
+    const { port } = probe
+    probe.stop(true)
+    if (port === undefined) {
+        throw new Error('could not acquire a dev port')
+    }
+    return port
+}
+
+let server: Subprocess | undefined
+
+function startServer(port: number): void {
+    server = Bun.spawn({
+        cmd: ['bun', '--preload', PRELOAD, SERVER_ENTRY],
+        cwd,
+        env: { ...process.env, PORT: String(port), BELTE_DEV: '1' },
+        stdio: ['inherit', 'inherit', 'inherit'],
+    })
+}
+
+/* Terminate the running child and wait for it to free the port (SIGKILL watchdog for a wedged exit). */
+async function stopServer(): Promise<void> {
+    if (!server) {
+        return
+    }
+    const dying = server
+    server = undefined
+    dying.kill()
+    const watchdog = setTimeout(() => dying.kill('SIGKILL'), 3000)
+    await dying.exited
+    clearTimeout(watchdog)
+}
+
+let building = false
+let queued = false
+
+/*
+Rebuild the client, then (on success) restart the server child. Serialized: a
+change arriving mid-build sets `queued` so exactly one more rebuild runs after,
+collapsing any further changes in between. A failed build leaves the current
+child untouched — the error is logged and the last-good server keeps serving.
+*/
+async function rebuild(port: number): Promise<void> {
+    if (building) {
+        queued = true
+        return
+    }
+    building = true
+    try {
+        const succeeded = await build(buildOptions)
+        if (succeeded) {
+            await stopServer()
+            startServer(port)
+        }
+    } finally {
+        building = false
+        if (queued) {
+            queued = false
+            void rebuild(port)
+        }
+    }
+}
+
+const port = await pickDevPort()
+const firstBuild = await build(buildOptions)
+if (!firstBuild) {
+    log.warn('initial build failed — fix the error and save to retry')
+}
+startServer(port)
+
+let debounce: ReturnType<typeof setTimeout> | undefined
+const watcher = watch(SOURCE_DIR, { recursive: true }, (_event, filename) => {
+    if (!filename || isGenerated(filename)) {
+        return
+    }
+    clearTimeout(debounce)
+    debounce = setTimeout(() => void rebuild(port), REBUILD_DEBOUNCE_MS)
+})
+
+/* Tear down the watcher and the child on shutdown so neither outlives the orchestrator. */
+const shutdown = async () => {
+    watcher.close()
+    await stopServer()
+    process.exit(0)
+}
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)

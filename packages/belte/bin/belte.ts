@@ -48,14 +48,15 @@ async function runChild(cmd: string[]): Promise<never> {
 }
 
 /*
-Spawns the server under `bun --watch` against the dev entry. The dev entry
-re-runs the client build and eagerly imports every page/layout/rpc/socket
-module on each boot, so Bun's watcher sees them from the start and
-restarts the whole process whenever any file in the graph changes. The
-browser is not auto-reloaded — refresh manually after the server is back.
+Runs the dev orchestrator (devEntry) — not `bun --watch`. The orchestrator owns
+the loop: it builds the client, spawns the server as a child on a fixed dev
+port, watches src/ recursively, and on any change rebuilds + restarts the child.
+The server mounts a live-reload channel under dev, so the browser reloads itself
+when the restarted server comes back. runChild forwards Ctrl+C so the
+orchestrator (and its server child) shut down cleanly.
 */
 async function dev(): Promise<void> {
-    await runChild(['bun', '--watch', '--preload', PRELOAD, DEV_ENTRY])
+    await runChild(['bun', '--preload', PRELOAD, DEV_ENTRY])
 }
 
 // Performs a single client build with no server attached (for CI / static deploys).

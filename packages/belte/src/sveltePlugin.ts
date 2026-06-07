@@ -31,7 +31,7 @@ export function sveltePlugin(options: {
                     dev: false,
                 })
                 for (const warning of warnings) {
-                    log.warn(`svelte ${args.path}: ${warning.message}`)
+                    log.debug('belte:svelte', `${args.path}: ${warning.message}`)
                 }
                 return { contents: js.code, loader: 'js' }
             })
@@ -49,7 +49,7 @@ export function sveltePlugin(options: {
                     dev: false,
                 })
                 for (const warning of warnings) {
-                    log.warn(`svelte ${args.path}: ${warning.message}`)
+                    log.debug('belte:svelte', `${args.path}: ${warning.message}`)
                 }
                 return { contents: js.code, loader: 'js' }
             })
