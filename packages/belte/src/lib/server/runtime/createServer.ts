@@ -262,17 +262,17 @@ export async function createServer({
         ])
         const ErrorView = errorMod.default as Component
         const Layout = layoutMod?.default as Component | undefined
+        // status is a number (and stack optional); the page-params shape is
+        // string-keyed generically, so the error props ride through as-is.
+        const errorParams = { status, message, stack } as unknown as Record<string, string>
+        /* Publish to the store too, so the `page` proxy resolves these during the error render
+           (renderError bypasses renderPage, which is where normal renders set them). */
+        store.route = pathname
+        store.params = errorParams
         const rendered = await render(App, {
             props: {
                 state: {
-                    page: {
-                        route: pathname,
-                        // status is a number (and stack optional); the page-params
-                        // shape is string-keyed generically, so the error props
-                        // ride through to the component as-is.
-                        params: { status, message, stack } as unknown as Record<string, string>,
-                        url: store.url,
-                    },
+                    page: { route: pathname, params: errorParams, url: store.url },
                     render: { Layout, Page: ErrorView },
                 },
             },
