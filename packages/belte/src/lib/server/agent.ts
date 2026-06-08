@@ -9,8 +9,8 @@ it does NOT pick a transport. The handler wraps it in `jsonl()` or `sse()`,
 so consumption is the app's choice, same as any other streaming verb:
 
   // src/server/rpc/chat.ts
-  import { agent } from '@briancray/belte/server/agent'
-  import { jsonl } from '@briancray/belte/server/jsonl'
+  import { agent } from '@belte/belte/server/agent'
+  import { jsonl } from '@belte/belte/server/jsonl'
   import { engine } from '@belte/anthropic'
 
   const chatEngine = engine({ model: 'claude-opus-4-8', apiKey: config.ANTHROPIC_API_KEY })

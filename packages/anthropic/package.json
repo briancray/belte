@@ -39,6 +39,6 @@
         "@anthropic-ai/sdk": "^0.102.0"
     },
     "peerDependencies": {
-        "@briancray/belte": ">=0.17.0"
+        "@belte/belte": ">=0.17.0"
     }
 }

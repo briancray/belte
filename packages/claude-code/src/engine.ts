@@ -1,5 +1,5 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentEngine } from '@briancray/belte/server/agent'
+import type { AgentEngine } from '@belte/belte/server/agent'
 
 /*
 The Claude Code engine for belte's `agent()`. `engine(config)` returns an
@@ -8,8 +8,8 @@ own MCP endpoint, and relays its event stream as AgentFrames. Unlike the
 raw-model engine, Claude Code owns its loop — core only sees frames out.
 
   // src/server/rpc/chat.ts
-  import { agent } from '@briancray/belte/server/agent'
-  import { jsonl } from '@briancray/belte/server/jsonl'
+  import { agent } from '@belte/belte/server/agent'
+  import { jsonl } from '@belte/belte/server/jsonl'
   import { engine } from '@belte/claude-code'
   const chatEngine = engine({ permission: { allow: ['mcp__app__*'], deny: ['Bash'] } })
   export const chat = POST(({ messages }) => jsonl(agent(chatEngine, messages)), { inputSchema })
