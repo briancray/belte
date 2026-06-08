@@ -1,5 +1,15 @@
 # @belte/belte
 
+## 0.19.2
+
+### Patch Changes
+
+- [`e772716`](https://github.com/briancray/belte/commit/e772716a190f826f0041b8358271604ad5a230a5) - single prompt renderer and lazy-built agent surface ([`224d348`](https://github.com/briancray/belte/commit/224d34852a63122bb53ba85a5f37af729cc987a7))
+
+- [`e772716`](https://github.com/briancray/belte/commit/e772716a190f826f0041b8358271604ad5a230a5) - surface abnormal engine stops and bound the tool loops ([`d2c3215`](https://github.com/briancray/belte/commit/d2c3215bb50ba41b2407eb8878e426a164927d9d))
+
+- [`e772716`](https://github.com/briancray/belte/commit/e772716a190f826f0041b8358271604ad5a230a5) - populate the page proxy on error and 404 renders ([`e680ae6`](https://github.com/briancray/belte/commit/e680ae6b12c773f1516fe0ab128be9a208d855f0))
+
 ## 0.19.1
 
 ### Patch Changes
