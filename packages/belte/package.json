@@ -51,6 +51,7 @@
         "./server/appDataDir": "./src/lib/server/appDataDir.ts",
         "./server/server": "./src/lib/server/server.ts",
         "./server/AppModule": "./src/lib/server/AppModule.ts",
+        "./server/agent": "./src/lib/server/agent.ts",
         "./server/rpc/defineVerb": "./src/lib/server/rpc/defineVerb.ts",
         "./server/sockets/defineSocket": "./src/lib/server/sockets/defineSocket.ts",
         "./server/prompts/definePrompt": "./src/lib/server/prompts/definePrompt.ts",
