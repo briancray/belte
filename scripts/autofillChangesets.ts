@@ -109,11 +109,16 @@ const hashes = log
 
 for (const hash of hashes) {
     const entries = await changedEntries(hash)
-    // The path is everything after the status column (handles renames loosely).
-    const paths = entries.map((line) => line.split(/\s+/).slice(1).join(' '))
-    // Every package whose shipped prefixes this commit touched.
+    // --name-status is tab-separated (`M\tpath`, `R100\told\tnew`). The last field is
+    // the path that exists post-commit — the rename destination, or the sole path.
+    const paths = entries.map((line) => line.split('\t').at(-1) ?? '')
+    // Every package whose shipped prefixes this commit touched. A prefix matches the
+    // path itself (a shipped file) or a child of it (a shipped dir); the `/` boundary
+    // stops `packages/x/src` from also claiming a sibling like `packages/x/src-internal`.
     const owners = packages.filter((pkg) =>
-        paths.some((path) => pkg.prefixes.some((prefix) => path.startsWith(prefix))),
+        paths.some((path) =>
+            pkg.prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`)),
+        ),
     )
     if (owners.length === 0) {
         continue
