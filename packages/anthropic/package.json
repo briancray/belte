@@ -1,6 +1,6 @@
 {
     "name": "@belte/anthropic",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "type": "module",
     "description": "Anthropic Messages API engine for belte's agent() — a model-of-your-choosing assistant over your app's MCP surface",
     "license": "MIT",
@@ -39,6 +39,6 @@
         "@anthropic-ai/sdk": "^0.102.0"
     },
     "peerDependencies": {
-        "@belte/belte": ">=0.17.0"
+        "@belte/belte": ">=0.19.2"
     }
 }
