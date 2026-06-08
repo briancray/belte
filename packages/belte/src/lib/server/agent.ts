@@ -41,7 +41,16 @@ export type AgentFrame =
     | { type: 'text'; delta: string }
     | { type: 'tool_use'; id: string; name: string; input: unknown }
     | { type: 'tool_result'; id: string; name: string; ok: boolean }
-    | { type: 'done'; stop: 'end' | 'tool_use' | 'max_tokens' | 'refusal' }
+    /*
+    `stop` is the reason the engine's loop ended. `error` covers an abnormal
+    stop the model didn't choose — a provider error/limit (e.g. Claude Code's
+    max-turns) or the engine's own tool-loop cap — so a client can tell a cut-off
+    answer from a clean `end`.
+    */
+    | {
+          type: 'done'
+          stop: 'end' | 'tool_use' | 'max_tokens' | 'refusal' | 'error'
+      }
 
 // The app's tool/prompt/resource surface handed to an engine (already gated).
 export type AgentSurface = McpSurface

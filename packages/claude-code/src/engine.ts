@@ -1,6 +1,6 @@
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentEngine } from '@belte/belte/server/agent'
+import type { AgentEngine, NeutralMessage } from '@belte/belte/server/agent'
 
 /*
 The Claude Code engine for belte's `agent()`. `engine(config)` returns an
@@ -42,13 +42,36 @@ type ClaudeCodeConfig = {
     serverName?: string
 }
 
+/*
+The SDK's `query` takes a single prompt (or a stream of user-only turns) and owns
+assistant/tool turns through its own session, which belte doesn't resume here. So
+prior turns are flattened into the prompt as a labelled transcript rather than
+dropped — the model keeps the conversation's context without SDK session state.
+A lone user turn passes through as its bare text. Tool-result turns are internal
+to the prior run and omitted.
+*/
+function promptFromMessages(messages: NeutralMessage[]): string {
+    if (messages.length === 1 && messages[0]?.role === 'user') {
+        return messages[0].text
+    }
+    return messages
+        .map((message) => {
+            if (message.role === 'user') {
+                return `User: ${message.text}`
+            }
+            if (message.role === 'assistant' && message.text) {
+                return `Assistant: ${message.text}`
+            }
+            return ''
+        })
+        .filter(Boolean)
+        .join('\n\n')
+}
+
 export function engine(config: ClaudeCodeConfig = {}): AgentEngine {
     const serverName = config.serverName ?? 'app'
     return async function* ({ messages, origin }) {
-        // Stateless: drive the latest user turn. Multi-turn continuity would use the SDK's
-        // session resume (out of scope here) — see the stateless caveat in the design notes.
-        const lastUser = [...messages].reverse().find((m) => m.role === 'user')
-        const prompt = lastUser && lastUser.role === 'user' ? lastUser.text : ''
+        const prompt = promptFromMessages(messages)
 
         const stream = query({
             prompt,
@@ -85,7 +108,9 @@ export function engine(config: ClaudeCodeConfig = {}): AgentEngine {
                     }
                 }
             } else if (message.type === 'result') {
-                yield { type: 'done', stop: 'end' }
+                // `success` is a clean finish; every error subtype (max_turns, budget,
+                // execution error) is an abnormal stop the client must be able to see.
+                yield { type: 'done', stop: message.subtype === 'success' ? 'end' : 'error' }
             }
         }
     }

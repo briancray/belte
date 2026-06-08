@@ -26,7 +26,13 @@ type AnthropicConfig = {
     apiKey: string
     maxTokens?: number
     effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+    // Hard cap on tool-loop turns so a model that never stops requesting tools can't
+    // spin the loop (and the open stream) forever. Defaults to MAX_STEPS.
+    maxSteps?: number
 }
+
+// Default tool-loop bound — generous enough for real multi-step tasks, finite enough to stop a runaway.
+const MAX_STEPS = 24
 
 // Provider stop_reason → the loop's neutral stop signal.
 function mapStop(
@@ -98,11 +104,20 @@ function toolResultText(result: Record<string, unknown>): string {
 
 export function engine(config: AnthropicConfig): AgentEngine {
     const client = new Anthropic({ apiKey: config.apiKey })
+    const maxSteps = config.maxSteps ?? MAX_STEPS
     return async function* ({ surface, messages }) {
-        const conversation: Anthropic.MessageParam[] = messages.map(toAnthropicMessage)
+        /*
+        Drop turns that serialize to empty content — an assistant turn with no text
+        and no tool uses, or a tool turn with no results. The Messages API rejects an
+        empty content-block array, so a caller replaying such a turn would 400 the
+        whole request.
+        */
+        const conversation: Anthropic.MessageParam[] = messages
+            .map(toAnthropicMessage)
+            .filter((message) => !(Array.isArray(message.content) && message.content.length === 0))
         const tools = surface.tools.map(toAnthropicTool)
 
-        while (true) {
+        for (let step = 0; ; step += 1) {
             const stream = client.messages.stream({
                 model: config.model,
                 max_tokens: config.maxTokens ?? 64000,
@@ -122,8 +137,18 @@ export function engine(config: AnthropicConfig): AgentEngine {
             const final = await stream.finalMessage()
             conversation.push({ role: 'assistant', content: final.content })
 
+            // Server paused a long-running turn: resume by re-requesting with the turn
+            // so far rather than ending and truncating the output. The step cap bounds it.
+            if (final.stop_reason === 'pause_turn' && step + 1 < maxSteps) {
+                continue
+            }
             if (final.stop_reason !== 'tool_use') {
                 yield { type: 'done', stop: mapStop(final.stop_reason) }
+                return
+            }
+            if (step + 1 >= maxSteps) {
+                // Tool-loop cap hit: stop instead of dispatching another round.
+                yield { type: 'done', stop: 'error' }
                 return
             }
 
