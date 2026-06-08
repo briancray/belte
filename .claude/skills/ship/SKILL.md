@@ -5,7 +5,7 @@ description: One-shot release — stage all working-tree changes into logically-
 
 # ship
 
-Turns the current working tree into a published `@belte/belte` version. Invoking this skill **authorizes the npm publish** — proceed through the merge without re-prompting, but report the version bump before merging as a sanity checkpoint.
+Turns the current working tree into a published belte release. The repo is a monorepo: any of the public `packages/*` (`@belte/belte`, `@belte/anthropic`, `@belte/claude-code`, …) may be bumped and published in one run — `changeset publish` ships every package the changesets versioned, and `autofillChangesets` attributes each commit to the package(s) it actually touched. Invoking this skill **authorizes the npm publish** — proceed through the merge without re-prompting, but report the per-package version bumps before merging as a sanity checkpoint.
 
 ## Preconditions
 
@@ -38,7 +38,7 @@ Turns the current working tree into a published `@belte/belte` version. Invoking
    ```
    until gh pr list --state open --limit 5 | grep -qi "changeset-release"; do sleep 5; done
    ```
-   Then `gh pr diff <n>` — confirm the `## x.y.z` bump and that every changelog entry is present and not duplicated. Report the new version to the user.
+   Then `gh pr diff <n>` — confirm the `## x.y.z` bump for **each** package the PR versions (a multi-package change bumps several at once) and that every changelog entry is present and not duplicated. Report the new version(s) to the user.
 
 7. **Merge** — `gh pr merge <n> --squash`. This push is what publishes to npm and cuts the GitHub Release.
 
@@ -47,10 +47,10 @@ Turns the current working tree into a published `@belte/belte` version. Invoking
    rid=$(gh run list --workflow=release.yml --limit 1 --json databaseId -q '.[0].databaseId')
    gh run view "$rid" --log | grep -iE "Publishing|published successfully|New tag"
    ```
-   Report the published version + git tag (`@belte/belte@x.y.z`). If the run failed, surface the failing step — do **not** retry the publish blindly.
+   Report each published version + git tag (`@belte/<pkg>@x.y.z` for every package the run published). If the run failed, surface the failing step — do **not** retry the publish blindly.
 
 ## Notes
 
 - Use an `until … sleep` loop for waits — chained foreground `sleep`s are blocked by the harness.
-- Net bump = the highest of the per-commit bumps (one `feat` + several `fix` → minor).
+- Net bump is per package = the highest of the per-commit bumps touching that package (one `feat` + several `fix` → minor). Different packages can land different bumps in the same run.
 - If `autofillChangesets` produces nothing, there is nothing releasable since the last version — tell the user instead of forcing an empty release.
