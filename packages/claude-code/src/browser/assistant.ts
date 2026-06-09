@@ -2,6 +2,7 @@ import type { AgentFrame, NeutralMessage } from '@belte/belte/server/agent'
 import { createSubscriber } from 'svelte/reactivity'
 import { BRIDGE_PORT } from '../BRIDGE_PORT.ts'
 import type { CAPABILITY_TOOLS } from '../CAPABILITY_TOOLS.ts'
+import { VERSION } from '../VERSION.ts'
 
 /* Site-requestable capabilities — the closed vocabulary from CAPABILITY_TOOLS.
 The page can request from this set; it can never name a shell/fs tool. */
@@ -284,7 +285,8 @@ export function assistant(config: AssistantConfig = {}): AssistantHandle {
             if (host.managed) {
                 return undefined
             }
-            const parts = [`bunx @belte/claude-code serve --url ${origin}`]
+            // Pin to this bundle's version so a stale global bunx cache can't run a mismatched bridge.
+            const parts = [`bunx @belte/claude-code@${VERSION} serve --url ${origin}`]
             if (port !== BRIDGE_PORT) {
                 parts.push(`--port ${port}`)
             }
