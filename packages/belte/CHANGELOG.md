@@ -1,5 +1,11 @@
 # @belte/belte
 
+## 0.21.0
+
+### Minor Changes
+
+- [`0a5c25c`](https://github.com/briancray/belte/commit/0a5c25c39c9894f6504f804c1c69e44f997eca6d) - Add `page.navigating` — a boolean on `belte/browser/page` that is true while a pathname-changing SPA navigation resolves its view, and false otherwise (always false during SSR). Read it inside a `$derived`/`$effect` to drive loading indicators.
+
 ## 0.20.1
 
 ### Patch Changes
