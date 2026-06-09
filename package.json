@@ -9,7 +9,7 @@
     "scripts": {
         "format": "biome check --write --linter-enabled=false",
         "lint": "biome lint",
-        "test": "bun test",
+        "test": "bun test ./packages && for d in examples/*/; do if [ -d \"$d/test\" ]; then (cd \"$d\" && bun test) || exit 1; fi; done",
         "check": "biome check --write",
         "changeset": "changeset",
         "version-packages": "bun run scripts/autofillChangesets.ts && changeset version && bun run scripts/syncRootChangelog.ts",

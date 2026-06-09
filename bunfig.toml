@@ -2,6 +2,8 @@
 linker = "hoisted"
 
 [test]
-# Run `bun test` from the repo root (the `test` script). Registers a
-# `.svelte.ts` loader so rune-based test harnesses compile.
+# Belte's own tests run from the repo root (the `test` script scopes the scan
+# to ./packages). Registers a `.svelte.ts` loader so rune-based test harnesses
+# compile. Example tests run per-workspace (see root `test` script) so belte's
+# cwd-rooted resolver resolves against each example's own src/server.
 preload = ["./packages/belte/tests/support/sveltePreload.ts"]
