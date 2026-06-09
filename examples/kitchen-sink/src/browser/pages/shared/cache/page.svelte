@@ -40,7 +40,7 @@ async function reset() {
 <h1 class="text-3xl font-bold"><code class="font-mono">cache()</code> + invalidation</h1>
 <p class="mt-2 text-slate-600">
     Isomorphic — wraps a remote call with dedupe, SSR snapshot, and reactivity, the same line on
-    server and client. Two<code class="font-mono">$derived</code> reads against the same key share
+    server and client. Two <code class="font-mono">$derived</code> reads against the same key share
     one entry and re-run together on invalidation.
 </p>
 
@@ -76,8 +76,8 @@ async function reset() {
                     <td class="px-4 py-2 font-mono text-slate-500">string / string[]</td>
                     <td class="px-4 py-2 text-slate-600">
                         one or more free-form tags grouping calls so one
-                        <code class="font-mono">invalidate</code> drops them together; a call can
-                        join several groups
+                        <code class="font-mono">invalidate</code>
+                        drops them together; a call can join several groups
                     </td>
                 </tr>
                 <tr>
@@ -112,12 +112,12 @@ async function reset() {
     <ul class="mt-2 space-y-1 text-sm text-slate-600">
         <li><code class="font-mono">cache.invalidate()</code> — drop everything</li>
         <li>
-            <code class="font-mono">cache.invalidate(fn)</code> — drop one function's calls (a
-            remote fn — fn or fn.raw — or a producer)
+            <code class="font-mono">cache.invalidate(fn)</code>
+            — drop one function's calls (a remote fn — fn or fn.raw — or a producer)
         </li>
         <li>
-            <code class="font-mono">{'cache.invalidate({ scope })'}</code> — drop every entry
-            sharing any of the scope's tags
+            <code class="font-mono">{'cache.invalidate({ scope })'}</code>
+            — drop every entry sharing any of the scope's tags
         </li>
     </ul>
 </section>
@@ -125,11 +125,10 @@ async function reset() {
 <section class="mt-6">
     <h2 class="text-sm font-semibold"><code class="font-mono">cache.pending</code></h2>
     <p class="mt-2 text-sm text-slate-600">
-        Reactive in-flight probe sharing the same selector grammar —<code class="font-mono">
-            true
-        </code> while any matching call is unsettled. Use it for spinners; SSR loading state is
-        driven by<code class="font-mono">{'{#await}'}</code>
-        , not this.
+        Reactive in-flight probe sharing the same selector grammar —
+        <code class="font-mono">true</code>
+        while any matching call is unsettled. Use it for spinners; SSR loading state is driven by
+        <code class="font-mono">{'{#await}'}</code>, not this.
     </p>
     <ul class="mt-2 space-y-1 text-sm text-slate-600">
         <li><code class="font-mono">cache.pending()</code> — any rpc in flight</li>
@@ -142,12 +141,13 @@ async function reset() {
     <h2 class="text-sm font-semibold"><code class="font-mono">cache.refreshing</code></h2>
     <p class="mt-2 text-sm text-slate-600">
         Same selector grammar, but it answers a different question than
+        <code class="font-mono">pending</code>: it is <code class="font-mono">true</code>
+        only while a matching entry serves its <em>stale</em> value during an
+        <code class="font-mono">invalidate</code>
+        refetch (the throttle/debounce stale-while-revalidate window).
         <code class="font-mono">pending</code>
-        : it is<code class="font-mono">true</code>
-        only while a matching entry serves its<em>stale</em> value during an
-        <code class="font-mono">invalidate</code> refetch (the throttle/debounce
-        stale-while-revalidate window).<code class="font-mono">pending</code> asks "is there a value
-        yet?";<code class="font-mono">refreshing</code> asks "is the visible value being replaced?"
+        asks "is there a value yet?"; <code class="font-mono">refreshing</code>
+        asks "is the visible value being replaced?"
     </p>
     <ul class="mt-2 space-y-1 text-sm text-slate-600">
         <li><code class="font-mono">cache.refreshing()</code> — any entry revalidating</li>
@@ -167,10 +167,9 @@ async function reset() {
         </span>
     </div>
     <p class="mt-1 text-xs text-slate-500">
-        Two<code class="font-mono">$derived(cache(getCounter)())</code> reads against the same key —
-        both update together because they share one entry. The badge reads
-        <code class="font-mono">cache.pending(getCounter)</code>
-        .
+        Two <code class="font-mono">$derived(cache(getCounter)())</code> reads against the same key
+        — both update together because they share one entry. The badge reads
+        <code class="font-mono">cache.pending(getCounter)</code>.
     </p>
     <div class="mt-3 grid gap-3 sm:grid-cols-2">
         <div class="rounded-md border border-slate-200 p-3">

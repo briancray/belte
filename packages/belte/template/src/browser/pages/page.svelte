@@ -17,4 +17,4 @@ const hello = await cache(getHello)()
 </script>
 
 <h1>{hello.message}</h1>
-<p>Edit<code>src/browser/pages/page.svelte</code> and the page hot-reloads.</p>
+<p>Edit <code>src/browser/pages/page.svelte</code> and the page hot-reloads.</p>

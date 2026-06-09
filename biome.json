@@ -33,7 +33,7 @@
             "bracketSameLine": true,
             "indentScriptAndStyle": false,
             "enabled": true,
-            "whitespaceSensitivity": "ignore"
+            "whitespaceSensitivity": "css"
         },
         "experimentalFullSupportEnabled": true
     },

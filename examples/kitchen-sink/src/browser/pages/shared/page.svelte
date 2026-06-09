@@ -10,7 +10,8 @@ HttpError.
 <h1 class="text-3xl font-bold"><code class="font-mono">belte/shared</code></h1>
 <p class="mt-2 text-slate-600">
     The isomorphic surface — same callable, same behaviour on server and client. Sits between
-    <code class="font-mono">belte/server</code> (server-only) and
+    <code class="font-mono">belte/server</code>
+    (server-only) and
     <code class="font-mono">belte/browser</code>
     (client-only).
 </p>
@@ -22,8 +23,8 @@ HttpError.
         <h2 class="text-lg font-semibold"><code class="font-mono">cache()</code> + invalidation</h2>
         <p class="mt-1 text-sm text-slate-600">
             Dedupe, SSR hydration, and reactive reads via
-            <code class="font-mono">$derived(cache(fn)())</code>
-            . One line that blocks during SSR and replays from the snapshot on the client.
+            <code class="font-mono">$derived(cache(fn)())</code>. One line that blocks during SSR
+            and replays from the snapshot on the client.
         </p>
     </a>
     <a
@@ -32,11 +33,13 @@ HttpError.
         <h2 class="text-lg font-semibold"><code class="font-mono">HttpError</code></h2>
         <p class="mt-1 text-sm text-slate-600">
             Thrown by a plain remote call on any non-2xx; carries
-            <code class="font-mono">status</code> and the raw
-            <code class="font-mono">response</code>
-            . Shown end-to-end with the
-            <code class="font-mono">error()</code> helper under
-            <code class="font-mono">belte/server</code> → http-errors.
+            <code class="font-mono">status</code>
+            and the raw
+            <code class="font-mono">response</code>. Shown end-to-end with the
+            <code class="font-mono">error()</code>
+            helper under
+            <code class="font-mono">belte/server</code>
+            → http-errors.
         </p>
     </a>
 </section>

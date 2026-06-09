@@ -27,14 +27,16 @@ async function send() {
 <nav class="mb-2 text-sm text-slate-500">
     <a href="/server" class="hover:text-slate-900"><code class="font-mono">belte/server</code></a>
     <span class="mx-2">/</span>
-    <span><code class="font-mono">request()</code> +<code class="font-mono">server()</code></span>
+    <span><code class="font-mono">request()</code> + <code class="font-mono">server()</code></span>
 </nav>
 <h1 class="text-3xl font-bold">
-    <code class="font-mono">request()</code> +<code class="font-mono">server()</code>
+    <code class="font-mono">request()</code>
+    + <code class="font-mono">server()</code>
 </h1>
 <p class="mt-2 text-slate-600">
-    Per-request and server-wide accessors backed by<code class="font-mono">AsyncLocalStorage</code>
-    . Reach for them from any scope inside a handler or SSR pass — no plumbing.
+    Per-request and server-wide accessors backed by
+    <code class="font-mono">AsyncLocalStorage</code>. Reach for them from any scope inside a handler
+    or SSR pass — no plumbing.
 </p>
 
 <section class="mt-6">
@@ -57,7 +59,7 @@ async function send() {
                     <td class="px-4 py-2 font-mono">server()</td>
                     <td class="px-4 py-2 font-mono text-slate-500">Bun.Server</td>
                     <td class="px-4 py-2 text-slate-600">
-                        called before<code class="font-mono">Bun.serve</code> finishes booting
+                        called before <code class="font-mono">Bun.serve</code> finishes booting
                     </td>
                 </tr>
             </tbody>
@@ -67,12 +69,14 @@ async function send() {
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
     <h2 class="text-sm font-semibold">
-        <code class="font-mono">request()</code> — read inbound headers
+        <code class="font-mono">request()</code>
+        — read inbound headers
     </h2>
     <p class="mt-1 text-xs text-slate-500">
-        <code class="font-mono">whoAmI()</code> reads<code class="font-mono">cookie</code> and
-        <code class="font-mono">user-agent</code> off the inbound request — same on SSR and over the
-        wire.
+        <code class="font-mono">whoAmI()</code>
+        reads <code class="font-mono">cookie</code> and
+        <code class="font-mono">user-agent</code>
+        off the inbound request — same on SSR and over the wire.
     </p>
     <pre
         class="mt-3 overflow-x-auto rounded-md bg-slate-900 p-4 text-xs leading-relaxed text-slate-100"><code
@@ -82,9 +86,10 @@ async function send() {
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
     <h2 class="text-sm font-semibold">Publish through a validated rpc</h2>
     <p class="mt-1 text-xs text-slate-500">
-        <code class="font-mono">publishChat</code> validates, then calls
-        <code class="font-mono">chat.publish(message)</code>
-        .<code class="font-mono">server()</code>
+        <code class="font-mono">publishChat</code>
+        validates, then calls
+        <code class="font-mono">chat.publish(message)</code>.
+        <code class="font-mono">server()</code>
         is used implicitly by the socket runtime to fan out to remote subscribers.
     </p>
     <div class="mt-3 flex flex-wrap items-end gap-2">

@@ -35,9 +35,8 @@ const message = $state({ value: 'hello' })
 </nav>
 <h1 class="text-3xl font-bold">RPC</h1>
 <p class="mt-2 text-slate-600">
-    One file per rpc under<code class="font-mono">src/server/rpc/</code>
-    . Filename = export name = URL path under<code class="font-mono">/rpc/</code>
-    ; the imported verb picks the HTTP method.
+    One file per rpc under <code class="font-mono">src/server/rpc/</code>. Filename = export name =
+    URL path under <code class="font-mono">/rpc/</code>; the imported verb picks the HTTP method.
 </p>
 
 <section class="mt-6">
@@ -58,7 +57,7 @@ const message = $state({ value: 'hello' })
                 <tr>
                     <td class="px-4 py-2 font-mono">POST / PUT / PATCH</td>
                     <td class="px-4 py-2 text-slate-600">
-                        JSON body or<code class="font-mono">FormData</code> (query overrides)
+                        JSON body or <code class="font-mono">FormData</code> (query overrides)
                     </td>
                 </tr>
             </tbody>
@@ -66,20 +65,17 @@ const message = $state({ value: 'hello' })
     </div>
     <ul class="mt-2 space-y-1 text-xs text-slate-500">
         <li>
-            URLs are flat — no<code class="font-mono">[id]</code> segments. Pass identifiers via
+            URLs are flat — no <code class="font-mono">[id]</code> segments. Pass identifiers via
             args.
         </li>
         <li>
-            Wrong verb on a known URL →<code class="font-mono">405</code> with<code
-                class="font-mono">
-                Allow
-            </code> header.
+            Wrong verb on a known URL → <code class="font-mono">405</code>
+            with <code class="font-mono">Allow</code> header.
         </li>
         <li>
-            Dynamic page segments (e.g.<a class="underline" href="/server/rpc/product/1">
-                /product/1
-            </a>
-            ) are a page-tree feature; rpcs stay flat.
+            Dynamic page segments (e.g.
+            <a class="underline" href="/server/rpc/product/1"> /product/1 </a>) are a page-tree
+            feature; rpcs stay flat.
         </li>
     </ul>
 </section>
@@ -142,10 +138,8 @@ const message = $state({ value: 'hello' })
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600">
     <h2 class="text-sm font-semibold text-slate-900">Plain HTML works too</h2>
     <p class="mt-1 text-xs text-slate-500">
-        Each rpc exposes<code class="font-mono">.url</code> and<code class="font-mono">
-            .method
-        </code>
-        .
+        Each rpc exposes <code class="font-mono">.url</code> and
+        <code class="font-mono">.method</code>.
     </p>
     <form
         action={createEcho.url}

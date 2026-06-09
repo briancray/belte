@@ -67,13 +67,10 @@ async function getSummarizePrompt() {
 
 <h1 class="text-3xl font-bold"><code class="font-mono">belte/mcp</code></h1>
 <p class="mt-2 text-slate-600">
-    Auto-mounted at<code class="font-mono">POST /__belte/mcp</code> — JSON-RPC 2.0, MCP protocol<code
-        class="font-mono">
-        2025-06-18
-    </code>
-    . Zero config: tools, prompts, and resources are derived from code you already wrote, and the
-    server name/version come from<code class="font-mono">package.json</code>
-    .
+    Auto-mounted at <code class="font-mono">POST /__belte/mcp</code> — JSON-RPC 2.0, MCP protocol
+    <code class="font-mono">2025-06-18</code>. Zero config: tools, prompts, and resources are
+    derived from code you already wrote, and the server name/version come from
+    <code class="font-mono">package.json</code>.
 </p>
 
 <section class="mt-6">
@@ -90,30 +87,28 @@ async function getSummarizePrompt() {
             <tbody class="divide-y divide-slate-100">
                 <tr>
                     <td class="px-4 py-2 text-slate-600">
-                        rpc with<code class="font-mono">inputSchema</code>
+                        rpc with <code class="font-mono">inputSchema</code>
                     </td>
                     <td class="px-4 py-2 font-mono text-slate-500">tool &lt;name&gt;</td>
                     <td class="px-4 py-2 text-slate-600">
                         read-only verbs (<code class="font-mono">GET</code>
-                        /<code class="font-mono">HEAD</code>
-                        ) auto-expose; mutating verbs opt in via<code class="font-mono">
-                            clients.mcp
-                        </code>
-                        . The verb feeds the tool's read/write annotations.
+                        / <code class="font-mono">HEAD</code>) auto-expose; mutating verbs opt in
+                        via
+                        <code class="font-mono">clients.mcp</code>. The verb feeds the tool's
+                        read/write annotations.
                     </td>
                 </tr>
                 <tr>
                     <td class="px-4 py-2 text-slate-600">
-                        socket with<code class="font-mono">schema</code>
+                        socket with <code class="font-mono">schema</code>
                     </td>
                     <td class="px-4 py-2 font-mono text-slate-500">
                         &lt;name&gt;-tail / &lt;name&gt;-publish
                     </td>
                     <td class="px-4 py-2 text-slate-600">
-                        <code class="font-mono">-tail</code> reads recent buffered messages;<code
-                            class="font-mono">
-                            -publish
-                        </code> only when<code class="font-mono">clientPublish</code> is set.
+                        <code class="font-mono">-tail</code>
+                        reads recent buffered messages; <code class="font-mono">-publish</code>
+                        only when <code class="font-mono">clientPublish</code> is set.
                     </td>
                 </tr>
                 <tr>
@@ -122,10 +117,9 @@ async function getSummarizePrompt() {
                     </td>
                     <td class="px-4 py-2 font-mono text-slate-500">prompt &lt;name&gt;</td>
                     <td class="px-4 py-2 text-slate-600">
-                        frontmatter<code class="font-mono">arguments</code> → argument list;<code
-                            class="font-mono">
-                            {`{{name}}`}
-                        </code> body → message
+                        frontmatter <code class="font-mono">arguments</code> → argument list;
+                        <code class="font-mono">{`{{name}}`}</code>
+                        body → message
                     </td>
                 </tr>
                 <tr>
@@ -147,28 +141,26 @@ async function getSummarizePrompt() {
         surfaces safe to advertise. Override per-declaration with
         <code class="font-mono">{`{ clients: { mcp: false } }`}</code>
         — or opt a mutating verb in with
-        <code class="font-mono">{`{ clients: { mcp: true } }`}</code>
-        .
+        <code class="font-mono">{`{ clients: { mcp: true } }`}</code>.
     </p>
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
     <h2 class="text-sm font-semibold">Try it</h2>
     <p class="mt-1 text-xs text-slate-500">
-        Hits<code class="font-mono">POST /__belte/mcp</code> directly from the browser. Read-only
-        rpcs (<code class="font-mono">getEcho</code>
-        ,
-        <code class="font-mono">getProduct</code>
-        ,
-        <code class="font-mono">countLog</code>
-        ) are tools automatically; the mutating<code class="font-mono">createEcho</code>
-        opts in via<code class="font-mono">clients.mcp</code>
-        ; the<code class="font-mono">chat</code> socket exposes<code class="font-mono">
-            chat-tail
-        </code>
-        ;
-        <code class="font-mono">about.md</code> is a resource; and
-        <code class="font-mono">summarize</code> is a prompt.
+        Hits <code class="font-mono">POST /__belte/mcp</code> directly from the browser. Read-only
+        rpcs (<code class="font-mono">getEcho</code>,
+        <code class="font-mono">getProduct</code>,
+        <code class="font-mono">countLog</code>) are tools automatically; the mutating
+        <code class="font-mono">createEcho</code>
+        opts in via <code class="font-mono">clients.mcp</code>; the
+        <code class="font-mono">chat</code>
+        socket exposes
+        <code class="font-mono">chat-tail</code>;
+        <code class="font-mono">about.md</code>
+        is a resource; and
+        <code class="font-mono">summarize</code>
+        is a prompt.
     </p>
     <div class="mt-3 flex flex-wrap gap-2 text-sm">
         <button
@@ -245,16 +237,17 @@ async function getSummarizePrompt() {
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
     <h2 class="text-sm font-semibold">Auth forwarding</h2>
     <p class="mt-1 text-sm text-slate-600">
-        Inbound MCP requests forward<code class="font-mono">cookie</code>
-        ,
-        <code class="font-mono">authorization</code>
-        , and the
-        <code class="font-mono">x-forwarded-for</code> /
-        <code class="font-mono">-proto</code> /<code class="font-mono">-host</code> hints onto every
-        synthesized rpc request, so the session middleware in
-        <code class="font-mono">src/app.ts</code> keeps working unchanged. Tool calls go through the
-        same<code class="font-mono">verb.fetch</code> path as the HTTP route — validation, response
-        helpers, and error mapping behave identically.
+        Inbound MCP requests forward <code class="font-mono">cookie</code>,
+        <code class="font-mono">authorization</code>, and the
+        <code class="font-mono">x-forwarded-for</code>
+        /
+        <code class="font-mono">-proto</code>
+        / <code class="font-mono">-host</code>
+        hints onto every synthesized rpc request, so the session middleware in
+        <code class="font-mono">src/app.ts</code>
+        keeps working unchanged. Tool calls go through the same
+        <code class="font-mono">verb.fetch</code>
+        path as the HTTP route — validation, response helpers, and error mapping behave identically.
     </p>
 </section>
 
@@ -262,10 +255,9 @@ async function getSummarizePrompt() {
     <h2 class="text-sm font-semibold text-slate-900">Streaming caveat</h2>
     <p class="mt-1">
         MCP exposes request/response tools, prompts, and snapshot resources — not a live
-        subscription. A socket's<code class="font-mono">-tail</code> tool returns the recent
+        subscription. A socket's <code class="font-mono">-tail</code> tool returns the recent
         buffered messages, not a live stream; real-time fan-out stays on the
-        <a class="underline" href="/server/sockets">ws multiplex</a>
-        .
+        <a class="underline" href="/server/sockets">ws multiplex</a>.
     </p>
 </section>
 

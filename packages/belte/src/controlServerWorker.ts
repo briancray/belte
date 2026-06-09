@@ -105,7 +105,7 @@ webview URL fragment (withAssistant); no `claude` yields an `unavailable` fragme
 so the page shows an install hint instead of a run-this-command prompt. The bridge
 is loopback-only and torn down with the connection (stopLivenessWatch).
 */
-let bridge: ReturnType<(typeof import('@belte/claude-code/serve'))['serve']> | undefined
+let bridge: ReturnType<typeof import('@belte/claude-code/serve')['serve']> | undefined
 let assistantHandshake: string | undefined
 
 async function startBridge(url: string): Promise<void> {

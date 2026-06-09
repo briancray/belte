@@ -46,14 +46,11 @@ async function trigger500() {
 <h1 class="text-3xl font-bold">HTTP errors</h1>
 <p class="mt-2 text-slate-600">
     Non-2xx comes back through the same call site as the success path.
-    <code class="font-mono">HttpError</code> carries<code class="font-mono">status</code>
-    ,
-    <code class="font-mono">statusText</code>
-    , and the raw
-    <code class="font-mono">response</code>
-    . All error responses are
-    <code class="font-mono">Cache-Control: no-store</code>
-    .
+    <code class="font-mono">HttpError</code>
+    carries <code class="font-mono">status</code>,
+    <code class="font-mono">statusText</code>, and the raw
+    <code class="font-mono">response</code>. All error responses are
+    <code class="font-mono">Cache-Control: no-store</code>.
 </p>
 
 <section class="mt-6">
@@ -71,24 +68,24 @@ async function trigger500() {
                 <tr>
                     <td class="px-4 py-2 font-mono">404</td>
                     <td class="px-4 py-2 text-slate-600">
-                        handler returns<code class="font-mono">error(404, …)</code>
+                        handler returns <code class="font-mono">error(404, …)</code>
                     </td>
                     <td class="px-4 py-2 text-slate-600">
-                        caught as<code class="font-mono">HttpError</code>
+                        caught as <code class="font-mono">HttpError</code>
                     </td>
                 </tr>
                 <tr>
                     <td class="px-4 py-2 font-mono">405</td>
                     <td class="px-4 py-2 text-slate-600">wrong verb sent to a known URL</td>
                     <td class="px-4 py-2 text-slate-600">
-                        framework adds<code class="font-mono">Allow</code> header
+                        framework adds <code class="font-mono">Allow</code> header
                     </td>
                 </tr>
                 <tr>
                     <td class="px-4 py-2 font-mono">500</td>
                     <td class="px-4 py-2 text-slate-600">handler throws</td>
                     <td class="px-4 py-2 text-slate-600">
-                        routes through<code class="font-mono">app.handleError</code>
+                        routes through <code class="font-mono">app.handleError</code>
                     </td>
                 </tr>
             </tbody>

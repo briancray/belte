@@ -25,10 +25,11 @@ async function callPlainFetch() {
 </nav>
 <h1 class="text-3xl font-bold">Direct calls</h1>
 <p class="mt-2 text-slate-600">
-    The function returned by<code class="font-mono">GET()</code> /<code class="font-mono">
-        POST()
-    </code> / … is callable as-is. Server runs the handler in-process; client gets a typed
-    <code class="font-mono">fetch</code> to the matching URL.
+    The function returned by <code class="font-mono">GET()</code> /
+    <code class="font-mono">POST()</code>
+    / … is callable as-is. Server runs the handler in-process; client gets a typed
+    <code class="font-mono">fetch</code>
+    to the matching URL.
 </p>
 
 <section class="mt-6">
@@ -62,11 +63,8 @@ async function callPlainFetch() {
         </table>
     </div>
     <p class="mt-2 text-xs text-slate-500">
-        Non-2xx throws<code class="font-mono">HttpError</code>
-        . Need the raw response or to stream? See<a class="underline" href="/server/raw-stream">
-            .raw and .stream(args?)
-        </a>
-        .
+        Non-2xx throws <code class="font-mono">HttpError</code>. Need the raw response or to stream?
+        See <a class="underline" href="/server/raw-stream"> .raw and .stream(args?) </a>.
     </p>
 </section>
 
@@ -96,8 +94,8 @@ async function callPlainFetch() {
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
     <h2 class="text-sm font-semibold">Plain HTML form</h2>
     <p class="mt-1 text-xs text-slate-500">
-        <code class="font-mono">.url</code> and<code class="font-mono">.method</code> make forms
-        first-class — no JS required.
+        <code class="font-mono">.url</code>
+        and <code class="font-mono">.method</code> make forms first-class — no JS required.
     </p>
     <form
         action={createEcho.url}

@@ -35,9 +35,10 @@ const product = $derived(await loadProduct(id))
 </nav>
 <h1 class="text-3xl font-bold">Product{id}</h1>
 <p class="mt-2 text-slate-600">
-    Dynamic page segment<code class="font-mono">[id]</code> from the folder name — typed via the
-    generated<code class="font-mono">Routes</code> augmentation. The cache key folds in the call
-    args, so each id gets its own entry;<code class="font-mono">$derived</code> re-runs on nav.
+    Dynamic page segment <code class="font-mono">[id]</code> from the folder name — typed via the
+    generated <code class="font-mono">Routes</code> augmentation. The cache key folds in the call
+    args, so each id gets its own entry; <code class="font-mono">$derived</code>
+    re-runs on nav.
 </p>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -72,17 +73,15 @@ const product = $derived(await loadProduct(id))
                 <tr>
                     <td class="px-4 py-2 font-mono">src/browser/pages/.../[id]/page.svelte</td>
                     <td class="px-4 py-2 text-slate-600">
-                        URL segment →<code class="font-mono">$props().id</code>
+                        URL segment → <code class="font-mono">$props().id</code>
                     </td>
                 </tr>
                 <tr>
                     <td class="px-4 py-2 font-mono">src/server/rpc/&lt;name&gt;.ts</td>
                     <td class="px-4 py-2 text-slate-600">
-                        flat URL — pass identifiers via args (<code class="font-mono">
-                            fn({`{ id }`}
-                            )
-                        </code>
-                        )
+                        flat URL — pass identifiers via args (<code class="font-mono"
+                            >fn({`{ id })`}</code
+                        >)
                     </td>
                 </tr>
             </tbody>

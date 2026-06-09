@@ -4,11 +4,10 @@ import { login } from '$server/rpc/login.ts'
 
 <h1 class="text-2xl font-bold">Log in</h1>
 <p class="mt-2 text-sm text-slate-300">
-    Form posts directly to<code class="font-mono">{login.url}</code>
-    using<code class="font-mono">action={'{login.url}'}</code>
+    Form posts directly to <code class="font-mono">{login.url}</code>
+    using <code class="font-mono">action={'{login.url}'}</code>
     — no JavaScript required. On success the handler 303-redirects to
-    <code class="font-mono">/auth/dashboard</code>
-    ; the auth layout's
+    <code class="font-mono">/auth/dashboard</code>; the auth layout's
     <code class="font-mono">cache(getSession)()</code>
     picks up the new cookie on the next render.
 </p>

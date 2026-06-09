@@ -34,7 +34,7 @@ const session = await cache(getSession)()
             <div class="ml-auto flex items-center gap-3">
                 {#if session?.user}
                     <span class="text-slate-400">
-                        signed in as<strong class="text-slate-100">{session.user}</strong>
+                        signed in as <strong class="text-slate-100">{session.user}</strong>
                     </span>
                     <form method="POST" action={logout.url}>
                         <button

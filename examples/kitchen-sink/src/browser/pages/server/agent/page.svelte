@@ -107,11 +107,14 @@ function apply(frame: Frame) {
 </p>
 <p class="mt-2 text-xs text-slate-500">
     The server host must have Claude Code available (it uses its own auth — no API key in config).
-    Permission is fixed server-side:<code class="font-mono">tools: []</code> drops every Claude Code
-    built-in and<code class="font-mono">dontAsk</code> denies anything not in the
-    <code class="font-mono">allow</code> list, so the agent can only call
-    <code class="font-mono">getProduct</code> and<code class="font-mono">getRates</code> — ask it to
-    use another verb and watch it get denied.
+    Permission is fixed server-side: <code class="font-mono">tools: []</code>
+    drops every Claude Code built-in and <code class="font-mono">dontAsk</code> denies anything not
+    in the
+    <code class="font-mono">allow</code>
+    list, so the agent can only call
+    <code class="font-mono">getProduct</code>
+    and <code class="font-mono">getRates</code> — ask it to use another verb and watch it get
+    denied.
 </p>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">

@@ -42,9 +42,9 @@ async function callRedirectFetch() {
 <h1 class="text-3xl font-bold">Response helpers</h1>
 <p class="mt-2 text-slate-600">
     Response constructors with rpc-friendly defaults — all set
-    <code class="font-mono">Cache-Control: no-store</code> unless the caller overrides via
-    <code class="font-mono">init</code>
-    .
+    <code class="font-mono">Cache-Control: no-store</code>
+    unless the caller overrides via
+    <code class="font-mono">init</code>.
 </p>
 
 <section class="mt-6">
@@ -62,7 +62,7 @@ async function callRedirectFetch() {
                     <td class="px-4 py-2 font-mono">json(data, init?)</td>
                     <td class="px-4 py-2 font-mono text-slate-500">application/json</td>
                     <td class="px-4 py-2 text-slate-600">
-                        thin wrapper over<code class="font-mono">Response.json</code>
+                        thin wrapper over <code class="font-mono">Response.json</code>
                     </td>
                 </tr>
                 <tr>
@@ -81,8 +81,7 @@ async function callRedirectFetch() {
         </table>
     </div>
     <p class="mt-2 text-xs text-slate-500">
-        For streaming responses see<a class="underline" href="/server/streaming">SSE + JSONL</a>
-        .
+        For streaming responses see <a class="underline" href="/server/streaming">SSE + JSONL</a>.
     </p>
 </section>
 
@@ -121,10 +120,10 @@ async function callRedirectFetch() {
         <li>redirect:{redirectOutcome}</li>
     </ul>
     <p class="mt-2 text-xs text-slate-500">
-        Browsers don't expose the 302 directly to JS —<code class="font-mono">
-            response.redirected
-        </code>
-        +<code class="font-mono">response.url</code> are the visible signals.
+        Browsers don't expose the 302 directly to JS —
+        <code class="font-mono">response.redirected</code>
+        + <code class="font-mono">response.url</code>
+        are the visible signals.
     </p>
 </section>
 

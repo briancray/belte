@@ -21,10 +21,11 @@ async function send() {
 </nav>
 <h1 class="text-3xl font-bold"><code class="font-mono">subscribe()</code></h1>
 <p class="mt-2 text-slate-600">
-    Reactive consumer for any<code class="font-mono">Subscribable&lt;T&gt;</code> — a
-    <a class="underline" href="/server/sockets">socket</a> or
-    <code class="font-mono">fn.stream(args)</code>
-    . First read in a tracking scope opens the iterator; last reader closes it.
+    Reactive consumer for any <code class="font-mono">Subscribable&lt;T&gt;</code> — a
+    <a class="underline" href="/server/sockets">socket</a>
+    or
+    <code class="font-mono">fn.stream(args)</code>. First read in a tracking scope opens the
+    iterator; last reader closes it.
 </p>
 
 <section class="mt-6">
@@ -66,11 +67,12 @@ async function send() {
         </table>
     </div>
     <p class="mt-2 text-xs text-slate-500">
-        <code class="font-mono">subscribe</code> is a no-op on the server. For SSR-friendly initial
-        paint, seed with<a class="underline" href="/shared/cache">
+        <code class="font-mono">subscribe</code>
+        is a no-op on the server. For SSR-friendly initial paint, seed with
+        <a class="underline" href="/shared/cache">
             <code class="font-mono">cache()</code>
         </a>
-        then layer<code class="font-mono">subscribe()</code> on top after hydration.
+        then layer <code class="font-mono">subscribe()</code> on top after hydration.
     </p>
 </section>
 
