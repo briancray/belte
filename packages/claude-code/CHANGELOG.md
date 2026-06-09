@@ -1,5 +1,21 @@
 # @belte/claude-code
 
+## 0.5.0
+
+### Minor Changes
+
+- [`9cbca7d`](https://github.com/briancray/belte/commit/9cbca7d28c258d4574ac450811628f107e502711) - Bundle apps auto-start the local assistant. When a bundled belte app connects (embedded or remote) and the app ships `@belte/claude-code` (its UI uses `browser/assistant`) with `claude` on PATH, the bundle launcher runs the loopback bridge for you and hands the page its port+token via the URL fragment — no copy-paste command. The bridge is loopback-only and dies with the connection. belte takes **no dependency** on `@belte/claude-code`: it's a guarded optional import that no-ops (and compiles fine) when the app doesn't ship it.
+
+  `assistant()` gains a `status` — `'ready' | 'starting' | 'manual' | 'unavailable'` — so the same UI works in a browser (`manual` → show `command`) and a bundle (`starting`/`ready` auto-managed, or `unavailable` when `claude` isn't installed → show an install hint). `command` is now `string | undefined` (undefined whenever a host manages the bridge).
+
+- [`aca78cc`](https://github.com/briancray/belte/commit/aca78cc726e71a85e37dc654693243893d4627e4) - `serve` and `launch` now drive your installed `claude` binary instead of the bundled SDK, so `bunx @belte/claude-code serve` (and `launch`) need only Bun and `claude` on PATH — the serve bridge has **zero runtime dependencies**. `@anthropic-ai/claude-agent-sdk` is no longer a hard dependency: it's an optional peer, required only by the SDK-backed `engine()` (embedded server-side `agent()` where there's no local `claude`); install it explicitly for that path.
+
+  A new internal `cliEngine` drives `claude -p --output-format stream-json` over the same MCP contract and isolation as the SDK engine, sharing the message→frame mapping. Note: `launch`'s `permissions` option is now `permissionMode`.
+
+### Patch Changes
+
+- [`e9217c9`](https://github.com/briancray/belte/commit/e9217c94e505f7b94fc46143068d3b7a75bf2342) - `serve` ends shortly after the last subscriber disconnects, so `bunx @belte/claude-code serve` doesn't linger once you close the tab. Exposed as `onIdle`/`idleGraceMs` (the bin exits 30s after the page closes; a reload reconnects within the grace and cancels it). Only armed after the first connection, so the bridge waits indefinitely for the page to first appear; programmatic `serve()` callers omit `onIdle` to stay resident.
+
 ## 0.4.0
 
 ### Minor Changes
