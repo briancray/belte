@@ -1,12 +1,14 @@
-import { compileModule } from 'svelte/compiler'
+import { compile, compileModule } from 'svelte/compiler'
 
 /*
 Test preload registering a `.svelte.ts` loader so rune modules under
 tests/support compile through the Svelte compiler — the only way to write
 $state/$effect/$effect.root in a test harness that drives belte's
 createSubscriber-based consumers (subscribe/cache reactivity). Mirrors the
-`.svelte.ts` branch of sveltePlugin; the `.svelte` component branch and its
-tailwind preprocessing aren't needed for these tests, so this stays minimal.
+`.svelte.ts` branch of sveltePlugin. A `.svelte` component branch compiles
+SSR-side (generate: 'server') so the HTTP harness can boot createServer —
+which imports App.svelte and renders fixture pages — in-process; tailwind
+preprocessing is skipped since fixtures carry no styles.
 */
 const transpiler = new Bun.Transpiler({ loader: 'ts' })
 
@@ -37,6 +39,24 @@ Bun.plugin({
                 filename: args.path,
                 generate: 'client',
                 dev: false,
+            })
+            return { contents: js.code, loader: 'js' }
+        })
+
+        /*
+        SSR component compile for the HTTP harness's fixture pages/layouts and
+        belte's own App.svelte. `experimental.async` matches the scaffold's
+        svelte.config.js, so fixtures can `await` a cache read at component top
+        level — the form that drives the inline-vs-streamed SSR partition.
+        */
+        build.onLoad({ filter: /\.svelte$/ }, async (args) => {
+            const raw = await Bun.file(args.path).text()
+            const { js } = compile(raw, {
+                filename: args.path,
+                generate: 'server',
+                css: 'injected',
+                dev: false,
+                experimental: { async: true },
             })
             return { contents: js.code, loader: 'js' }
         })
