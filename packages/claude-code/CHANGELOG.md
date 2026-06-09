@@ -1,5 +1,11 @@
 # @belte/claude-code
 
+## 0.3.0
+
+### Minor Changes
+
+- [`e5f5344`](https://github.com/briancray/belte/commit/e5f5344d17e672fa4dc4b231e755f724cf5c4cc5) - settings-shaped permissions, tool gating, and tool_result frames ([`a00bb92`](https://github.com/briancray/belte/commit/a00bb923b57cadf1e6109e7408f24ebc000a32bb))
+
 ## 0.2.1
 
 ### Patch Changes
