@@ -15,10 +15,12 @@ Claude Code authenticates with whatever it's logged in with (a subscription or
 an API key), so there's no key in `$server/config` — the host running the
 server must have Claude Code available.
 
-This demo lets the page pick Claude Code's `permissionMode` so you can watch
-the posture change (whether the model may run tools, only plan, etc.). In a
-real app you'd fix the mode here server-side rather than accept it from the
-client — permission is the server's call.
+Permission is the server's call, so the posture is fixed here, not taken from
+the client: `tools: []` drops every Claude Code built-in (no Bash/Read/Write
+against the host), leaving only this app's `mcp__app__*` verbs, and
+`defaultMode: 'dontAsk'` denies anything not pre-approved instead of prompting
+— so the `allow` list is the whole capability surface. The agent can call
+getProduct and getRates; every other verb (countLog, createEcho, …) is denied.
 */
 
 // Mirrors NeutralMessage from belte/server/agent — the provider-neutral turn shape.
@@ -39,12 +41,21 @@ const message = z.discriminatedUnion('role', [
     }),
 ])
 
-// The permission modes the demo exposes — a subset of the engine's PermissionMode.
-const PERMISSION_MODES = ['default', 'plan', 'acceptEdits', 'dontAsk', 'bypassPermissions'] as const
-
 const inputSchema = z.object({
     messages: z.array(message),
-    mode: z.enum(PERMISSION_MODES).default('default'),
+})
+
+/*
+Deny-all-but-allowlist: no built-ins (`tools: []`), `dontAsk` denies anything
+unlisted, and `allow` names the two read verbs the agent may call. Static, so
+the engine is built once at module load rather than per request.
+*/
+const chatEngine = engine({
+    tools: [],
+    permissions: {
+        defaultMode: 'dontAsk',
+        allow: ['mcp__app__*'],
+    },
 })
 
 /*
@@ -53,7 +64,7 @@ surface — the agent verb is never itself a tool, which keeps the agent from
 being handed a tool that re-enters the agent. `clients.cli` is off too: a
 messages-array turn isn't a meaningful CLI subcommand. Browser-only.
 */
-export const chat = POST(
-    ({ messages, mode }) => jsonl(agent(engine({ permissionMode: mode }), messages)),
-    { inputSchema, clients: { cli: false } },
-)
+export const chat = POST(({ messages }) => jsonl(agent(chatEngine, messages)), {
+    inputSchema,
+    clients: { cli: false },
+})

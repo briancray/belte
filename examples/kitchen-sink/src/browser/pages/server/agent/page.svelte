@@ -3,7 +3,8 @@ import CodeBlock from '$browser/CodeBlock.svelte'
 import { chat } from '$server/rpc/chat.ts'
 
 type ChatMessage = { role: 'user' | 'assistant'; text: string }
-type ToolCall = { name: string; input: unknown }
+// `ok` is undefined while the call is in flight, then set from its tool_result frame.
+type ToolCall = { id: string; name: string; input: unknown; ok?: boolean }
 
 /*
 One AgentFrame per JSONL line — the shape belte/server/agent yields and the
@@ -17,13 +18,9 @@ type Frame =
     | { type: 'done'; stop: string }
     | { $error: string }
 
-// Claude Code's session permission mode — flows to engine({ permissionMode }) server-side.
-const MODES = ['default', 'plan', 'acceptEdits', 'dontAsk', 'bypassPermissions'] as const
-
 let messages = $state<ChatMessage[]>([])
 let toolCalls = $state<ToolCall[]>([])
 let draft = $state('Which tools can you call? Use one and show me the result.')
-let mode = $state<(typeof MODES)[number]>('default')
 let streaming = $state(false)
 let error = $state<string | undefined>(undefined)
 
@@ -45,7 +42,7 @@ async function send() {
     messages = [...history, { role: 'assistant', text: '' }]
     streaming = true
     try {
-        const response = await chat.raw({ messages: history, mode })
+        const response = await chat.raw({ messages: history })
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`)
         }
@@ -84,7 +81,12 @@ function apply(frame: Frame) {
             last.text += frame.delta
         }
     } else if (frame.type === 'tool_use') {
-        toolCalls = [...toolCalls, { name: frame.name, input: frame.input }]
+        toolCalls = [...toolCalls, { id: frame.id, name: frame.name, input: frame.input }]
+    } else if (frame.type === 'tool_result') {
+        // Resolve the matching call's outcome — denied (dontAsk) shows the same as failed.
+        toolCalls = toolCalls.map((call) =>
+            call.id === frame.id ? { ...call, ok: frame.ok } : call,
+        )
     }
 }
 </script>
@@ -105,9 +107,11 @@ function apply(frame: Frame) {
 </p>
 <p class="mt-2 text-xs text-slate-500">
     The server host must have Claude Code available (it uses its own auth — no API key in config).
-    Pick a<code class="font-mono">permissionMode</code> below to change Claude Code's posture —
-    whether it may run tools, only plan, or bypass prompts. In a real app you'd fix this server-side
-    rather than let the client choose.
+    Permission is fixed server-side:<code class="font-mono">tools: []</code> drops every Claude Code
+    built-in and<code class="font-mono">dontAsk</code> denies anything not in the
+    <code class="font-mono">allow</code> list, so the agent can only call
+    <code class="font-mono">getProduct</code> and<code class="font-mono">getRates</code> — ask it to
+    use another verb and watch it get denied.
 </p>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
@@ -134,7 +138,17 @@ function apply(frame: Frame) {
             <p class="text-xs font-semibold text-slate-500">tool calls</p>
             <ul class="mt-1 space-y-1 font-mono text-xs text-slate-700">
                 {#each toolCalls as call, i (i)}
-                    <li>{call.name}({JSON.stringify(call.input)})</li>
+                    <li>
+                        <span
+                            class:text-slate-400={call.ok === undefined}
+                            class:text-emerald-600={call.ok === true}
+                            class:text-red-600={call.ok === false}>
+                            {call.ok === undefined ? '…' : call.ok ? '✓' : 'denied'}
+                        </span>
+                        {call.name}
+                        ({JSON.stringify(call.input)}
+                        )
+                    </li>
                 {/each}
             </ul>
         </div>
@@ -146,14 +160,6 @@ function apply(frame: Frame) {
             event.preventDefault()
             void send()
         }}>
-        <select
-            bind:value={mode}
-            disabled={streaming}
-            class="rounded-md border border-slate-300 px-2 py-1.5 font-mono text-xs outline-none focus:border-slate-500 disabled:opacity-60">
-            {#each MODES as option (option)}
-                <option value={option}>{option}</option>
-            {/each}
-        </select>
         <input
             type="text"
             bind:value={draft}
@@ -181,16 +187,23 @@ import { jsonl } from '@belte/belte/server/jsonl'
 import { POST } from '@belte/belte/server/POST'
 import { engine } from '@belte/claude-code'
 
-// Claude Code uses its own auth — no API key in $server/config. The demo
-// takes the permission mode from the request; build the engine per-call.
+// Permission fixed server-side: no built-ins, deny anything not allowed.
+const chatEngine = engine({
+    tools: [],
+    permissions: {
+        defaultMode: 'dontAsk',
+        allow: ['mcp__app__getProduct', 'mcp__app__getRates'],
+    },
+})
+
 export const chat = POST(
-    ({ messages, mode }) => jsonl(agent(engine({ permissionMode: mode }), messages)),
+    ({ messages }) => jsonl(agent(chatEngine, messages)),
     { inputSchema, clients: { cli: false } }, // no clients.mcp → never a tool itself
 )`} />
 
     <CodeBlock
         title="client — read the AgentFrame stream"
-        code={`const response = await chat.raw({ messages: history, mode })
+        code={`const response = await chat.raw({ messages: history })
 const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader()
 // split-by-newline; each line is one AgentFrame:
 //   { type: 'text', delta }   → append to the assistant turn
