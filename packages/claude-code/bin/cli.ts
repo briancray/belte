@@ -45,6 +45,8 @@ if (command === 'serve') {
         token: parseFlag('token'),
         mcpToken,
         tools,
+        // End the process once the page goes away (a reload reconnects within the grace).
+        onIdle: () => process.exit(0),
     })
     console.error(`belte assistant bridge on http://127.0.0.1:${server.port} -> ${url}`)
 } else {

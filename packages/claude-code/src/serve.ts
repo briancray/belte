@@ -34,6 +34,13 @@ type ServeConfig = {
     // Built-in tools the local agent may use, on top of the site's verbs. Default [] — site verbs only.
     tools?: string[]
     permissions?: ClaudePermissions
+    /* Called once the last subscriber has been gone for `idleGraceMs` (default
+    30s). The bin passes `() => process.exit(0)` so `bunx serve` ends when the page
+    closes; a reload within the grace reconnects and cancels it. Only armed after
+    the first connection, so the bridge waits indefinitely for the page to first
+    appear. Omit to keep the bridge resident. */
+    onIdle?: () => void
+    idleGraceMs?: number
 }
 
 // One chat turn from the page: `id` correlates the frames streamed back on the shared socket.
@@ -46,6 +53,9 @@ type WsData = { controllers: Set<AbortController> }
 
 export function serve(config: ServeConfig) {
     const allowOrigins = config.allowOrigins ?? [config.url]
+    // Live socket count + the pending idle-exit timer (armed only once a client has connected).
+    let connections = 0
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
 
     return Bun.serve<WsData>({
         // Loopback only — never 0.0.0.0.
@@ -67,6 +77,14 @@ export function serve(config: ServeConfig) {
             return new Response('Upgrade required', { status: 426 })
         },
         websocket: {
+            open() {
+                connections++
+                // A (re)connection cancels any pending idle exit.
+                if (idleTimer) {
+                    clearTimeout(idleTimer)
+                    idleTimer = undefined
+                }
+            },
             async message(ws, raw) {
                 let request: ChatRequest
                 try {
@@ -118,6 +136,11 @@ export function serve(config: ServeConfig) {
                     controller.abort()
                 })
                 ws.data.controllers.clear()
+                connections--
+                // Last subscriber gone — arm the idle exit; a reload reconnects within the grace.
+                if (connections === 0 && config.onIdle) {
+                    idleTimer = setTimeout(config.onIdle, config.idleGraceMs ?? 30_000)
+                }
             },
         },
     })
