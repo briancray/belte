@@ -24,6 +24,58 @@ URL → route + decoded params. Server-side only: Bun's router matches, the catc
 
 ## Cache & streaming
 
+**Registry**
+A store of registered async work with a lifecycle channel. There are two: the
+cache (calls — request/tab store + process-level global store, entries keyed by
+wire or reference identity) and the tail registry (streams, keyed by
+`Subscribable.name`, with the window size `last` folded into the key).
+Registries act: they coalesce identical in-flight calls
+(always on; `ttl` is only the retention dial — `ttl: 0` is the mutation idiom,
+retaining nothing beyond the store's atomic unit: the whole request on the
+server, the in-flight window in the tab),
+retain results, revalidate stale-in-place under an invalidate policy, and
+reconnect a dropped stream with its last value retained.
+
+**Probe**
+A reactive read of registry state: `pending()` (no value yet — an in-flight
+call, or a stream awaiting its first frame) and `refreshing()` (value held, a
+fresher source in flight — a policy refetch, a drop-then-reload, or a stream
+reconnecting; never a merely-open stream). Standalone modules
+(`belte/shared/pending`, `belte/shared/refreshing`) spanning both registries
+via the same selector grammar as `cache.invalidate` plus a Subscribable form.
+Probes report, never act: reading one opens no fetch and no stream, and every
+registry behavior works with zero probe readers. A proposed probe that would
+need to trigger something is a registry feature wearing the wrong hat.
+`cache.invalidate` stays attached to cache because its sentence is about the
+cache (end retention early); `tail.status`/`tail.error` stay on
+tail as the stream's richer state view.
+
+**Tail**
+The retained end of a stream, and the one word for reading it at every
+altitude: a socket declared `{ tail: n }` retains its last n frames (omitted =
+pure live pipe, storage is the consumer's concern); `chat.tail(count)` is the
+raw read seeded from it (no-arg = the whole retained tail; bare iteration is
+live-only — replay is exclusively tail's job); `tail(x)` is the reactive
+latest-wins read and `tail(x, { last: n })` a live window of the last ≤n
+frames, however they arrived. `last` is the read-side word (how much the
+reader keeps), `tail` the declaration-side word (how much the topic retains);
+`last` clamps to the declared `tail`. Retention exists for readers who weren't
+there — late joiners, reconnect gaps, the CLI/MCP/SSE faces — which is why it
+can't be delegated to consumers. Seeding rides `Subscribable.tail(count,
+hooks?)`, an optional capability: sockets implement it verbatim, one-shot rpc
+streams omit it, and the consumer never special-cases either. Replay is
+demarcated on the wire: the seed arrives as one per-sub `replay` batch, so a
+window commits atomically (no frame-by-frame rebuild), an empty replay keeps
+the held window across a gap, and one sub's replay never leaks into siblings
+on the same socket.
+
+**Replayable method**
+A remote method safe to re-issue without the caller asking: GET only
+(`REPLAYABLE_METHODS`). Gates the SSR snapshot and the invalidate-policy
+guard — a write never re-fires from hydration and never carries a policy.
+(It does not gate the server's ttl: 0 keep: within one request, writes
+coalesce like everything else.)
+
 **Streaming protocol**
 The SSR→client agreement for pending `{#await}` reads: the document ships `__SSR__.streaming` placeholders (`StreamingPlaceholder`) plus a single-use `streamToken`; the resolve channel (`RESOLVE_STREAM_PATH`) streams one `StreamedResolution` per entry — a `CacheSnapshotEntry` to settle warm, or a `{ key, miss }` marker meaning "re-fetch live". Keys derive from the route template via `keyForRemoteCall` on both sides. The protocol's shapes live in `lib/shared/types/`; its enforcement is the round-trip contract test (`tests/streamingRoundTrip.test.ts`), which feeds the server half's real output into the browser half. Streaming-vs-inline is chosen by `await` vs `{#await}` in the component — never by an option.
 

@@ -45,6 +45,8 @@ changed, rewrite or drop the claim.
 | No umbrella `index.ts`; every name on its own path | `package.json` `exports` (no `.` barrel; one key per name) |
 | The boot surface-map is real, and its exact format | `src/lib/server/runtime/logExposedSurfaces.ts` — reproduce its real output shape; gated by `DEBUG=belte` |
 | Cache keys distinguish `Date`/`Map`/`Set`/`bigint` | `src/lib/shared/canonicalJson.ts` |
+| A write never re-fires unprompted: SSR snapshots ship GET only, and invalidate policies refuse write methods at wrap time | `src/lib/shared/REPLAYABLE_METHODS.ts` + `src/lib/server/runtime/snapshotEntryFromCache.ts` + `src/lib/shared/cache.ts` (validatePolicy) |
+| Probes report, never act: `pending()`/`refreshing()` span the cache and the subscribe registry without opening a fetch or a stream | `src/lib/shared/probeRegistries.ts` + `src/lib/shared/subscribeProbeSlot.ts`; framing in `docs/adr/0003-registries-act-probes-report.md` (the ADR backs the *language*, the modules back the *facts*) |
 
 Treat this ledger as the floor, not the ceiling — verify every other claim in the
 body the same way (each option, default, response helper, env var) against its module.
@@ -143,12 +145,44 @@ After the opening, keep the reference dense and faithful. Order:
     server-side: the surface is gated by each verb's `clients.mcp` plus per-call
     handler auth, not negotiated at runtime.
 * **Clients**
-  * **Shared** — `cache()` (spec + server/browser examples; `{#await}` vs top-level
-    await for SSR mode; a note that keys distinguish `Date`/`Map`/`Set`/`bigint`,
-    backed by `canonicalJson.ts`); `HttpError`.
+  * **Shared** — frame the section with the registry mental model (one short
+    paragraph): cache and subscribe are two registries — calls at rest, streams
+    in motion — `cache.invalidate` bridges push events to pull state, and the
+    probes read both. Then:
+    * `cache()` — spec + server/browser examples. Coalescing is always on;
+      `ttl` is purely the retention dial: omitted = forever, `ttl: n` = n ms,
+      and **`ttl: 0` is the mutation idiom** — document it with a submit
+      example (`const submit = cache(createPost, { ttl: 0 })` +
+      `disabled={pending(createPost)}`): double-submit coalescing and probe
+      visibility, nothing retained beyond the store's atomic unit (the whole
+      request on the server — one render, one effect; the in-flight window in
+      the tab). Backed by `cache.ts` (registerEntry/adoptTtl). Also: `{#await}`
+      vs top-level await for SSR mode; `scope` tags as declared identity for
+      cross-module invalidation/probing; `invalidate: { throttle } | { debounce }`
+      = stale-while-revalidate for push-driven invalidation, with the wrap-time
+      guards stated as a contract (a policy declares "safe to re-run
+      unprompted": non-GET remote, `ttl: 0`, or both knobs → throw; a producer
+      under a policy must be a pure read); producer identity is the function
+      reference — hoist it (anonymous producers warn); keys distinguish
+      `Date`/`Map`/`Set`/`bigint`, backed by `canonicalJson.ts`.
+    * `pending()` / `refreshing()` — own import paths (`shared/pending`,
+      `shared/refreshing`; they are NOT properties of `cache` — do not echo the
+      old `cache.pending` form). Spec + the selector grammar shared with
+      `cache.invalidate` (bare / fn / `{ scope }`) plus the Subscribable form.
+      One sentence each: pending = "no value yet" (in-flight call, or stream
+      awaiting its first frame), refreshing = "value held, fresher source in
+      flight" (policy refetch, drop-then-reload, or stream reconnecting — never
+      a merely-open stream). State the invariant: probes report, never act.
+      Backed by `probeRegistries.ts`.
+    * `HttpError`.
   * **Browser** — pages (Svelte 5), layouts (nearest-only), error pages, `subscribe`
-    (spec + example), `navigate` (spec + example), `page` state (table), `cache()`
-    reactivity via `createSubscriber`.
+    (spec + example + `subscribe.status` / `subscribe.error`; transport loss
+    self-heals — `latest` is retained, `refreshing(subscribable)` is true across
+    the gap, the stream reopens under the channel's backoff, and status never
+    degrades to `error` for a disconnect; application errors stay terminal.
+    Describe the behavior only — the disconnect error class is internal, not in
+    the `exports` map, so never name it), `navigate` (spec + example), `page`
+    state (table), `cache()` reactivity via `createSubscriber`.
   * **Mcp** — generated at `/__belte/mcp`, no module to author; tools from
     schema-bearing verbs/sockets; resources/ + example; prompts/ + example.
   * **Cli** — generated thin client; `BELTE_APP_URL` / `BELTE_APP_TOKEN`; rpcs →
