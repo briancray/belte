@@ -15,10 +15,12 @@ import {
     bindPage,
     clientPageState,
     handlePopstate,
+    handleRenderError,
     navigate,
     page,
     renderState,
 } from './page.svelte.ts'
+import type { Errors } from './types/Errors.ts'
 import type { Layouts } from './types/Layouts.ts'
 import type { Pages } from './types/Pages.ts'
 
@@ -97,9 +99,11 @@ objects update across navigations.
 export async function startClient({
     pages,
     layouts,
+    errors,
 }: {
     pages: Pages
     layouts?: Layouts
+    errors?: Errors
 }): Promise<void> {
     const target = document.getElementById('app')
     if (!target) {
@@ -140,8 +144,11 @@ export async function startClient({
     }
 
     try {
-        await bindPage({ pages, layouts, ssr: window.__SSR__ })
-        hydrate(App, { target, props: { state: { page, render: renderState } } })
+        await bindPage({ pages, layouts, errors, ssr: window.__SSR__ })
+        hydrate(App, {
+            target,
+            props: { state: { page, render: renderState, onRenderError: handleRenderError } },
+        })
     } catch (err) {
         console.error('[belte] initial hydration failed', err)
     }

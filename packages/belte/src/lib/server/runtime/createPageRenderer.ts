@@ -1,6 +1,7 @@
 import { render } from 'svelte/server'
 import App from '../../../App.svelte'
 import { NO_STORE, SSR_CACHE_CONTROL } from '../../shared/CACHE_CONTROL_VALUES.ts'
+import { errorParamsForThrow } from '../../shared/errorParamsForThrow.ts'
 import { log } from '../../shared/log.ts'
 import type { ViewResolver } from '../../shared/types/ViewResolver.ts'
 import { safeJsonForScript } from './safeJsonForScript.ts'
@@ -139,9 +140,8 @@ export function createPageRenderer({
             presentable page. With no error.svelte covering the path, rethrow so
             app.handleError — or the framework 500 — takes it.
             */
-            const message = error instanceof Error ? error.message : String(error)
-            const stack = error instanceof Error ? error.stack : undefined
-            const rendered = await renderError(500, message, store, stack)
+            const { status, message, stack } = errorParamsForThrow(error)
+            const rendered = await renderError(status, message, store, stack)
             if (rendered) {
                 log.error(error)
                 return rendered

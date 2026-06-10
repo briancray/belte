@@ -1,9 +1,11 @@
 import type { Component } from 'svelte'
 import { activePage } from '../shared/activePage.ts'
 import { createViewResolver } from '../shared/createViewResolver.ts'
+import { errorParamsForThrow } from '../shared/errorParamsForThrow.ts'
 import type { PageSnapshot } from '../shared/types/PageSnapshot.ts'
 import type { ViewResolver } from '../shared/types/ViewResolver.ts'
 import { abortPageStream } from './pageStreamController.ts'
+import type { Errors } from './types/Errors.ts'
 import type { Layouts } from './types/Layouts.ts'
 import type { Pages } from './types/Pages.ts'
 
@@ -106,13 +108,15 @@ the bound resolver.
 export async function bindPage({
     pages,
     layouts,
+    errors,
     ssr,
 }: {
     pages: Pages
     layouts?: Layouts
+    errors?: Errors
     ssr: SsrPayload
 }): Promise<void> {
-    boundResolver = createViewResolver({ pages, layouts })
+    boundResolver = createViewResolver({ pages, layouts, errors })
     const { Page, Layout } = await loadView(ssr.route)
     applyState(ssr.route, ssr.params, Page, Layout)
 }
@@ -136,11 +140,83 @@ function applyState(
     renderState.Page = Page
     clientPageState.route = route
     clientPageState.params = params
+    errorViewActive = false
     syncUrl()
+}
+
+/*
+True while the boundary shows an error view. A throw from the error view
+itself rethrows instead of looping back into it, and the same-pathname
+navigation short-circuits do a full resolve instead of leaving the error
+view on screen. Cleared by applyState on every successful view swap.
+*/
+let errorViewActive = false
+
+/*
+App.svelte's svelte:boundary onerror — the client half of the server
+renderPage catch. A throw during a page render (or its effects) swaps in the
+nearest error.svelte with the server's prop contract, logging the cause it's
+about to swallow. Rethrows when no error.svelte covers the pathname (or when
+the error view itself threw), so the failure surfaces uncaught — the client
+analogue of the server's rethrow into app.handleError.
+*/
+export function handleRenderError(error: unknown, reset: () => void): void {
+    const pathname = clientPageState.url.pathname
+    if (!boundResolver || errorViewActive || !boundResolver.prefixes(pathname).error) {
+        throw error
+    }
+    errorViewActive = true
+    console.error(error)
+    showErrorView(boundResolver, pathname, error, reset).catch((resolveError) => {
+        /*
+        The error view itself failed to mount (its module import threw, or no
+        boundary covered the path after all). Clear the guard so a later
+        navigation's error handling isn't wedged into rethrow-only mode — this
+        pathname's boundary stays failed, but subsequent ones recover.
+        */
+        errorViewActive = false
+        console.error('[belte] error view failed', resolveError)
+    })
+}
+
+/*
+Loads the nearest error.svelte (async — a module import) and re-renders the
+boundary with it as the page. Mirrors the server's renderError: route becomes
+the failed pathname and { status, message, stack } ride through the
+string-keyed params shape, so `page` and `<PageView {...params} />` resolve
+them like any other render.
+*/
+async function showErrorView(
+    resolver: ViewResolver,
+    pathname: string,
+    error: unknown,
+    reset: () => void,
+): Promise<void> {
+    const resolved = await resolver.error(pathname)
+    if (!resolved) {
+        throw error
+    }
+    const errorParams = errorParamsForThrow(error) as unknown as Record<string, string>
+    /* Same view swap as a normal render (applyState clears errorViewActive and
+       syncs the URL, a no-op here since the location is unchanged), then re-flag
+       the error view so same-pathname navigations fall through to a full resolve. */
+    applyState(pathname, errorParams, resolved.Page, resolved.Layout)
+    errorViewActive = true
+    reset()
 }
 
 function syncUrl(): void {
     clientPageState.url = new URL(window.location.href)
+}
+
+/*
+True when `pathname` is already the displayed location and no error view is
+up — the case navigate()/popstate can satisfy with a URL refresh instead of a
+full resolve. With an error view showing, a same-pathname target still needs
+the full resolve, else the error view would linger under the new URL.
+*/
+function isCurrentView(pathname: string): boolean {
+    return pathname === clientPageState.url.pathname && !errorViewActive
 }
 
 /*
@@ -250,7 +326,7 @@ export async function navigate(href: string, options: NavigateOptions = {}): Pro
         return
     }
     const fullTarget = `${target.pathname}${target.search}${target.hash}`
-    if (target.pathname === clientPageState.url.pathname) {
+    if (isCurrentView(target.pathname)) {
         writeHistory(replace, fullTarget)
         syncUrl()
         return
@@ -268,7 +344,7 @@ only refreshes `page.url`; a pathname change resolves and swaps the page, or
 hard-navigates when the restored URL isn't an SPA route.
 */
 async function applyTarget(pathname: string, fullTarget: string): Promise<void> {
-    if (pathname === clientPageState.url.pathname) {
+    if (isCurrentView(pathname)) {
         syncUrl()
         return
     }
