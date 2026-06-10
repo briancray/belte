@@ -25,9 +25,12 @@ it once; the route dispatcher and the 404 path are its only callers.
 */
 export function createPageRenderer({
     shell,
+    base,
     viewResolver,
 }: {
     shell: string
+    /* APP_URL mount base ('' at root). Shipped in __SSR__ so the client installs the same base resolver. */
+    base: string
     viewResolver: ViewResolver
 }): {
     renderPage: (
@@ -194,6 +197,8 @@ export function createPageRenderer({
             cache: inline,
             streaming,
             streamToken,
+            // Omitted at root mount; the client defaults base to ''.
+            base: base || undefined,
         })};</script>`
         const html = fillShell(rendered, stateTag)
         return new Response(html, {

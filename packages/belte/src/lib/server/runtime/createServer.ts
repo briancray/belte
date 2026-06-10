@@ -134,7 +134,19 @@ export async function createServer({
 }): Promise<Server<unknown>> {
     // In dev, append the live-reload client to the shell so every rendered
     // page reconnects to /__belte/dev and reloads after a restart.
-    const activeShell = dev ? shell.replace('</body>', `${DEV_RELOAD_CLIENT_SCRIPT}</body>`) : shell
+    const devShell = dev ? shell.replace('</body>', `${DEV_RELOAD_CLIENT_SCRIPT}</body>`) : shell
+    /*
+    Mount base from APP_URL's pathname (e.g. https://foo.com/v2 → /v2). Install
+    the server-side resolver so url() prefixes SSR-generated links, and rewrite
+    the shell's framework `/_app` entry + css refs to carry the base — relative
+    code-split chunks inherit it from the entry's own URL. '' (root mount) is a
+    no-op on both. See setBaseResolver / startClient for the client half.
+    */
+    const base = basePathFromAppUrl(process.env.APP_URL)
+    setBaseResolver(() => base)
+    // Rebase the shell's rooted `/_app/` entry refs onto the mount base, matching
+    // either quote style so a custom app.html using single quotes still rewrites.
+    const activeShell = base ? devShell.replace(/(["'])\/_app\//g, `$1${base}/_app/`) : devShell
     setRegistryManifests({ rpc, sockets, prompts })
     setMcpResourceServer(createMcpResourceServer({ resourcesDir, mcpResources }))
     const cliName = cliProgramName ?? 'app'
@@ -156,7 +168,11 @@ export async function createServer({
     state tag, shell splicing — lives behind createPageRenderer. renderError
     also serves the 404 fallthrough below.
     */
-    const { renderPage, renderError } = createPageRenderer({ shell: activeShell, viewResolver })
+    const { renderPage, renderError } = createPageRenderer({
+        shell: activeShell,
+        base,
+        viewResolver,
+    })
 
     /*
     Route dispatch — rpc-vs-page-vs-404 resolution and method matching — lives

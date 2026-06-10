@@ -1,5 +1,6 @@
 import type { SocketClientFrame } from '../server/sockets/types/SocketClientFrame.ts'
 import type { SocketServerFrame } from '../server/sockets/types/SocketServerFrame.ts'
+import { withBase } from '../shared/withBase.ts'
 
 type SubCallbacks = {
     onMessage(message: unknown): void
@@ -95,7 +96,8 @@ export function getSocketChannel(): Channel {
             return
         }
         const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        ws = new WebSocket(`${scheme}//${window.location.host}${SOCKETS_PATH}`)
+        // The mount base routes the upgrade through the proxy (/v2/__belte/sockets).
+        ws = new WebSocket(`${scheme}//${window.location.host}${withBase(SOCKETS_PATH)}`)
         ws.addEventListener('open', () => {
             backoffMs = 250
             flushPending()

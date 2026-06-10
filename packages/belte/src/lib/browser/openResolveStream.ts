@@ -2,6 +2,7 @@ import { RESOLVE_STREAM_PATH } from '../shared/RESOLVE_STREAM_PATH.ts'
 import { streamResponse } from '../shared/streamResponse.ts'
 import type { CacheStore } from '../shared/types/CacheStore.ts'
 import type { StreamedResolution } from '../shared/types/StreamedResolution.ts'
+import { withBase } from '../shared/withBase.ts'
 import { applyStreamedResolution } from './applyStreamedResolution.ts'
 import { flushUnresolvedPlaceholders } from './flushUnresolvedPlaceholders.ts'
 import { setPageStreamController } from './pageStreamController.ts'
@@ -26,7 +27,7 @@ export async function openResolveStream(
     const controller = new AbortController()
     setPageStreamController(controller)
     try {
-        const response = await fetch(`${RESOLVE_STREAM_PATH}${token}`, {
+        const response = await fetch(withBase(`${RESOLVE_STREAM_PATH}${token}`), {
             signal: controller.signal,
         })
         for await (const resolution of streamResponse<StreamedResolution>(response)) {

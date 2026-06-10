@@ -1,6 +1,7 @@
 import { hydrate } from 'svelte'
 import App from '../../App.svelte'
 import { createCacheStore } from '../shared/createCacheStore.ts'
+import { setBaseResolver } from '../shared/setBaseResolver.ts'
 import { setCacheStoreResolver } from '../shared/setCacheStoreResolver.ts'
 import { setGlobalCacheStoreResolver } from '../shared/setGlobalCacheStoreResolver.ts'
 import { setPageResolver } from '../shared/setPageResolver.ts'
@@ -33,6 +34,8 @@ declare global {
             streamToken?: string
             /* A server-rendered error.svelte page — static, nothing to hydrate. */
             error?: boolean
+            /* APP_URL mount base (e.g. /v2); absent at root mount. */
+            base?: string
         }
     }
 }
@@ -110,6 +113,10 @@ export async function startClient({
     if (window.__SSR__.error) {
         return
     }
+
+    /* Install the mount base before anything reads url() so client-generated links carry it. */
+    const base = window.__SSR__.base ?? ''
+    setBaseResolver(() => base)
 
     const cacheStore = createCacheStore()
     setCacheStoreResolver(() => cacheStore)

@@ -3,6 +3,7 @@ import { buildRpcRequest } from '../shared/buildRpcRequest.ts'
 import { createRemoteFunction } from '../shared/createRemoteFunction.ts'
 import type { HttpVerb } from '../shared/types/HttpVerb.ts'
 import type { RemoteFunction } from '../shared/types/RemoteFunction.ts'
+import { withBase } from '../shared/withBase.ts'
 
 /*
 Client-side substitute for a verb-defined handler. The bundler emits one
@@ -25,8 +26,13 @@ export function remoteProxy<Args, Return>(
         method,
         url,
         clients: browserClientFlags,
+        /*
+        The Request URL carries the mount base so the fetch routes through the
+        proxy (/v2/rpc/…); the cache key keeps the bare `url` (keyForRemoteCall
+        reads fn.url), so SSR snapshots round-trip base-independently.
+        */
         buildRequest: (args) =>
-            buildRpcRequest({ method, url, args, baseUrl: window.location.href }),
+            buildRpcRequest({ method, url: withBase(url), args, baseUrl: window.location.href }),
         /*
         Forcing `getRequest()` once builds the Request and seeds the
         cache meta thunk in createRemoteFunction with the same instance,

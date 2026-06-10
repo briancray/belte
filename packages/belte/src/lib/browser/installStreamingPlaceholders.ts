@@ -1,6 +1,19 @@
 import type { CacheStore } from '../shared/types/CacheStore.ts'
 import type { StreamingPlaceholder } from '../shared/types/StreamingPlaceholder.ts'
+import { withBase } from '../shared/withBase.ts'
 import type { StreamingDeferred } from './types/StreamingDeferred.ts'
+
+/*
+Re-homes a server-built absolute Request URL under the client mount base so the
+{#await} refetch routes through the proxy. The server renders at root, so the
+shipped url is base-less; the client owns the prefix via the shared withBase
+rule (the same one remoteProxy / openResolveStream apply to their paths).
+*/
+function withMountBase(absoluteUrl: string): string {
+    const target = new URL(absoluteUrl)
+    target.pathname = withBase(target.pathname)
+    return target.href
+}
 
 /*
 Pre-creates a deferred cache entry per pending key before hydration. cache()
@@ -14,7 +27,7 @@ export function installStreamingPlaceholders(
 ): Map<string, StreamingDeferred> {
     const deferreds = new Map<string, StreamingDeferred>()
     for (const placeholder of placeholders) {
-        const request = new Request(placeholder.url, { method: placeholder.method })
+        const request = new Request(withMountBase(placeholder.url), { method: placeholder.method })
         let resolve!: StreamingDeferred['resolve']
         const promise = new Promise<Response>((settle) => {
             resolve = settle

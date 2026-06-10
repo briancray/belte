@@ -16,7 +16,9 @@ import { promptNameForFile } from './lib/shared/promptNameForFile.ts'
 import { readPackageJson } from './lib/shared/readPackageJson.ts'
 import { rpcUrlForFile } from './lib/shared/rpcUrlForFile.ts'
 import { socketNameForFile } from './lib/shared/socketNameForFile.ts'
+import { writePublicAssetsDts } from './lib/shared/writePublicAssetsDts.ts'
 import { writeRoutesDts } from './lib/shared/writeRoutesDts.ts'
+import { writeRpcDts } from './lib/shared/writeRpcDts.ts'
 
 /*
 Resolves a bare directory or extensionless path to a concrete file. Mirrors
@@ -138,10 +140,36 @@ export function belteResolverPlugin({
             return scan
         }),
     )
-    const scanRpcOnce = once(() => scanRpc(rpcDir))
+    const scanRpcOnce = once(() =>
+        scanRpc(rpcDir).then(async (rpcFiles) => {
+            await writeRpcDts({
+                cwd,
+                rpcDir,
+                rpcFiles,
+                importName: await belteImportNameOnce(),
+            })
+            return rpcFiles
+        }),
+    )
     const scanSocketsOnce = once(() => scanSockets(socketsDir))
+    /*
+    Globs public/ once per build and writes publicAssets.d.ts so url() can
+    autocomplete known assets — independent of embedding (runs in dev/start
+    too, where the files are read off disk). The public-assets virtual reuses
+    the returned list for its embed.
+    */
+    const scanPublicOnce = once(async () => {
+        const publicFiles = existsSync(publicDir)
+            ? await Array.fromAsync(new Glob('**/*').scan({ cwd: publicDir, onlyFiles: true }))
+            : []
+        await writePublicAssetsDts({ cwd, publicFiles, importName: await belteImportNameOnce() })
+        return publicFiles
+    })
     const scanPromptsOnce = once(() => scanPrompts(promptsDir))
     const loadShellOnce = once(() => loadShell(cwd))
+    /* Project package.json read once per build — three virtuals (cli-name,
+       app-info, mcp identity) derive fields from it. */
+    const readPackageJsonOnce = once(() => readPackageJson(cwd))
 
     const rpcFilter = new RegExp(`^${escapeRegex(rpcDir)}/.*\\.ts$`)
     const socketsFilter = new RegExp(`^${escapeRegex(socketsDir)}/.*\\.ts$`)
@@ -453,7 +481,7 @@ ${optionLines}
                     only the final segment), falling back to `app` when
                     missing.
                     */
-                    const pkg = await readPackageJson(cwd)
+                    const pkg = await readPackageJsonOnce()
                     const name = programNameForPackage(pkg?.name as string | undefined)
                     return { contents: `export default ${JSON.stringify(name)}`, loader: 'js' }
                 }
@@ -553,7 +581,7 @@ export const footer = ${JSON.stringify(footer)}
                     block. Falls back to placeholder values when the file
                     is missing so the spec still emits.
                     */
-                    const pkg = await readPackageJson(cwd)
+                    const pkg = await readPackageJsonOnce()
                     const info = {
                         name: (pkg?.name as string | undefined) ?? 'app',
                         version: (pkg?.version as string | undefined) ?? '0.0.0',
@@ -569,11 +597,21 @@ export const footer = ${JSON.stringify(footer)}
                     The MCP server is fully framework-generated — tools from
                     the verb registry, prompts from src/mcp/prompts, resources
                     from src/mcp/resources. createMcpServer is internal; there
-                    is no user-authored server module.
+                    is no user-authored server module. Server identity comes
+                    from package.json so the `mcp__<name>__*` permission prefix
+                    is stable and app-specific; absent a name, createMcpServer
+                    falls back to its own default.
                     */
                     const importName = await belteImportNameOnce()
+                    const pkg = await readPackageJsonOnce()
+                    /* JSON.stringify drops undefined keys, so an absent name/version
+                       leaves createMcpServer to apply its own defaults. */
+                    const identity = JSON.stringify({
+                        name: pkg?.name as string | undefined,
+                        version: pkg?.version as string | undefined,
+                    })
                     return {
-                        contents: `import { createMcpServer } from '${importName}/mcp/createMcpServer'\nexport default createMcpServer()\n`,
+                        contents: `import { createMcpServer } from '${importName}/mcp/createMcpServer'\nexport default createMcpServer(${identity})\n`,
                         loader: 'js',
                     }
                 }
@@ -606,16 +644,9 @@ export const footer = ${JSON.stringify(footer)}
                     disk. Mirrors belte:assets. Empty/undefined when not
                     embedding (dev + `belte start` read public/ off disk).
                     */
-                    if (!embedAssets || !existsSync(publicDir)) {
-                        return {
-                            contents: 'export const publicAssets = undefined',
-                            loader: 'js',
-                        }
-                    }
-                    const files = await Array.fromAsync(
-                        new Glob('**/*').scan({ cwd: publicDir, onlyFiles: true }),
-                    )
-                    if (files.length === 0) {
+                    // Globs public/ and writes publicAssets.d.ts every build; reuse the list to embed.
+                    const files = await scanPublicOnce()
+                    if (!embedAssets || files.length === 0) {
                         return {
                             contents: 'export const publicAssets = undefined',
                             loader: 'js',
