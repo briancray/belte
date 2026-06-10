@@ -80,11 +80,16 @@ jobs:
           test "$PIN" = "$EXPECTED"
 
       # Point the dependency at the tarball so the build exercises the packed
-      # artifact rather than whatever the registry currently serves.
+      # artifact rather than whatever the registry currently serves. The pinned
+      # version isn't published yet (this run is what publishes it), so overwrite
+      # the dependency with a file: ref to the tarball outright — `bun add`-ing
+      # the tarball alongside the existing semver pin makes bun read the two
+      # same-named entries as a self-loop (DependencyLoop).
       - name: Build the scaffolded app from the tarball
         run: |
           cd "$RUNNER_TEMP/consumer/my-app"
-          bun add "$RUNNER_TEMP"/belte-belte-*.tgz
+          BELTE_TARBALL="$(echo "$RUNNER_TEMP"/belte-belte-*.tgz)" \
+            bun -e 'const p = await Bun.file("package.json").json(); p.dependencies["@belte/belte"] = "file:" + process.env.BELTE_TARBALL; await Bun.write("package.json", JSON.stringify(p, null, 4) + "\n")'
           bun install
           bun run build
 
