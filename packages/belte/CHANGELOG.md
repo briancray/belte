@@ -1,5 +1,13 @@
 # @belte/belte
 
+## 0.24.1
+
+### Patch Changes
+
+- [`529597c`](https://github.com/briancray/belte/commit/529597c974f36f1767bcc597c623041e8bb4a742) - page.url is browser-space on both sides under a mount base ([`455e3ca`](https://github.com/briancray/belte/commit/455e3ca4498274ab98e7dfa14d7752c0b4453109))
+
+- [`529597c`](https://github.com/briancray/belte/commit/529597c974f36f1767bcc597c623041e8bb4a742) - url() accepts undefined query values ([`abb739e`](https://github.com/briancray/belte/commit/abb739e5086f46c8e8870f83ee8eee9a706ce513))
+
 ## 0.24.0
 
 ### Minor Changes
