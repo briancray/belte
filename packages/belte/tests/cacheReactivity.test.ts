@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { cache } from '../src/lib/shared/cache.ts'
 import { cacheStoreSlot } from '../src/lib/shared/cacheStoreSlot.ts'
 import { createCacheStore } from '../src/lib/shared/createCacheStore.ts'
+import { pending } from '../src/lib/shared/pending.ts'
 import { remoteMetaStore } from '../src/lib/shared/remoteMetaStore.ts'
 import type { HttpVerb } from '../src/lib/shared/types/HttpVerb.ts'
 import type { RawRemoteFunction } from '../src/lib/shared/types/RawRemoteFunction.ts'
+import { trackDerived } from './support/derivedScope.svelte.ts'
 import { track } from './support/reactiveScope.svelte.ts'
 import { settle } from './support/settle.ts'
 import { useBrowserWindow } from './support/useBrowserWindow.ts'
@@ -76,5 +78,29 @@ describe('cache() reactive refetch', () => {
         expect(second).toBe(first)
         expect(await first!.then((r) => r.json())).toEqual({ n: 1 })
         tracked.stop()
+    })
+
+    /*
+    A live pending()/refreshing() probe arms the lifecycle channel's notifier.
+    A cold read taken inside a $derived (the documented read idiom) then calls
+    registerEntry, which marks the channel — if the mark writes subscriber
+    state synchronously, Svelte throws state_unsafe_mutation mid-derived and
+    the flush dies. The mark must reach the probe without a write inside the
+    derived's evaluation.
+    */
+    test('a cold read inside $derived with a live probe does not throw', async () => {
+        const get = countingRemote('GET', '/rpc/derived-cold')
+        const probe = track(() => pending(get))
+        await settle()
+        expect(probe.current()).toBe(false)
+
+        const tracked = trackDerived(() => cache(get)())
+        await settle()
+
+        // The read survived derived evaluation and the probe saw the settle.
+        expect(await tracked.current()!.then((r) => r.json())).toEqual({ n: 1 })
+        expect(probe.current()).toBe(false)
+        tracked.stop()
+        probe.stop()
     })
 })

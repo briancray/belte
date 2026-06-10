@@ -11,10 +11,18 @@ tracked read and self-evicts when its last reader tears down,
 identity-guarded so a concurrent re-track isn't clobbered. mark() is a plain
 callback — the channel only ever has the one memoized listener, so no
 EventTarget dispatch is needed.
+
+mark() defers its notify to a microtask: registry mutations happen inside
+consumer read paths, and the documented read idiom is `$derived(await
+cache(fn)())` — a cold read there registers an entry mid-derived, where
+writing the subscriber's version source throws state_unsafe_mutation. The
+probes scan the registry at re-derive time, so a deferred ping reads state
+that is already current; marks within one tick coalesce into one notify.
 */
 export function createLifecycleChannel(): { track: () => void; mark: () => void } {
     let notify: (() => void) | undefined
     let tracker: (() => void) | undefined
+    let marked = false
     return {
         track() {
             if (!tracker) {
@@ -32,7 +40,15 @@ export function createLifecycleChannel(): { track: () => void; mark: () => void 
             tracker()
         },
         mark() {
-            notify?.()
+            if (notify === undefined || marked) {
+                return
+            }
+            marked = true
+            queueMicrotask(() => {
+                marked = false
+                /* Re-read: the last reader may have torn down during the deferral. */
+                notify?.()
+            })
         },
     }
 }
