@@ -1,5 +1,58 @@
 # @belte/belte
 
+## 0.23.0
+
+### Minor Changes
+
+- [`13f841c`](https://github.com/briancray/belte/commit/13f841c4f3ec92727414715c1bb5eeabc12b60a7) - **Breaking**
+
+  - `bundled()` moved to the bundle namespace alongside `onMenu`: `import { bundled } from 'belte/bundle/bundled'` (was `belte/shared/bundled`).
+
+- [`bbc82a1`](https://github.com/briancray/belte/commit/bbc82a12c948acbb2f82fe1dfc46165678fafb04) - Registries act, probes report: standalone `pending`/`refreshing` spanning cache and streams, the `ttl: 0` mutation idiom made sound, and tail reconnect-with-retained-value.
+
+  **Breaking**
+
+  - `cache.pending` / `cache.refreshing` moved to their own modules: `import { pending } from '@belte/belte/shared/pending'`, `import { refreshing } from '@belte/belte/shared/refreshing'`. `cache.invalidate` stays on `cache`.
+  - SSR snapshots ship GET entries only (`REPLAYABLE_METHODS`): DELETE is idempotent but still a write and no longer replays from hydration.
+  - `cache()` now throws at wrap time on invalid policy combinations: `invalidate` policy on a non-GET remote, policy with `ttl: 0`, or `throttle` and `debounce` together.
+
+  **Fixed**
+
+  - Invalidate policies attach on read to entries that lack one (like scope tags), so a snapshot-hydrated entry revalidates stale-in-place from its first invalidate instead of hard-dropping to a pending flash, and a policy-less first read no longer permanently wins.
+  - Hydrated snapshot entries adopt the first reading call site's `ttl` (the snapshot ships no wrap options): omitted keeps the entry as before, `ttl > 0` starts the expiry clock at that read, and `ttl: 0` serves the hydration pass only, evicting a macrotask later — previously any ttl was ignored, so a `ttl: 0` key warm-hit forever and never refetched.
+  - Eviction clears armed policy timers — a TTL-expired or rejected key can no longer ghost-refetch.
+
+  **Added**
+
+  - `pending(x)` / `refreshing(x)` probe both registries: cache selectors (bare / fn / `{ scope }`) plus Subscribables — `pending(chat)` is "awaiting first frame", `refreshing(chat)` is "reconnecting with last value retained" (never merely open). Bare forms span registries. Probes report, never act: they open no fetch and no stream.
+  - `tail()` (né `subscribe()` — renamed in this release) self-heals transport loss: on the typed `SocketDisconnectedError` it keeps its value, flags `refreshing`, and reopens under the channel's backoff (retained-tail replay converges the value — correct for a latest-wins/window consumer). Server `err` frames stay terminal; raw `for await` consumers keep the explicit-disconnect contract.
+  - `cache()` warns once per call site when handed an anonymous producer (fresh identity per call — it can never coalesce and probes can never match it).
+
+- [`c77fc89`](https://github.com/briancray/belte/commit/c77fc89a12f07b9356b5ad68cd4a92f4764e52b8) - Replay is demarcated on the wire: a sub's seed now arrives as one per-sub `{ type: 'replay', sub, messages }` frame (sent even when empty) instead of socket-keyed `msg` frames.
+
+  - `tail()` windows commit their seed atomically at the boundary — no more shrink-regrow rebuild on reconnect or first paint — and an **empty** replay keeps the held window across a gap (nothing replayed = nothing to duplicate; live frames append). Previously the first post-gap frame wiped the window even on non-retaining sockets.
+  - Per-sub addressing fixes cross-sub replay leakage: two subs on the same socket no longer receive each other's replay.
+  - `Subscribable.tail(count, hooks?)` gains optional `TailHooks`: retaining sources must signal `hooks.replayed` in-band once the seed is delivered (sockets do; a source that ends without signalling commits at `done`).
+  - Internal: `createPushIterator` gains `control(run)` — in-band signal slots, strictly ordered against pushed values, invisible to consumers. Raw `for await` iteration is unchanged.
+
+- [`c77fc89`](https://github.com/briancray/belte/commit/c77fc89a12f07b9356b5ad68cd4a92f4764e52b8) - `subscribe()` is now `tail()`, and "history" is dead: one word for reading the retained end of a stream at every altitude — declaration (`socket<T>({ tail: n })`), raw iteration (`chat.tail(count)`), and the reactive consumer (`tail(x)` / `tail(x, { last: n })`).
+
+  **Breaking**
+
+  - `import { subscribe } from '@belte/belte/browser/subscribe'` → `import { tail } from '@belte/belte/browser/tail'`; `subscribe.status`/`subscribe.error` → `tail.status`/`tail.error` (both accept the same `{ last }` options to address a window entry).
+  - Socket declaration option `history` → `tail` (`socket<T>({ tail: 100 })`). Retention is opt-in: an undeclared socket is a pure live pipe and storage is the consumer's concern.
+  - Bare socket iteration (`for await (const m of chat)`) is now live-only — replay is exclusively `.tail`'s job. `chat.tail()` no-arg replays the whole retained tail (the old bare behavior); `chat.tail(n)` the last n. The ws wire is unchanged; only the local defaults flipped.
+  - The reactive bare form seeds a socket via `tail(1)` instead of full replay — retained frames no longer churn through `latest` on open.
+
+  **Added**
+
+  - `tail(x, { last: n })` → `T[]`: a live rolling window of the last ≤n frames, however they arrived ([] while pending and on SSR, never undefined). Retaining sockets seed it by replaying up to `last` (clamped to the declared `tail`); rpc streams and undeclared sockets fill it from live frames. The bare form and each window size are independent subscriptions (`last` is registry-keyed). On reconnect the replay replaces the window, so a gap can't duplicate frames.
+  - `Subscribable.tail(count)` is the optional retention capability: sources that keep recent frames implement it (sockets do verbatim) and the consumer bounds replay to what the reader keeps — no consumer special-casing per source type.
+
+  **Fixed**
+
+  - An untracked `tail.status()`/`tail.error()` read (outside `$derived`/`$effect`) no longer leaks a permanently-pending registry entry that held the bare `pending()` probe true forever.
+
 ## 0.22.0
 
 ### Minor Changes
