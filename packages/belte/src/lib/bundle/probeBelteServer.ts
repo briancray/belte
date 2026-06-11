@@ -1,3 +1,5 @@
+import { IDENTITY_PATH } from '../shared/IDENTITY_PATH.ts'
+
 // The identity shape a belte server returns from GET /__belte/identity.
 export type BelteIdentity = { name: string; version: string }
 
@@ -12,7 +14,7 @@ verifies here even though its pages would later redirect to a login.
 export async function probeBelteServer(target: string): Promise<BelteIdentity | undefined> {
     try {
         const base = target.replace(/\/+$/, '')
-        const response = await fetch(`${base}/__belte/identity`, {
+        const response = await fetch(`${base}${IDENTITY_PATH}`, {
             headers: { accept: 'application/json' },
             signal: AbortSignal.timeout(5000),
         })

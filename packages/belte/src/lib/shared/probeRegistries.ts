@@ -42,7 +42,7 @@ export function probeRegistries<Args, Return>(
         store.trackLifecycle(prefix)
     })
     const streams = arg === undefined ? tailProbeSlot.probe?.() : undefined
-    const matches = selectorMatcher(arg, args)
+    const matches = selectorMatcher(arg, args, prefix)
     return (
         stores.some((store) =>
             store.entries.values().some((entry) => matchesEntry(entry) && matches(entry)),

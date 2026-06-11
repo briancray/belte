@@ -1,4 +1,5 @@
 import { commandNameForUrl } from '../../shared/commandNameForUrl.ts'
+import { SOCKETS_PATH } from '../../shared/SOCKETS_PATH.ts'
 import type { SocketOperation } from './types/SocketOperation.ts'
 import type { SocketRegistryEntry } from './types/SocketRegistryEntry.ts'
 
@@ -12,7 +13,7 @@ disagree about which operations a socket has or what they're called.
 */
 export function socketOperations(entry: SocketRegistryEntry): SocketOperation[] {
     const base = commandNameForUrl(entry.socket.name)
-    const restUrl = `/__belte/sockets/${entry.socket.name}`
+    const restUrl = `${SOCKETS_PATH}/${entry.socket.name}`
     const operations: SocketOperation[] = [
         {
             kind: 'tail',

@@ -1,3 +1,5 @@
+import { CLI_PATH } from '../../shared/CLI_PATH.ts'
+
 /*
 The shell script returned by `GET /__belte/cli` (no platform). Detects
 uname OS + arch, normalises common arch aliases, then curls the right
@@ -20,7 +22,7 @@ case "$(uname -m)" in
 esac
 INSTALL_DIR="\${BELTE_INSTALL_DIR:-$HOME/.local/bin}"
 mkdir -p "$INSTALL_DIR"
-URL="${appUrl.replace(/\/$/, '')}/__belte/cli/\${OS}-\${ARCH}"
+URL="${appUrl.replace(/\/$/, '')}${CLI_PATH}/\${OS}-\${ARCH}"
 echo "installing ${programName} from $URL into $INSTALL_DIR"
 curl -fsSL "$URL" | tar -xz -C "$INSTALL_DIR"
 echo "installed: $INSTALL_DIR/${programName}"

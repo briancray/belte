@@ -1,9 +1,8 @@
-import { dirname, join } from 'node:path'
 import { DEFAULT_PORT } from '../server/runtime/DEFAULT_PORT.ts'
 import { findOpenPort } from '../server/runtime/findOpenPort.ts'
 import { parsePort } from '../server/runtime/parsePort.ts'
-import { appDataDir } from '../shared/appDataDir.ts'
-import { bundleLayout } from '../shared/bundleLayout.ts'
+import { binaryDirEnvPath } from '../shared/binaryDirEnvPath.ts'
+import { dataDirEnvPath } from '../shared/dataDirEnvPath.ts'
 import { readEnvFile } from '../shared/readEnvFile.ts'
 import { resolveServerBinary } from './resolveServerBinary.ts'
 import { waitForServer } from './waitForServer.ts'
@@ -19,8 +18,8 @@ the bind failure surfaces rather than silently moving.
 */
 async function resolveEmbeddedPort(programName: string): Promise<number> {
     const [dataDirEnv, binaryDirEnv] = await Promise.all([
-        readEnvFile(join(appDataDir(programName), '.env')),
-        readEnvFile(bundleLayout(dirname(process.execPath)).envPath),
+        readEnvFile(dataDirEnvPath(programName)),
+        readEnvFile(binaryDirEnvPath()),
     ])
     return (
         parsePort(process.env.PORT ?? dataDirEnv.PORT ?? binaryDirEnv.PORT) ??

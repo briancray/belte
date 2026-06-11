@@ -113,13 +113,9 @@ export async function handleCliDownload(
     surface) and a cache miss triggers an expensive cross-compile — so spraying
     distinct junk strings amplifies into unbounded concurrent builds.
     */
-    if (!isCompileTarget(normalizeTarget(platform))) {
-        return new Response(`unknown platform: ${platform}`, {
-            status: 404,
-            headers: { 'Cache-Control': NO_STORE },
-        })
-    }
-    const binaryPath = await ensurePlatformBinary(platform, programName, cwd)
+    const binaryPath = isCompileTarget(normalizeTarget(platform))
+        ? await ensurePlatformBinary(platform, programName, cwd)
+        : undefined
     if (!binaryPath) {
         return new Response(`unknown platform: ${platform}`, {
             status: 404,

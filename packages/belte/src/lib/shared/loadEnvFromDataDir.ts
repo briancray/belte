@@ -1,5 +1,4 @@
-import { join } from 'node:path'
-import { appDataDir } from './appDataDir.ts'
+import { dataDirEnvPath } from './dataDirEnvPath.ts'
 import { loadEnvFile } from './loadEnvFile.ts'
 
 /*
@@ -11,5 +10,5 @@ the binary-dir `.env`, so a user's saved config overrides the shipped default;
 still loses to a shell export or a CWD `.env` (fill-when-unset, see loadEnvFile).
 */
 export async function loadEnvFromDataDir(programName: string): Promise<void> {
-    await loadEnvFile(join(appDataDir(programName), '.env'))
+    await loadEnvFile(dataDirEnvPath(programName))
 }

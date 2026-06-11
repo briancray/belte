@@ -1,13 +1,11 @@
 import type { Pages } from '../../browser/types/Pages.ts'
 import { NO_STORE } from '../../shared/CACHE_CONTROL_VALUES.ts'
-import { isReadOnlyMethod } from '../../shared/isReadOnlyMethod.ts'
 import { memoizeByKey } from '../../shared/memoizeByKey.ts'
 import { REMOTE_FUNCTION } from '../../shared/REMOTE_FUNCTION.ts'
 import type { HttpVerb } from '../../shared/types/HttpVerb.ts'
 import type { RemoteFunction } from '../../shared/types/RemoteFunction.ts'
 import type { RemoteRoutes } from '../rpc/types/RemoteRoutes.ts'
-import { crossOriginForbidden } from './crossOriginForbidden.ts'
-import { isCrossOriginRequest } from './isCrossOriginRequest.ts'
+import { crossOriginGate } from './crossOriginGate.ts'
 import type { RequestStore } from './types/RequestStore.ts'
 
 type AnyRemoteFunction = RemoteFunction<unknown, unknown>
@@ -86,14 +84,13 @@ export function createRouteDispatcher({
             if (hasRpc) {
                 const fn = await loadRpc(routeUrl)
                 if (fn && fn.method === method) {
-                    if (
-                        !isReadOnlyMethod(method) &&
-                        fn.crossOrigin !== true &&
-                        isCrossOriginRequest(req, store.url)
-                    ) {
-                        return crossOriginForbidden(
-                            'Declare `crossOrigin: true` on the verb to accept cross-site calls.',
-                        )
+                    const forbidden = crossOriginGate(req, store.url, {
+                        allowReadOnly: true,
+                        optOut: fn.crossOrigin === true,
+                        hint: 'Declare `crossOrigin: true` on the verb to accept cross-site calls.',
+                    })
+                    if (forbidden) {
+                        return forbidden
                     }
                     return fn.fetch(req)
                 }

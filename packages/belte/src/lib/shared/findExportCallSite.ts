@@ -33,19 +33,9 @@ export function findExportCallSite(
     let i = 0
     while (i < len) {
         const c = source[i]
-        const next = source[i + 1]
-        if (c === '/' && next === '/') {
-            const newline = source.indexOf('\n', i + 2)
-            i = newline === -1 ? len : newline + 1
-            continue
-        }
-        if (c === '/' && next === '*') {
-            const end = source.indexOf('*/', i + 2)
-            i = end === -1 ? len : end + 2
-            continue
-        }
-        if (c === '/' && isRegexContext(source, i)) {
-            i = skipRegex(source, i + 1)
+        const afterSlash = skipSlashConstruct(source, i)
+        if (afterSlash !== undefined) {
+            i = afterSlash
             continue
         }
         if (c === '"' || c === "'") {
@@ -156,23 +146,39 @@ function skipTemplateExpression(source: string, start: number): number {
             i = skipTemplate(source, i + 1)
             continue
         }
-        if (c === '/' && source[i + 1] === '/') {
-            const newline = source.indexOf('\n', i + 2)
-            i = newline === -1 ? source.length : newline + 1
-            continue
-        }
-        if (c === '/' && source[i + 1] === '*') {
-            const end = source.indexOf('*/', i + 2)
-            i = end === -1 ? source.length : end + 2
-            continue
-        }
-        if (c === '/' && isRegexContext(source, i)) {
-            i = skipRegex(source, i + 1)
+        const afterSlash = skipSlashConstruct(source, i)
+        if (afterSlash !== undefined) {
+            i = afterSlash
             continue
         }
         i++
     }
     return i
+}
+
+/*
+When `i` sits on a `/` introducing a line comment, block comment, or regex
+literal, returns the index immediately after the construct; undefined when
+the `/` is division (or `i` isn't a `/`). One statement of the skip rules
+shared by every scanner loop so they can't drift.
+*/
+function skipSlashConstruct(source: string, i: number): number | undefined {
+    if (source[i] !== '/') {
+        return undefined
+    }
+    const next = source[i + 1]
+    if (next === '/') {
+        const newline = source.indexOf('\n', i + 2)
+        return newline === -1 ? source.length : newline + 1
+    }
+    if (next === '*') {
+        const end = source.indexOf('*/', i + 2)
+        return end === -1 ? source.length : end + 2
+    }
+    if (isRegexContext(source, i)) {
+        return skipRegex(source, i + 1)
+    }
+    return undefined
 }
 
 function matchCallTail(source: string, after: number): number | undefined {
@@ -265,18 +271,9 @@ function findCallEnd(source: string, parenStart: number): number | undefined {
             i = skipTemplate(source, i + 1)
             continue
         }
-        if (c === '/' && source[i + 1] === '/') {
-            const newline = source.indexOf('\n', i + 2)
-            i = newline === -1 ? source.length : newline + 1
-            continue
-        }
-        if (c === '/' && source[i + 1] === '*') {
-            const end = source.indexOf('*/', i + 2)
-            i = end === -1 ? source.length : end + 2
-            continue
-        }
-        if (c === '/' && isRegexContext(source, i)) {
-            i = skipRegex(source, i + 1)
+        const afterSlash = skipSlashConstruct(source, i)
+        if (afterSlash !== undefined) {
+            i = afterSlash
             continue
         }
         if (c === '(') {

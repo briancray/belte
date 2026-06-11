@@ -4,6 +4,7 @@ import { createViewResolver } from '../shared/createViewResolver.ts'
 import { errorParamsForThrow } from '../shared/errorParamsForThrow.ts'
 import { stripBase } from '../shared/stripBase.ts'
 import type { PageSnapshot } from '../shared/types/PageSnapshot.ts'
+import type { ResolvedView } from '../shared/types/ResolvedView.ts'
 import type { ViewResolver } from '../shared/types/ViewResolver.ts'
 import { abortPageStream } from './pageStreamController.ts'
 import type { Errors } from './types/Errors.ts'
@@ -245,12 +246,8 @@ function hasRoute(route: string): boolean {
     return Boolean(boundResolver?.has(route))
 }
 
-type ResolvedView = {
-    route: string
-    params: Record<string, string>
-    Page: Component
-    Layout: Component | undefined
-}
+// A resolved navigation target: the route identity plus its loaded components.
+type NavigatedView = SsrPayload & ResolvedView
 
 /*
 Resolves a target into the Page/Layout components to render, or undefined
@@ -260,7 +257,7 @@ page module import threw. Callers fall back to a hard navigation in every
 undefined case. A missing/unknown route is expected and stays silent; a known
 route whose module fails to import is a real error and is surfaced.
 */
-async function resolveView(fullTarget: string): Promise<ResolvedView | undefined> {
+async function resolveView(fullTarget: string): Promise<NavigatedView | undefined> {
     const response = await safeResolveFetch(fullTarget)
     if (!response) {
         return undefined

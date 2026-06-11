@@ -16,10 +16,11 @@ behaviour is exercisable through this interface without booting a Bun server.
 */
 export function runWithRequestScope(
     req: Request,
-    options: { app?: AppModule; logRequests: boolean },
+    /* `url` skips the WHATWG re-parse when the caller already parsed it (the fetch fallback). */
+    options: { app?: AppModule; logRequests: boolean; url?: URL },
     body: (store: RequestStore) => Promise<Response>,
 ): Promise<Response> {
-    const url = new URL(req.url)
+    const url = options.url ?? new URL(req.url)
     const store: RequestStore = {
         url,
         req,

@@ -1,5 +1,5 @@
 import { HttpError } from './HttpError.ts'
-import { STREAMING_CONTENT_TYPES } from './STREAMING_CONTENT_TYPES.ts'
+import { isStreamingResponse } from './isStreamingResponse.ts'
 
 /*
 Decodes a Response into the natural body value based on Content-Type:
@@ -32,7 +32,7 @@ export async function decodeResponse(response: Response): Promise<unknown> {
         return undefined
     }
     const contentType = (response.headers.get('content-type') ?? '').toLowerCase()
-    if (STREAMING_CONTENT_TYPES.some((type) => contentType.startsWith(type))) {
+    if (isStreamingResponse(response)) {
         throw new Error(
             `[belte] response at ${response.url} is a stream (${contentType}) — use tail(fn.stream(args)) for a reactive view, or fn.stream(args) for per-call iteration, instead of awaiting the bare call or cache()`,
         )

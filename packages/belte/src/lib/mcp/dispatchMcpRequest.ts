@@ -1,5 +1,4 @@
 import { ensureRegistriesLoaded } from '../server/runtime/registryManifests.ts'
-import { NO_STORE } from '../shared/CACHE_CONTROL_VALUES.ts'
 import { getMcpResourceServer } from './mcpResourceServerSlot.ts'
 import { buildPrompts, buildTools, callTool, renderPrompt } from './mcpSurface.ts'
 import type { JsonRpcRequest } from './types/JsonRpcRequest.ts'
@@ -137,8 +136,3 @@ export async function dispatchMcpRequest(
         return jsonRpcError(id, -32603, message)
     }
 }
-
-export const MCP_NO_STORE_HEADERS = {
-    'Content-Type': 'application/json',
-    'Cache-Control': NO_STORE,
-} as const

@@ -3,6 +3,7 @@ import { acceptsZstd } from './acceptsZstd.ts'
 import { containsTraversal } from './containsTraversal.ts'
 import { createAssetHeaderCache } from './createAssetHeaderCache.ts'
 import { globToPathSet } from './globToPathSet.ts'
+import { respondWithEmbeddedAsset } from './respondWithEmbeddedAsset.ts'
 import type { Assets } from './types/Assets.ts'
 
 /*
@@ -39,28 +40,28 @@ export async function createPublicAssetServer({
         ? new Set<string>()
         : await globToPathSet(publicDir, '**/*', (file) => `/${file}`, { dot: true })
 
+    /*
+    Existence is checked before any header work: every page nav and RPC
+    falls through here on its way to the 404/middleware path, and the
+    header cache keys on (request-controlled) pathnames — building bundles
+    for misses would grow it without bound.
+    */
     return async function servePublicAsset(req, url) {
         if (containsTraversal(req.url)) {
             return undefined
         }
-        const wantsZstd = acceptsZstd(req)
-        const { base, zstd } = headersFor(url.pathname)
         if (publicAssets) {
             const compressed = publicAssets[url.pathname]
             if (!compressed) {
                 return undefined
             }
-            if (wantsZstd) {
-                return new Response(compressed, { headers: zstd })
-            }
-            /* zstdDecompress's Buffer is freshly allocated over a plain ArrayBuffer; @types/bun widens it to ArrayBufferLike, which BodyInit rejects. */
-            return new Response((await Bun.zstdDecompress(compressed)) as Uint8Array<ArrayBuffer>, {
-                headers: base,
-            })
+            return respondWithEmbeddedAsset(compressed, acceptsZstd(req), headersFor(url.pathname))
         }
         if (!diskPaths.has(url.pathname)) {
             return undefined
         }
-        return new Response(Bun.file(publicDir + url.pathname), { headers: base })
+        return new Response(Bun.file(publicDir + url.pathname), {
+            headers: headersFor(url.pathname).base,
+        })
     }
 }

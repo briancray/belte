@@ -1,5 +1,6 @@
 import type { SocketClientFrame } from '../server/sockets/types/SocketClientFrame.ts'
 import type { SocketServerFrame } from '../server/sockets/types/SocketServerFrame.ts'
+import { SOCKETS_PATH } from '../shared/SOCKETS_PATH.ts'
 import { withBase } from '../shared/withBase.ts'
 
 type SubCallbacks = {
@@ -22,8 +23,6 @@ type Channel = {
     unsubscribe(sub: string): void
     publish(socket: string, message: unknown): void
 }
-
-const SOCKETS_PATH = '/__belte/sockets'
 
 let singleton: Channel | undefined
 

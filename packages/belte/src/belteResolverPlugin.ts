@@ -40,17 +40,19 @@ function resolveExtension(path: string): string {
     return resolved
 }
 
+const RESOLVE_EXTENSIONS = ['.ts', '.js', '.tsx', '.jsx']
+
 function resolveExtensionUncached(path: string): string {
     if (existsSync(path) && !statSync(path).isDirectory()) {
         return path
     }
-    for (const extension of ['.ts', '.js', '.tsx', '.jsx']) {
+    for (const extension of RESOLVE_EXTENSIONS) {
         if (existsSync(`${path}${extension}`)) {
             return `${path}${extension}`
         }
     }
-    for (const extension of ['ts', 'js', 'tsx', 'jsx']) {
-        const indexPath = `${path}/index.${extension}`
+    for (const extension of RESOLVE_EXTENSIONS) {
+        const indexPath = `${path}/index${extension}`
         if (existsSync(indexPath)) {
             return indexPath
         }
@@ -141,7 +143,7 @@ export function belteResolverPlugin({
         }),
     )
     const scanRpcOnce = once(() =>
-        scanRpc(rpcDir).then(async (rpcFiles) => {
+        scanDir(rpcDir, '**/*.ts').then(async (rpcFiles) => {
             await writeRpcDts({
                 cwd,
                 rpcDir,
@@ -151,7 +153,7 @@ export function belteResolverPlugin({
             return rpcFiles
         }),
     )
-    const scanSocketsOnce = once(() => scanSockets(socketsDir))
+    const scanSocketsOnce = once(() => scanDir(socketsDir, '**/*.ts'))
     /*
     Globs public/ once per build and writes publicAssets.d.ts so url() can
     autocomplete known assets — independent of embedding (runs in dev/start
@@ -165,7 +167,7 @@ export function belteResolverPlugin({
         await writePublicAssetsDts({ cwd, publicFiles, importName: await belteImportNameOnce() })
         return publicFiles
     })
-    const scanPromptsOnce = once(() => scanPrompts(promptsDir))
+    const scanPromptsOnce = once(() => scanDir(promptsDir, '**/*.md'))
     const loadShellOnce = once(() => loadShell(cwd))
     /* Project package.json read once per build — three virtuals (cli-name,
        app-info, mcp identity) derive fields from it. */
@@ -558,14 +560,14 @@ ${optionLines}
                     below it. Missing files emit empty strings (no chrome).
                     Read as plain text, like belte:shell.
                     */
-                    const bannerFile = `${cliDir}/banner.txt`
-                    const footerFile = `${cliDir}/footer.txt`
-                    const banner = (await Bun.file(bannerFile).exists())
-                        ? await Bun.file(bannerFile).text()
-                        : ''
-                    const footer = (await Bun.file(footerFile).exists())
-                        ? await Bun.file(footerFile).text()
-                        : ''
+                    const readChrome = async (name: string) => {
+                        const file = Bun.file(`${cliDir}/${name}`)
+                        return (await file.exists()) ? await file.text() : ''
+                    }
+                    const [banner, footer] = await Promise.all([
+                        readChrome('banner.txt'),
+                        readChrome('footer.txt'),
+                    ])
                     return {
                         contents: `export const banner = ${JSON.stringify(banner)}
 export const footer = ${JSON.stringify(footer)}
@@ -807,39 +809,18 @@ async function scanPages(pagesDir: string): Promise<PagesScan> {
 }
 
 /*
-Walks src/server/rpc once. Every `.ts` file is an HTTP-verb rpc handler. Returns
-an empty list when the directory doesn't exist so a pages-only app
-builds without an `rpc/` folder.
+Walks one registry directory once: src/server/rpc (every `.ts` file is an
+HTTP-verb rpc handler), src/server/sockets (each `.ts` file declares one
+socket, loaded lazily on first sub/pub frame), or src/mcp/prompts (each `.md`
+file declares one MCP prompt — frontmatter for metadata, body for the
+template). Returns an empty list when the directory doesn't exist so an app
+missing the folder builds the same.
 */
-async function scanRpc(rpcDir: string): Promise<string[]> {
-    if (!existsSync(rpcDir)) {
+async function scanDir(dir: string, pattern: string): Promise<string[]> {
+    if (!existsSync(dir)) {
         return []
     }
-    return await Array.fromAsync(new Glob('**/*.ts').scan({ cwd: rpcDir }))
-}
-
-/*
-Walks src/server/sockets once. Each `.ts` file declares one socket; the
-dispatcher loads modules lazily on first sub/pub frame. Returns an
-empty list when the directory doesn't exist.
-*/
-async function scanSockets(socketsDir: string): Promise<string[]> {
-    if (!existsSync(socketsDir)) {
-        return []
-    }
-    return await Array.fromAsync(new Glob('**/*.ts').scan({ cwd: socketsDir }))
-}
-
-/*
-Walks src/mcp/prompts once. Each `.md` file declares one MCP prompt —
-frontmatter for metadata, body for the template. Returns an empty list
-when the directory doesn't exist so an app without prompts builds the same.
-*/
-async function scanPrompts(promptsDir: string): Promise<string[]> {
-    if (!existsSync(promptsDir)) {
-        return []
-    }
-    return await Array.fromAsync(new Glob('**/*.md').scan({ cwd: promptsDir }))
+    return await Array.fromAsync(new Glob(pattern).scan({ cwd: dir }))
 }
 
 /*

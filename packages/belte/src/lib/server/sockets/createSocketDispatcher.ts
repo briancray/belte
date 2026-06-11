@@ -6,6 +6,7 @@ import { json } from '../json.ts'
 import { sse } from '../sse.ts'
 import { lookupSocket } from './lookupSocket.ts'
 import type { SocketClientFrame } from './types/SocketClientFrame.ts'
+import type { SocketRegistryEntry } from './types/SocketRegistryEntry.ts'
 import type { SocketRoutes } from './types/SocketRoutes.ts'
 import type { SocketServerFrame } from './types/SocketServerFrame.ts'
 
@@ -59,6 +60,42 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
         return loader ? loader().then(() => undefined) : undefined
     })
 
+    /*
+    Loads a socket module on first use and reads its registry entry — the
+    one statement of the load/lookup failure semantics (a throwing module is
+    logged here and stays cached as failed by ensureLoaded). Each face maps
+    the failure kind to its own rendering: sub emits err+end frames, pub
+    drops silently, rest answers with HTTP errors.
+    */
+    async function resolveEntry(
+        name: string,
+    ): Promise<
+        | { entry: SocketRegistryEntry }
+        | { failure: 'unregistered' | 'load-failed' | 'no-export'; message: string }
+    > {
+        const loader = ensureLoaded(name)
+        if (!loader) {
+            return { failure: 'unregistered', message: `[belte] no socket registered at ${name}` }
+        }
+        try {
+            await loader
+        } catch (loadError) {
+            log.error(loadError)
+            return {
+                failure: 'load-failed',
+                message: loadError instanceof Error ? loadError.message : String(loadError),
+            }
+        }
+        const entry = lookupSocket(name)
+        if (!entry) {
+            return {
+                failure: 'no-export',
+                message: `[belte] socket module at ${name} did not register a Socket export`,
+            }
+        }
+        return { entry }
+    }
+
     function send(ws: ServerWebSocket<unknown>, frame: SocketServerFrame): void {
         if (ws.readyState !== WebSocket.OPEN) {
             return
@@ -106,20 +143,11 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
             send(ws, { type: 'err', sub: frame.sub, message })
             send(ws, { type: 'end', sub: frame.sub })
         }
-        const loader = ensureLoaded(frame.socket)
-        if (!loader) {
-            return fail(`[belte] no socket registered at ${frame.socket}`)
+        const resolution = await resolveEntry(frame.socket)
+        if ('failure' in resolution) {
+            return fail(resolution.message)
         }
-        try {
-            await loader
-        } catch (error) {
-            log.error(error)
-            return fail(error instanceof Error ? error.message : String(error))
-        }
-        const entry = lookupSocket(frame.socket)
-        if (!entry) {
-            return fail(`[belte] socket module at ${frame.socket} did not register a Socket export`)
-        }
+        const { entry } = resolution
         const isFirstLocalSub = addSub(state, frame.socket, frame.sub)
         if (isFirstLocalSub) {
             ws.subscribe(`socket:${frame.socket}`)
@@ -157,20 +185,11 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
         ws: ServerWebSocket<unknown>,
         frame: Extract<SocketClientFrame, { type: 'pub' }>,
     ): Promise<void> {
-        const loader = ensureLoaded(frame.socket)
-        if (!loader) {
+        const resolution = await resolveEntry(frame.socket)
+        if ('failure' in resolution) {
             return
         }
-        try {
-            await loader
-        } catch (error) {
-            log.error(error)
-            return
-        }
-        const entry = lookupSocket(frame.socket)
-        if (!entry) {
-            return
-        }
+        const { entry } = resolution
         if (!entry.allowClientPublish) {
             /*
             Silent drop: the publish is rejected because the topic
@@ -217,20 +236,13 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
     its defineSocket call populates the registry.
     */
     async function rest(req: Request, name: string): Promise<Response> {
-        const loader = ensureLoaded(name)
-        if (!loader) {
-            return error(404)
+        const resolution = await resolveEntry(name)
+        if ('failure' in resolution) {
+            return resolution.failure === 'load-failed'
+                ? error(500, 'socket failed to load')
+                : error(404)
         }
-        try {
-            await loader
-        } catch (loadError) {
-            log.error(loadError)
-            return error(500, 'socket failed to load')
-        }
-        const entry = lookupSocket(name)
-        if (!entry) {
-            return error(404)
-        }
+        const { entry } = resolution
         const tailParam = new URL(req.url).searchParams.get('tail')
         const count = tailParam !== null ? Number(tailParam) : undefined
         if (req.method === 'GET' || req.method === 'HEAD') {

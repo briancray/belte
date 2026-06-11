@@ -4,6 +4,7 @@ import { cacheControlForAsset } from './cacheControlForAsset.ts'
 import { containsTraversal } from './containsTraversal.ts'
 import { createAssetHeaderCache } from './createAssetHeaderCache.ts'
 import { globToPathSet } from './globToPathSet.ts'
+import { respondWithEmbeddedAsset } from './respondWithEmbeddedAsset.ts'
 import type { Assets } from './types/Assets.ts'
 
 /*
@@ -47,26 +48,26 @@ export async function createAppAssetServer({
                 headers: { 'Cache-Control': NO_STORE },
             })
         }
-        const wantsZstd = acceptsZstd(req)
-        const { base: baseHeaders, zstd: zstdHeaders } = headersForAsset(url.pathname)
         if (assets) {
             const compressed = assets[url.pathname]
+            /* Miss-check before header work: the header cache keys on
+               (request-controlled) pathnames, so building bundles for junk
+               `/_app/*` probes would grow it without bound. */
             if (!compressed) {
                 return new Response('Not Found', {
                     status: 404,
                     headers: { 'Cache-Control': NO_STORE },
                 })
             }
-            if (wantsZstd) {
-                return new Response(compressed, { headers: zstdHeaders })
-            }
-            /* zstdDecompress's Buffer is freshly allocated over a plain ArrayBuffer; @types/bun widens it to ArrayBufferLike, which BodyInit rejects. */
-            return new Response((await Bun.zstdDecompress(compressed)) as Uint8Array<ArrayBuffer>, {
-                headers: baseHeaders,
-            })
+            return respondWithEmbeddedAsset(
+                compressed,
+                acceptsZstd(req),
+                headersForAsset(url.pathname),
+            )
         }
+        const { base: baseHeaders, zstd: zstdHeaders } = headersForAsset(url.pathname)
         const diskPath = distDir + url.pathname
-        if (wantsZstd && diskZstdPaths.has(url.pathname)) {
+        if (acceptsZstd(req) && diskZstdPaths.has(url.pathname)) {
             return new Response(Bun.file(`${diskPath}.zst`), { headers: zstdHeaders })
         }
         return new Response(Bun.file(diskPath), { headers: baseHeaders })

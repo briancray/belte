@@ -15,6 +15,8 @@ slept still reloads it. The initial connect runs even when the page loads
 hidden (the baseline must be the serving worker's fingerprint, captured before
 a swap can replace it) and releases itself once that first event lands.
 */
+import { DEV_RELOAD_PATH } from '../../shared/DEV_RELOAD_PATH.ts'
+
 export const DEV_RELOAD_CLIENT_SCRIPT = `<script>
 ;(() => {
   let fingerprint
@@ -31,7 +33,7 @@ export const DEV_RELOAD_CLIENT_SCRIPT = `<script>
     if (source) {
       return
     }
-    source = new EventSource('/__belte/dev')
+    source = new EventSource('${DEV_RELOAD_PATH}')
     source.onmessage = (event) => {
       if (fingerprint === undefined) {
         fingerprint = event.data

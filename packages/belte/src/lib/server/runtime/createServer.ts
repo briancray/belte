@@ -7,15 +7,17 @@ import { setMcpResourceServer } from '../../mcp/mcpResourceServerSlot.ts'
 import type { McpServer } from '../../mcp/types/McpServer.ts'
 import { basePathFromAppUrl } from '../../shared/basePathFromAppUrl.ts'
 import { NO_STORE } from '../../shared/CACHE_CONTROL_VALUES.ts'
+import { CLI_PATH } from '../../shared/CLI_PATH.ts'
 import { createViewResolver } from '../../shared/createViewResolver.ts'
+import { DEV_RELOAD_PATH } from '../../shared/DEV_RELOAD_PATH.ts'
 import { extraForwardHeaders } from '../../shared/extraForwardHeaders.ts'
+import { IDENTITY_PATH } from '../../shared/IDENTITY_PATH.ts'
 import { isDebugEnabled } from '../../shared/isDebugEnabled.ts'
-import { isReadOnlyMethod } from '../../shared/isReadOnlyMethod.ts'
 import { log } from '../../shared/log.ts'
 import { RESOLVE_STREAM_PATH } from '../../shared/RESOLVE_STREAM_PATH.ts'
+import { SOCKETS_PATH } from '../../shared/SOCKETS_PATH.ts'
 import { setBaseResolver } from '../../shared/setBaseResolver.ts'
 import { toBunRoutePattern } from '../../shared/toBunRoutePattern.ts'
-import type { HttpVerb } from '../../shared/types/HttpVerb.ts'
 import type { AppModule } from '../AppModule.ts'
 import { handleCliDownload } from '../cli/handleCliDownload.ts'
 import { handleCliInstall } from '../cli/handleCliInstall.ts'
@@ -28,7 +30,7 @@ import { createAppAssetServer } from './createAppAssetServer.ts'
 import { createPageRenderer } from './createPageRenderer.ts'
 import { createPublicAssetServer } from './createPublicAssetServer.ts'
 import { createRouteDispatcher } from './createRouteDispatcher.ts'
-import { crossOriginForbidden } from './crossOriginForbidden.ts'
+import { crossOriginGate } from './crossOriginGate.ts'
 import { DEFAULT_PORT } from './DEFAULT_PORT.ts'
 import { DEV_READY_MESSAGE } from './DEV_READY_MESSAGE.ts'
 import { DEV_REBUILD_MESSAGE } from './DEV_REBUILD_MESSAGE.ts'
@@ -37,7 +39,6 @@ import { devClientFingerprint } from './devClientFingerprint.ts'
 import { devReloadResponse } from './devReloadResponse.ts'
 import { disableIdleTimeoutForStream } from './disableIdleTimeoutForStream.ts'
 import { internalErrorResponse } from './internalErrorResponse.ts'
-import { isCrossOriginRequest } from './isCrossOriginRequest.ts'
 import { listenOnOpenPort } from './listenOnOpenPort.ts'
 import { logExposedSurfaces } from './logExposedSurfaces.ts'
 import { parseIdleTimeout } from './parseIdleTimeout.ts'
@@ -50,14 +51,9 @@ import type { Assets } from './types/Assets.ts'
 import type { RequestStore } from './types/RequestStore.ts'
 import { warnUnguardedMcp } from './warnUnguardedMcp.ts'
 
-const IDENTITY_PATH = '/__belte/identity'
-const SOCKETS_PATH = '/__belte/sockets'
-const SOCKETS_REST_PREFIX = '/__belte/sockets/'
+const SOCKETS_REST_PREFIX = `${SOCKETS_PATH}/`
 const MCP_PATH = '/__belte/mcp'
-const CLI_PATH = '/__belte/cli'
-const CLI_DOWNLOAD_PREFIX = '/__belte/cli/'
-// Dev-only live-reload SSE channel; mounted only when `dev` (see devEntry orchestrator).
-const DEV_RELOAD_PATH = '/__belte/dev'
+const CLI_DOWNLOAD_PREFIX = `${CLI_PATH}/`
 // Dev-only manual rebuild trigger; POSTing signals the orchestrator to rebuild + restart.
 const DEV_REBUILD_PATH = '/__belte/reload'
 /*
@@ -150,24 +146,29 @@ export async function createServer({
     // either quote style so a custom app.html using single quotes still rewrites.
     const activeShell = base ? devShell.replace(/(["'])\/_app\//g, `$1${base}/_app/`) : devShell
     /*
-    Dev only: fingerprint the browser-visible surface (client build, public/,
-    shell) once at boot. The live-reload channel announces it so the browser
-    reloads only when a worker swap changed what it would render — a
-    server-only edit keeps the page's UI state (see devClientFingerprint).
+    Boot-path disk scans run concurrently — they share no data, and under
+    `belte dev` the worker-swap window is bounded by exactly this boot.
+    devClientFingerprint (dev only) hashes the browser-visible surface so the
+    live-reload channel reloads only when a worker swap changed what the
+    browser would render; the asset servers glob public/ and the build tree
+    (embedded zstd map in a compiled binary, dist/ on disk).
     */
-    const clientFingerprint = dev
-        ? await devClientFingerprint({ distDir, publicDir, shell: activeShell })
-        : undefined
+    const [clientFingerprint, servePublicAsset, serveAppAsset] = await Promise.all([
+        dev ? devClientFingerprint({ distDir, publicDir, shell: activeShell }) : undefined,
+        createPublicAssetServer({ publicDir, publicAssets }),
+        createAppAssetServer({ distDir, assets }),
+    ])
     setRegistryManifests({ rpc, sockets, prompts })
     setMcpResourceServer(createMcpResourceServer({ resourcesDir, mcpResources }))
     const cliName = cliProgramName ?? 'app'
+    /* The app's public identity, shared by the identity probe and the OpenAPI spec. */
+    const appName = appInfo?.name ?? cliName
+    const appVersion = appInfo?.version ?? '0.0.0'
+    /* Built on first request, then reused — the verb registry is frozen after load. */
+    let openApiSpec: ReturnType<typeof buildOpenApiSpec> | undefined
     const cliCwd = process.cwd()
-    const servePublicAsset = await createPublicAssetServer({ publicDir, publicAssets })
     /* Route → components: layout/error prefix matching + module loading live behind this seam. */
     const viewResolver = createViewResolver({ pages, layouts, errors })
-
-    // Build-tree assets: embedded zstd map (compiled binary) or dist/ on disk.
-    const serveAppAsset = await createAppAssetServer({ distDir, assets })
 
     const logRequests = isDebugEnabled('belte')
 
@@ -210,14 +211,27 @@ export async function createServer({
         const catchAllIndex = catchAllName
             ? routeUrl.split('/').findIndex((segment) => segment.startsWith('[...'))
             : -1
-        routes[pattern] = (req) => {
-            const pathParams = { ...((req.params as Record<string, string> | undefined) ?? {}) }
-            if (catchAllName && catchAllIndex !== -1) {
-                const pathSegments = new URL(req.url).pathname.split('/')
-                pathParams[catchAllName] = pathSegments.slice(catchAllIndex).join('/')
-            }
-            return dispatchRequest(req, pathParams, handler)
-        }
+        /* Only catch-all routes copy req.params (to write the reconstructed
+           segment); plain routes pass it through — it's never mutated downstream. */
+        routes[pattern] =
+            catchAllName && catchAllIndex !== -1
+                ? (req) => {
+                      const pathParams = {
+                          ...((req.params as Record<string, string> | undefined) ?? {}),
+                      }
+                      const url = new URL(req.url)
+                      pathParams[catchAllName] = url.pathname
+                          .split('/')
+                          .slice(catchAllIndex)
+                          .join('/')
+                      return dispatchRequest(req, pathParams, handler, url)
+                  }
+                : (req) =>
+                      dispatchRequest(
+                          req,
+                          (req.params as Record<string, string> | undefined) ?? {},
+                          handler,
+                      )
     }
     for (const routeUrl of Object.keys(rpc)) {
         const handler = buildRouteHandler(routeUrl)
@@ -232,8 +246,10 @@ export async function createServer({
             pathParams: Record<string, string>,
             store: RequestStore,
         ) => Promise<Response>,
+        /* Pre-parsed by the fetch fallback; routes-table callers omit it. */
+        url?: URL,
     ): Promise<Response> {
-        return runWithRequestScope(req, { app, logRequests }, async (store) => {
+        return runWithRequestScope(req, { app, logRequests, url }, async (store) => {
             const response = app?.handle
                 ? await app.handle(req, (next) => handler(next, pathParams, store))
                 : await handler(req, pathParams, store)
@@ -296,11 +312,7 @@ export async function createServer({
                 */
                 if (url.pathname === IDENTITY_PATH) {
                     return Response.json(
-                        {
-                            belte: true,
-                            name: appInfo?.name ?? cliName,
-                            version: appInfo?.version ?? '0.0.0',
-                        },
+                        { belte: true, name: appName, version: appVersion },
                         { headers: { 'Cache-Control': NO_STORE } },
                     )
                 }
@@ -331,8 +343,9 @@ export async function createServer({
                 }
                 if (url.pathname === SOCKETS_PATH) {
                     // Reject cross-origin upgrades (CSWSH) before handing off to Bun.
-                    if (isCrossOriginRequest(req, url)) {
-                        return crossOriginForbidden()
+                    const upgradeForbidden = crossOriginGate(req, url)
+                    if (upgradeForbidden) {
+                        return upgradeForbidden
                     }
                     if (bunServer.upgrade(req, { data: {} })) {
                         return undefined as unknown as Response
@@ -348,21 +361,21 @@ export async function createServer({
                 */
                 if (url.pathname.startsWith(SOCKETS_REST_PREFIX)) {
                     /*
-                    Reject cross-origin browser publishes (CSRF) like the socket
-                    upgrade and MCP above — `rest` reads req.json() ignoring
-                    Content-Type, so a hostile page's text/plain POST could
-                    otherwise publish to a `clientPublish` socket with the
-                    visitor's ambient cookies. GET tail reads stay open
-                    cross-origin like rpc reads; only the mutating POST is gated.
+                    Gate cross-origin browser publishes (CSRF, see crossOriginGate).
+                    GET tail reads stay open cross-origin like rpc reads; only
+                    the mutating POST is gated.
                     */
-                    if (
-                        !isReadOnlyMethod(req.method as HttpVerb) &&
-                        isCrossOriginRequest(req, url)
-                    ) {
-                        return crossOriginForbidden()
+                    const publishForbidden = crossOriginGate(req, url, { allowReadOnly: true })
+                    if (publishForbidden) {
+                        return publishForbidden
                     }
                     const name = decodeURIComponent(url.pathname.slice(SOCKETS_REST_PREFIX.length))
-                    return dispatchRequest(req, {}, async () => socketDispatcher.rest(req, name))
+                    return dispatchRequest(
+                        req,
+                        {},
+                        async () => socketDispatcher.rest(req, name),
+                        url,
+                    )
                 }
                 /*
                 Out-of-band resolution stream for a streamed page's pending
@@ -376,36 +389,43 @@ export async function createServer({
                     return resolveStreamResponse(url.pathname.slice(RESOLVE_STREAM_PATH.length))
                 }
                 if (url.pathname === MCP_PATH && mcp) {
-                    /*
-                    Reject cross-site browser posts (CSRF) like the socket
-                    upgrade above. The JSON-RPC parse ignores Content-Type, so
-                    a hostile page's text/plain form trick could otherwise
-                    smuggle an envelope here with the visitor's ambient
-                    cookies. Native MCP clients send no Origin and pass.
-                    */
-                    if (isCrossOriginRequest(req, url)) {
-                        return crossOriginForbidden()
+                    // Gate cross-site browser posts (CSRF, see crossOriginGate).
+                    const mcpForbidden = crossOriginGate(req, url)
+                    if (mcpForbidden) {
+                        return mcpForbidden
                     }
-                    return dispatchRequest(req, {}, async () => mcp.handle(req))
+                    return dispatchRequest(req, {}, async () => mcp.handle(req), url)
                 }
                 if (url.pathname === CLI_PATH) {
-                    return dispatchRequest(req, {}, async () => handleCliInstall(req, cliName))
+                    return dispatchRequest(req, {}, async () => handleCliInstall(req, cliName), url)
                 }
                 if (url.pathname.startsWith(CLI_DOWNLOAD_PREFIX)) {
                     const platform = url.pathname.slice(CLI_DOWNLOAD_PREFIX.length)
-                    return dispatchRequest(req, {}, async () =>
-                        handleCliDownload(req, platform, cliName, cliCwd),
+                    return dispatchRequest(
+                        req,
+                        {},
+                        async () => handleCliDownload(req, platform, cliName, cliCwd),
+                        url,
                     )
                 }
                 if (url.pathname === OPENAPI_PATH) {
-                    return dispatchRequest(req, {}, async () => {
-                        await ensureRegistriesLoaded()
-                        const spec = buildOpenApiSpec({
-                            title: appInfo?.name ?? cliName,
-                            version: appInfo?.version ?? '0.0.0',
-                        })
-                        return Response.json(spec, { headers: { 'Cache-Control': NO_STORE } })
-                    })
+                    return dispatchRequest(
+                        req,
+                        {},
+                        async () => {
+                            if (!openApiSpec) {
+                                await ensureRegistriesLoaded()
+                                openApiSpec = buildOpenApiSpec({
+                                    title: appName,
+                                    version: appVersion,
+                                })
+                            }
+                            return Response.json(openApiSpec, {
+                                headers: { 'Cache-Control': NO_STORE },
+                            })
+                        },
+                        url,
+                    )
                 }
                 /*
                 Static assets sidestep ALS + the per-request CacheStore + the
@@ -448,15 +468,20 @@ export async function createServer({
                 404, or branch on the URL. The inner handler returns the
                 framework's default 404 when nothing intervenes.
                 */
-                return dispatchRequest(req, {}, async (_req, _pathParams, store) => {
-                    return (
-                        (await renderError(404, 'Not Found', store)) ??
-                        new Response('Not Found', {
-                            status: 404,
-                            headers: { 'Cache-Control': NO_STORE },
-                        })
-                    )
-                })
+                return dispatchRequest(
+                    req,
+                    {},
+                    async (_req, _pathParams, store) => {
+                        return (
+                            (await renderError(404, 'Not Found', store)) ??
+                            new Response('Not Found', {
+                                status: 404,
+                                headers: { 'Cache-Control': NO_STORE },
+                            })
+                        )
+                    },
+                    url,
+                )
             },
 
             error(err) {

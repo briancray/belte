@@ -24,17 +24,20 @@ pending(), and refreshing() so all three interpret the call shapes identically:
 Fn-selector identity (prefix resolution + the cache()-wrapper throw) lives in
 selectorPrefix, the prefix grammar in keyMatchesPrefix — both shared with the
 probes' scoped lifecycle channels so a probe subscribes to exactly the entries
-this predicate would match.
+this predicate would match. A caller that already resolved the prefix (the
+invalidate/probe paths derive it for their own use) passes it as
+`precomputedPrefix` so the args encoding isn't re-derived per call.
 */
 export function selectorMatcher<Args, Return>(
     arg?: CacheSelector<Args, Return>,
     args?: Args,
+    precomputedPrefix?: string,
 ): (entry: CacheEntry) => boolean {
     if (arg === undefined) {
         return () => true
     }
     if (typeof arg === 'function') {
-        const prefix = selectorPrefix(arg, args)
+        const prefix = precomputedPrefix ?? selectorPrefix(arg, args)
         if (prefix === undefined) {
             return () => false
         }

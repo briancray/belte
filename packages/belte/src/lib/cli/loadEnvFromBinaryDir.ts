@@ -1,5 +1,4 @@
-import { dirname } from 'node:path'
-import { bundleLayout } from '../shared/bundleLayout.ts'
+import { binaryDirEnvPath } from '../shared/binaryDirEnvPath.ts'
 import { loadEnvFile } from '../shared/loadEnvFile.ts'
 
 /*
@@ -12,5 +11,5 @@ fill-when-unset merge (see loadEnvFile) lets per-shell exports, Bun's CWD
 `.env`, and the user's data-dir config all override it.
 */
 export async function loadEnvFromBinaryDir(): Promise<void> {
-    await loadEnvFile(bundleLayout(dirname(process.execPath)).envPath)
+    await loadEnvFile(binaryDirEnvPath())
 }

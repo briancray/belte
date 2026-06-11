@@ -1,5 +1,4 @@
 import { mkdir } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
 import { bindConnectedFlag } from './lib/bundle/bindConnectedFlag.ts'
 import { bindRequestNavigate } from './lib/bundle/bindRequestNavigate.ts'
 import { listenLocalControlServer } from './lib/bundle/listenLocalControlServer.ts'
@@ -8,8 +7,9 @@ import { resolveWebviewLib } from './lib/bundle/resolveWebviewLib.ts'
 import { spawnEmbeddedServer } from './lib/bundle/spawnEmbeddedServer.ts'
 import { stableLocalPort } from './lib/bundle/stableLocalPort.ts'
 import { appDataDir } from './lib/shared/appDataDir.ts'
-import { bundleLayout } from './lib/shared/bundleLayout.ts'
+import { binaryDirEnvPath } from './lib/shared/binaryDirEnvPath.ts'
 import { clearLastConnection } from './lib/shared/clearLastConnection.ts'
+import { dataDirEnvPath } from './lib/shared/dataDirEnvPath.ts'
 import { log } from './lib/shared/log.ts'
 import { readEnvFile } from './lib/shared/readEnvFile.ts'
 import { readLastConnection } from './lib/shared/readLastConnection.ts'
@@ -182,16 +182,32 @@ async function runLivenessProbe(): Promise<void> {
 }
 
 /*
-The connected server stopped answering. Reap any (now-dead) embedded child, clear
-the connected flag so the menu stops claiming connected, and bounce the window
-back to the connect screen with a `lost` notice. The flag flip alone keeps the
-menu honest even when the navigate is a no-op (off macOS, or no handle yet).
+The connected-state transition pair. Connected is three coordinated pieces —
+the native menu flag, the liveness watch, and the assistant bridge — that must
+move together; disconnected additionally reaps any embedded child. Every
+handler routes through these so no path can desync the menu or leave a bridge
+running against a dead server.
 */
-function handleConnectionLost(url: string): void {
-    log.warn(`connected server stopped responding: ${url}`)
+async function becomeConnected(url: string): Promise<void> {
+    flag?.setConnected(true)
+    startLivenessWatch(url)
+    await startBridge(url)
+}
+
+function becomeDisconnected(): void {
     stopLivenessWatch()
     killServerChild()
     flag?.setConnected(false)
+}
+
+/*
+The connected server stopped answering. Tear the connection down and bounce the
+window back to the connect screen with a `lost` notice. The flag flip alone keeps
+the menu honest even when the navigate is a no-op (off macOS, or no handle yet).
+*/
+function handleConnectionLost(url: string): void {
+    log.warn(`connected server stopped responding: ${url}`)
+    becomeDisconnected()
     if (webviewHandle !== undefined) {
         navigate?.requestNavigate(webviewHandle, `${controlOrigin}/?action=lost`)
     }
@@ -236,9 +252,7 @@ async function resolveLaunchTarget(): Promise<string> {
         }
         try {
             const url = await startEmbeddedServer(AUTO_START_CEILING_MS)
-            flag?.setConnected(true)
-            startLivenessWatch(url)
-            await startBridge(url)
+            await becomeConnected(url)
             log.info(`resumed embedded server at ${url}`)
             return url
         } catch (error) {
@@ -249,9 +263,7 @@ async function resolveLaunchTarget(): Promise<string> {
     }
     const identity = await probeBelteServer(last.url)
     if (identity) {
-        flag?.setConnected(true)
-        startLivenessWatch(last.url)
-        await startBridge(last.url)
+        await becomeConnected(last.url)
         log.info(`reconnected to ${identity.name} at ${last.url}`)
         return last.url
     }
@@ -281,18 +293,6 @@ function renderConnectScreen(): Response {
     return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
 }
 
-// The data-dir `.env` the form writes and the server loads first at boot.
-function dataDirEnvPath(): string {
-    return join(appDataDir(programName), '.env')
-}
-
-// The bundle's shipped `.env` (its default config layer), resolved from the binary
-// directory — same source loadEnvFromBinaryDir reads at boot (dirname of the running
-// binary): beside the binary in the flat layout, under Resources in a `.app`.
-function binaryDirEnvPath(): string {
-    return bundleLayout(dirname(process.execPath)).envPath
-}
-
 /*
 Resolves the value to pre-fill each config field with, following the same
 precedence the server applies below the shell: the user's saved data-dir `.env`,
@@ -304,7 +304,7 @@ async function resolveConfigValues(): Promise<Record<string, string>> {
     const properties = (configSchema?.properties ?? {}) as Record<string, { default?: unknown }>
     // Independent reads — fetch together; precedence is applied in the merge below.
     const [dataDirEnv, binaryDirEnv] = await Promise.all([
-        readEnvFile(dataDirEnvPath()),
+        readEnvFile(dataDirEnvPath(programName)),
         readEnvFile(binaryDirEnvPath()),
     ])
     return Object.fromEntries(
@@ -325,7 +325,7 @@ file so keys the form didn't touch survive. Creates the data dir on first run
 (appDataDir only computes the path).
 */
 async function writeConfig(values: Record<string, string>): Promise<void> {
-    const path = dataDirEnvPath()
+    const path = dataDirEnvPath(programName)
     const merged = { ...(await readEnvFile(path)), ...values }
     await mkdir(appDataDir(programName), { recursive: true })
     await Bun.write(path, serializeEnv(merged))
@@ -355,9 +355,7 @@ async function handleConnect(request: Request): Promise<Response> {
         log.warn(`no belte server responded at ${target}`)
         return Response.json({ error: `No belte server responded at ${target}` }, { status: 502 })
     }
-    flag?.setConnected(true)
-    startLivenessWatch(target)
-    await startBridge(target)
+    await becomeConnected(target)
     // Record the choice so the next launch reconnects here before opening.
     await writeLastConnection(programName, { kind: 'url', url: target })
     log.info(`connecting to ${identity.name} at ${target}`)
@@ -368,9 +366,7 @@ async function handleConnect(request: Request): Promise<Response> {
 async function handleStart(): Promise<Response> {
     try {
         const localUrl = await startEmbeddedServer()
-        flag?.setConnected(true)
-        startLivenessWatch(localUrl)
-        await startBridge(localUrl)
+        await becomeConnected(localUrl)
         // Record the choice so the next launch boots the embedded server first.
         await writeLastConnection(programName, { kind: 'embedded' })
         log.info(`started embedded server at ${localUrl}`)
@@ -383,9 +379,7 @@ async function handleStart(): Promise<Response> {
 
 // GET /__belte/disconnect — tear down the embedded server and forget the auto-resume choice.
 async function handleDisconnect(): Promise<Response> {
-    stopLivenessWatch()
-    killServerChild()
-    flag?.setConnected(false)
+    becomeDisconnected()
     await clearLastConnection(programName)
     return new Response(undefined, { status: 204 })
 }

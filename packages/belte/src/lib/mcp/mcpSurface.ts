@@ -251,11 +251,6 @@ export function renderPrompt(
     }
 }
 
-// The conversation-seeding messages for a prompt, without the wire-shape wrapping.
-export function getPromptMessages(name: string, args?: Record<string, unknown>): PromptMessage[] {
-    return renderPrompt(name, args).messages
-}
-
 /*
 Projects the app's MCP surface for an in-process consumer bound to `request`
 — tool calls forward that request's auth headers into the verb handler, so
@@ -276,7 +271,8 @@ export function mcpSurface(request: Request): McpSurface {
             return prompts
         },
         call: (name, args) => callTool(name, args, request),
-        getPrompt: getPromptMessages,
+        /* The conversation-seeding messages, without the wire-shape wrapping. */
+        getPrompt: (name, args) => renderPrompt(name, args).messages,
         async listResources() {
             const server = getMcpResourceServer()
             return server ? server.list() : []

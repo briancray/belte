@@ -111,27 +111,44 @@ async function connect(target: string = url.trim()): Promise<void> {
     if (!cleaned) {
         return
     }
-    error = undefined
-    // Hide the form while connecting so a successful redirect doesn't flash it.
-    phase = 'splash'
-    try {
-        const response = await fetch('/connect', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ url: cleaned }),
-        })
-        if (!response.ok) {
-            const body = (await response.json()) as { error?: string }
-            throw new Error(body.error ?? `connect failed (${response.status})`)
-        }
-        const { redirect } = (await response.json()) as { redirect: string }
+    await postAndFollow('/connect', { url: cleaned }, 'Could not connect', () => {
         // Prefill the form with this server on a later visit (the launcher records
         // the auto-resume choice itself, on the /connect it just handled).
         localStorage.setItem(LAST_URL_KEY, cleaned)
+    })
+}
+
+/*
+Shared phase choreography for the launcher's POST endpoints (/connect,
+/start): splash while the request runs so a successful redirect never flashes
+the form, follow the `{ redirect }` reply, and on any failure restore the
+form with the error visible. `onSuccess` runs after the reply but before the
+redirect — connect remembers the confirmed URL there.
+*/
+async function postAndFollow(
+    path: string,
+    body: unknown | undefined,
+    failure: string,
+    onSuccess?: () => void,
+): Promise<void> {
+    error = undefined
+    phase = 'splash'
+    try {
+        const response = await fetch(path, {
+            method: 'POST',
+            ...(body === undefined
+                ? {}
+                : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+        })
+        if (!response.ok) {
+            const reply = (await response.json()) as { error?: string }
+            throw new Error(reply.error ?? `${path.slice(1)} failed (${response.status})`)
+        }
+        const { redirect } = (await response.json()) as { redirect: string }
+        onSuccess?.()
         location.href = redirect
     } catch (cause) {
-        error = `Could not connect: ${String(cause)}`
-        // Failed — bring the form back so the error and a retry are visible.
+        error = `${failure}: ${String(cause)}`
         phase = 'connect'
     }
 }
@@ -160,22 +177,7 @@ async function start(): Promise<void> {
 
 // Boot the embedded server via the launcher, then follow it once it answers.
 async function boot(): Promise<void> {
-    // Splash while booting so the connect screen doesn't flash before the redirect
-    // (including straight after saving config).
-    phase = 'splash'
-    try {
-        const response = await fetch('/start', { method: 'POST' })
-        if (!response.ok) {
-            const body = (await response.json()) as { error?: string }
-            throw new Error(body.error ?? `start failed (${response.status})`)
-        }
-        const { redirect } = (await response.json()) as { redirect: string }
-        location.href = redirect
-    } catch (cause) {
-        error = `Could not start the server: ${String(cause)}`
-        // Boot failed — bring the connect screen back to show the error.
-        phase = 'connect'
-    }
+    await postAndFollow('/start', undefined, 'Could not start the server')
 }
 
 /*

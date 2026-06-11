@@ -1,5 +1,5 @@
 import { NO_STORE } from '../shared/CACHE_CONTROL_VALUES.ts'
-import { dispatchMcpRequest, MCP_NO_STORE_HEADERS } from './dispatchMcpRequest.ts'
+import { dispatchMcpRequest } from './dispatchMcpRequest.ts'
 import type { McpServer } from './types/McpServer.ts'
 import type { McpServerOptions } from './types/McpServerOptions.ts'
 
@@ -36,7 +36,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
                 })
             }
             const envelope = await dispatchMcpRequest(request, opts, serverInfo)
-            return new Response(JSON.stringify(envelope), { headers: MCP_NO_STORE_HEADERS })
+            return Response.json(envelope, { headers: { 'Cache-Control': NO_STORE } })
         },
     }
 }
