@@ -19,8 +19,21 @@ annotate `GET<Args, Return>` just to type the response shape.
 
 For non-default cache policy pass `init.headers`; explicit
 `cache-control` wins over the default.
+
+JSON has no encoding for `undefined` — `Response.json(undefined)` throws
+TypeError. `json(undefined)` instead emits 204 No Content, which
+decodeResponse maps back to `undefined` on both the fetch and in-process
+paths, so a handler typed `Shape | undefined` round-trips the wire. The
+helper owns the 204 (a body-bearing status with no body would break the
+round trip), so it wins over any `init.status`.
 */
 export function json<T>(data: T, init?: ResponseInit): TypedResponse<T> {
+    if (data === undefined) {
+        return new Response(
+            undefined,
+            withResponseDefaults(init, { 'Cache-Control': NO_STORE }, 204),
+        ) as TypedResponse<T>
+    }
     return Response.json(
         data,
         withResponseDefaults(init, { 'Cache-Control': NO_STORE }),

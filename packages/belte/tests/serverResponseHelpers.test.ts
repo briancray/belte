@@ -13,6 +13,7 @@ import { request } from '../src/lib/server/request.ts'
 import { runWithRequestScope } from '../src/lib/server/runtime/runWithRequestScope.ts'
 import { socket } from '../src/lib/server/socket.ts'
 import { sse } from '../src/lib/server/sse.ts'
+import { decodeResponse } from '../src/lib/shared/decodeResponse.ts'
 import { HttpError } from '../src/lib/shared/HttpError.ts'
 
 describe('json', () => {
@@ -31,6 +32,24 @@ describe('json', () => {
         )
         expect(response.status).toBe(201)
         expect(response.headers.get('Cache-Control')).toBe('max-age=60')
+    })
+
+    test('undefined becomes 204 No Content and decodes back to undefined', async () => {
+        const response = json(undefined)
+        expect(response.status).toBe(204)
+        expect(response.body).toBeNull()
+        expect(response.headers.get('Cache-Control')).toBe('no-store')
+        expect(await decodeResponse(response)).toBeUndefined()
+    })
+
+    test('204 for undefined wins over init.status', () => {
+        expect(json(undefined, { status: 200 }).status).toBe(204)
+    })
+
+    test('null stays a JSON null body, distinct from undefined', async () => {
+        const response = json(null)
+        expect(response.status).toBe(200)
+        expect(await decodeResponse(response)).toBeNull()
     })
 })
 
