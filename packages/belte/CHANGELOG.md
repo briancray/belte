@@ -1,5 +1,15 @@
 # @belte/belte
 
+## 0.25.0
+
+### Minor Changes
+
+- [`b0fd235`](https://github.com/briancray/belte/commit/b0fd2353a98008ae306b1cc1b8f112cdbda420a2) - cache.on event-driven invalidation and per-call selectors ([`fe7e0e6`](https://github.com/briancray/belte/commit/fe7e0e6ff45875e59e044280379d119a635a6193))
+
+### Patch Changes
+
+- [`b0fd235`](https://github.com/briancray/belte/commit/b0fd2353a98008ae306b1cc1b8f112cdbda420a2) - scope probe lifecycle channels and trip runaway invalidate loops ([`7aad405`](https://github.com/briancray/belte/commit/7aad4050edaccf2c95f479fa64ec16b00c2141d7))
+
 ## 0.24.3
 
 ### Patch Changes
