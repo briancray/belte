@@ -1,5 +1,11 @@
 # @belte/claude-code
 
+## 0.5.2
+
+### Patch Changes
+
+- [`827fc54`](https://github.com/briancray/belte/commit/827fc54ec875fa931ad0edc6128a594763785dbb) - fix(assistant): default the handshake capture group (`match[1] ?? ''`) so the index access stays defined under a consumer's `noUncheckedIndexedAccess`
+
 ## 0.5.1
 
 ### Patch Changes
