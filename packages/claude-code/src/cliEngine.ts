@@ -1,6 +1,7 @@
 import type { AgentEngine } from '@belte/belte/server/agent'
 import { appMcpServers } from './appMcpServers.ts'
 import type { ClaudePermissions } from './ClaudePermissions.ts'
+import { claudeCliArgs } from './claudeCliArgs.ts'
 import { framesFromMessages } from './framesFromMessages.ts'
 import { promptFromMessages } from './promptFromMessages.ts'
 import type { StreamMessage } from './StreamMessage.ts'
@@ -59,22 +60,8 @@ export function cliEngine(config: CliEngineConfig = {}): AgentEngine {
             'stream-json',
             '--verbose',
             '--include-partial-messages',
-            '--mcp-config',
-            JSON.stringify({ mcpServers: servers }),
-            '--strict-mcp-config',
-            '--setting-sources',
-            '',
+            ...claudeCliArgs({ servers, permissions: config.permissions, headless: true }),
         ]
-        const { defaultMode, ...rules } = config.permissions ?? {}
-        if (defaultMode) {
-            args.push('--permission-mode', defaultMode)
-        }
-        if (defaultMode === 'bypassPermissions') {
-            args.push('--dangerously-skip-permissions')
-        }
-        if (Object.keys(rules).length) {
-            args.push('--settings', JSON.stringify({ permissions: rules }))
-        }
         /* tools `[]` (the serve default) → allow only the app's mcp tools; a list
         adds those built-ins; undefined keeps Claude's default toolset. */
         if (config.tools) {

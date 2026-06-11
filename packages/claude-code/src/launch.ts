@@ -1,4 +1,5 @@
 import { appMcpServers } from './appMcpServers.ts'
+import { claudeCliArgs } from './claudeCliArgs.ts'
 import type { PermissionMode } from './PermissionMode.ts'
 
 /*
@@ -19,18 +20,15 @@ type LaunchConfig = {
 }
 
 export async function launch(config: LaunchConfig): Promise<never> {
-    const mcpConfig = { mcpServers: await appMcpServers(config.url, config.mcpToken) }
+    const servers = await appMcpServers(config.url, config.mcpToken)
     const args = [
         'claude',
-        '--mcp-config',
-        JSON.stringify(mcpConfig),
-        '--strict-mcp-config',
-        '--setting-sources',
-        '',
+        ...claudeCliArgs({
+            servers,
+            permissions: config.permissionMode ? { defaultMode: config.permissionMode } : undefined,
+            headless: false,
+        }),
     ]
-    if (config.permissionMode) {
-        args.push('--permission-mode', config.permissionMode)
-    }
     const child = Bun.spawn({ cmd: args, stdio: ['inherit', 'inherit', 'inherit'] })
     const forward = (signal: NodeJS.Signals) => {
         child.kill(signal)
