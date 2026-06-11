@@ -1,5 +1,19 @@
 # @belte/belte
 
+## 0.24.2
+
+### Patch Changes
+
+- [`021f6f0`](https://github.com/briancray/belte/commit/021f6f0f17108ad8703613d75209087936af359f) - adopt Map.getOrInsertComputed in server-side caches ([`03c342f`](https://github.com/briancray/belte/commit/03c342fd3db5dceaf4de35f1b13f1587384b7482))
+
+- [`021f6f0`](https://github.com/briancray/belte/commit/021f6f0f17108ad8703613d75209087936af359f) - snapshot entry method narrows through ReplayableMethod ([`500af03`](https://github.com/briancray/belte/commit/500af03fd525d4528c59e636e301570cdaf219f8))
+
+- [`021f6f0`](https://github.com/briancray/belte/commit/021f6f0f17108ad8703613d75209087936af359f) - no-input rpc verbs no longer require an explicit undefined argument ([`b57c6b0`](https://github.com/briancray/belte/commit/b57c6b0cab45f40c8adfe943c0c357a0854aa2e7))
+
+- [`dc8cf0f`](https://github.com/briancray/belte/commit/dc8cf0fce2f59c0e7c9d3169f8faa3bf282932a3) - fix(url): keep `[name]` params declared before a `[...rest]` catch-all in `PathParams` — the catch-all branch swallowed its head, so `url('/media/[id]/[...rest]', { id, rest })` rejected `id`
+
+- [`da7544a`](https://github.com/briancray/belte/commit/da7544a21e8b076f6c756d9648baa181167e6b3e) - fix: type-check cleanly under strict consumer flags — belte ships raw TS, so app-side tsconfig flags type-check it. Bind layout/error loaders before invoking (`noUncheckedIndexedAccess`), pin asset/tarball bytes to `Uint8Array<ArrayBuffer>` so they satisfy `BodyInit`, cast the FFI window handle to `Pointer`, and add `erasableSyntaxOnly` to the shipped `tsconfig.app.json`
+
 ## 0.24.1
 
 ### Patch Changes
