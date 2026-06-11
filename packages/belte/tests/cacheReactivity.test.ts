@@ -17,7 +17,7 @@ import { useBrowserWindow } from './support/useBrowserWindow.ts'
    meta so cache() accepts it. */
 function countingRemote(method: HttpVerb, url: string): RawRemoteFunction<undefined> {
     let calls = 0
-    const fn = (() => {
+    const fn = () => {
         calls += 1
         const request = new Request(`https://test.local${url}`, { method })
         const promise = Promise.resolve(
@@ -27,9 +27,9 @@ function countingRemote(method: HttpVerb, url: string): RawRemoteFunction<undefi
         )
         remoteMetaStore.set(promise, () => request)
         return promise
-    }) as RawRemoteFunction<undefined>
-    Object.assign(fn, { method, url, [REMOTE_FUNCTION]: true })
-    return fn
+    }
+    // Object.assign's intersection satisfies RawRemoteFunction structurally — no cast needed.
+    return Object.assign(fn, { method, url, [REMOTE_FUNCTION]: true })
 }
 
 /*

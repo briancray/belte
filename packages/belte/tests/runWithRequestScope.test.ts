@@ -23,19 +23,16 @@ describe('runWithRequestScope', () => {
     })
 
     test('gives each request its own cache store', async () => {
-        const collect = (store: { cache: CacheStore }) => Promise.resolve(store.cache)
-        const first = await runWithRequestScope(
-            new Request('https://test.local/'),
-            options,
-            collect,
-        )
-        const second = await runWithRequestScope(
-            new Request('https://test.local/'),
-            options,
-            collect,
-        )
+        // The seam's body must resolve a Response, so capture the stores via closure.
+        const stores: CacheStore[] = []
+        const collect = (store: { cache: CacheStore }) => {
+            stores.push(store.cache)
+            return Promise.resolve(new Response('ok'))
+        }
+        await runWithRequestScope(new Request('https://test.local/'), options, collect)
+        await runWithRequestScope(new Request('https://test.local/'), options, collect)
         // Isolation: a fresh store per request so cached calls never leak across requests.
-        expect(first).not.toBe(second)
+        expect(stores[0]).not.toBe(stores[1])
     })
 
     test('a thrown body with no handleError yields a generic framework 500 (no message leak)', async () => {

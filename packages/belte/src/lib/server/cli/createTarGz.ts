@@ -58,7 +58,7 @@ function buildHeader(entry: TarEntry): Uint8Array {
 Builds a gzipped tarball from the given entries and returns the bytes.
 Sized eagerly (sum of headers + padded contents + 2 trailing blocks).
 */
-export function createTarGz(entries: TarEntry[]): Uint8Array {
+export function createTarGz(entries: TarEntry[]): Uint8Array<ArrayBuffer> {
     let totalSize = BLOCK * 2 // trailing zero blocks
     for (const entry of entries) {
         totalSize += BLOCK
@@ -72,5 +72,6 @@ export function createTarGz(entries: TarEntry[]): Uint8Array {
         tar.set(entry.content, offset)
         offset += Math.ceil(entry.content.length / BLOCK) * BLOCK
     }
-    return Bun.gzipSync(tar)
+    /* gzipSync allocates a fresh plain ArrayBuffer; @types/bun widens it to ArrayBufferLike, which BodyInit rejects. */
+    return Bun.gzipSync(tar) as Uint8Array<ArrayBuffer>
 }

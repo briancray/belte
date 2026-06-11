@@ -60,7 +60,10 @@ export async function createAppAssetServer({
             if (wantsZstd) {
                 return new Response(compressed, { headers: zstdHeaders })
             }
-            return new Response(await Bun.zstdDecompress(compressed), { headers: baseHeaders })
+            /* zstdDecompress's Buffer is freshly allocated over a plain ArrayBuffer; @types/bun widens it to ArrayBufferLike, which BodyInit rejects. */
+            return new Response((await Bun.zstdDecompress(compressed)) as Uint8Array<ArrayBuffer>, {
+                headers: baseHeaders,
+            })
         }
         const diskPath = distDir + url.pathname
         if (wantsZstd && diskZstdPaths.has(url.pathname)) {

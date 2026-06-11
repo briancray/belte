@@ -53,7 +53,10 @@ export async function createPublicAssetServer({
             if (wantsZstd) {
                 return new Response(compressed, { headers: zstd })
             }
-            return new Response(await Bun.zstdDecompress(compressed), { headers: base })
+            /* zstdDecompress's Buffer is freshly allocated over a plain ArrayBuffer; @types/bun widens it to ArrayBufferLike, which BodyInit rejects. */
+            return new Response((await Bun.zstdDecompress(compressed)) as Uint8Array<ArrayBuffer>, {
+                headers: base,
+            })
         }
         if (!diskPaths.has(url.pathname)) {
             return undefined

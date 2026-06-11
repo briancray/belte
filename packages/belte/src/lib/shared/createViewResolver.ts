@@ -33,9 +33,12 @@ export function createViewResolver({
         loadViewModule: () => Promise<{ default: ResolvedView['Page'] }>,
     ): Promise<ResolvedView> {
         const layoutPrefix = nearestLayoutPrefix(route, layoutPrefixes)
+        /* bind the loader first so the index access stays defined under a
+           consumer's noUncheckedIndexedAccess */
+        const loadLayout = layoutPrefix && layouts ? layouts[layoutPrefix] : undefined
         const [viewModule, layoutModule] = await Promise.all([
             loadViewModule(),
-            layoutPrefix && layouts ? layouts[layoutPrefix]() : Promise.resolve(undefined),
+            loadLayout ? loadLayout() : Promise.resolve(undefined),
         ])
         return { Page: viewModule.default, Layout: layoutModule?.default }
     }
@@ -54,10 +57,11 @@ export function createViewResolver({
 
         error: async (pathname) => {
             const errorPrefix = nearestLayoutPrefix(pathname, errorPrefixes)
-            if (!errorPrefix || !errors) {
+            const loadError = errorPrefix && errors ? errors[errorPrefix] : undefined
+            if (!loadError) {
                 return undefined
             }
-            return loadWithLayout(pathname, errors[errorPrefix])
+            return loadWithLayout(pathname, loadError)
         },
 
         prefixes: (route) => ({

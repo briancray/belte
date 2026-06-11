@@ -1,4 +1,4 @@
-import { dlopen, FFIType } from 'bun:ffi'
+import { dlopen, FFIType, type Pointer } from 'bun:ffi'
 
 /*
 Binds belte_request_navigate — points the live webview window at a URL from any
@@ -22,7 +22,10 @@ export function bindRequestNavigate(libPath: string): {
         })
         return {
             requestNavigate: (handle, url) =>
-                lib.symbols.belte_request_navigate(handle, new TextEncoder().encode(`${url}\0`)),
+                lib.symbols.belte_request_navigate(
+                    handle as Pointer,
+                    new TextEncoder().encode(`${url}\0`),
+                ),
             close: () => lib.close(),
         }
     } catch {
