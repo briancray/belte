@@ -26,6 +26,11 @@ describe('url at root mount', () => {
         expect(url('/files/[...path]', { path: 'a/b/c' })).toBe('/files/a/b/c')
     })
 
+    test('interpolates [name] params before a [...rest] catch-all', () => {
+        // also a type-level check: PathParams must keep `id` alongside `rest`
+        expect(url('/media/[id]/[...rest]', { id: 5, rest: 'play' })).toBe('/media/5/play')
+    })
+
     test('appends query after path params', () => {
         expect(url('/product/[id]', { id: 5 }, { sort: 'asc' })).toBe('/product/5?sort=asc')
     })

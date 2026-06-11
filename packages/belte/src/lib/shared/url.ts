@@ -42,10 +42,12 @@ type KnownPath = keyof PageRoutes | keyof RpcRoutes | keyof PublicAssets
 Pulls the `[name]` / `[...rest]` params a route literal declares straight from
 the path type, so url('/product/[id]', …) requires `id` without a generated
 shape map. Values accept string | number (stringified on output). A path with
-no bracket segments yields {}, which collapses the params slot away.
+no bracket segments yields {}, which collapses the params slot away. The
+catch-all branch recurses on its head too, so `[name]` segments before a
+`[...rest]` are kept.
 */
-type PathParams<P extends string> = P extends `${string}[...${infer Rest}]${infer Tail}`
-    ? { [K in Rest]: string | number } & PathParams<Tail>
+type PathParams<P extends string> = P extends `${infer Head}[...${infer Rest}]${infer Tail}`
+    ? PathParams<Head> & { [K in Rest]: string | number } & PathParams<Tail>
     : P extends `${string}[${infer Name}]${infer Tail}`
       ? { [K in Name]: string | number } & PathParams<Tail>
       : // biome-ignore lint/complexity/noBannedTypes: {} is the "no params" base case — keyof {} is never, which collapses the params slot; Record<string, never> would not (keyof is string)
