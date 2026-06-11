@@ -1,5 +1,15 @@
 # @belte/belte
 
+## 0.24.3
+
+### Patch Changes
+
+- [`cc26576`](https://github.com/briancray/belte/commit/cc265765b468a4534f3b33e02ec52b9d9b197f13) - `belte dev` no longer reloads the browser after server-only edits. Each dev worker announces a fingerprint of the browser-visible surface (client build contents, public/ stamps, shell) as the first event on the live-reload channel; the page reloads on reconnect only when the fingerprint changed, so editing rpc/socket/server code keeps the page — and all of its UI state — alive while the new server behavior applies on the next request.
+
+- [`40b5273`](https://github.com/briancray/belte/commit/40b52732f1162ddc6b5796457a2942b78334fb4a) - `belte dev` restarts are now zero-downtime: the replacement worker boots alongside the incumbent (both bind the dev port via `reusePort`) and the old worker is retired only once the new one reports ready, so requests never hit a dead port mid-rebuild. A worker that crashes while active is respawned automatically (bounded, so a crash-on-boot loop gives up until the next save), and a replacement that dies or hangs booting is discarded while the last-good server keeps serving.
+
+- [`b4ab65c`](https://github.com/briancray/belte/commit/b4ab65cb5520a9cfd0b9537e2bd85c0cbe6be1d6) - Hidden tabs release their long-lived connections instead of holding them open. The dev live-reload EventSource and the multiplexed sockets WebSocket both close on `visibilitychange: hidden` and reconnect on visible, riding the existing drop paths: the reload client re-captures the worker fingerprint on reconnect (a rebuild while the tab slept still reloads it), and socket consumers resync through the typed disconnect — their fresh sub frames queue while hidden and flush when the tab returns. Backgrounded tabs no longer accumulate idle connections the browser throttles or the server counts against per-host limits.
+
 ## 0.24.2
 
 ### Patch Changes
