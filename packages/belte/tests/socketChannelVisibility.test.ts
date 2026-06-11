@@ -67,6 +67,8 @@ function sentFrames(socket: FakeWebSocket): SocketClientFrame[] {
 }
 
 const globals = globalThis as Record<string, unknown>
+// WebSocket is a real Bun global other test files use — restore it, never delete.
+const originalWebSocket = globals.WebSocket
 globals.document = documentStub
 globals.window = { location: { protocol: 'http:', host: 'localhost:3000' } }
 globals.WebSocket = FakeWebSocket
@@ -74,7 +76,7 @@ globals.WebSocket = FakeWebSocket
 afterAll(() => {
     delete globals.document
     delete globals.window
-    delete globals.WebSocket
+    globals.WebSocket = originalWebSocket
 })
 
 describe('socket channel visibility', () => {
