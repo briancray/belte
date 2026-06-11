@@ -1,6 +1,7 @@
 import type { ClientFlags } from './ClientFlags.ts'
 import type { HttpVerb } from './HttpVerb.ts'
 import type { RawRemoteFunction } from './RawRemoteFunction.ts'
+import type { RemoteCallable } from './RemoteCallable.ts'
 import type { Subscribable } from './Subscribable.ts'
 
 /*
@@ -35,7 +36,7 @@ into args (still schema-validated) and File parts into files(). FormData is
 stringly-typed, so this is the upload escape hatch — typed object args remain
 the default for everything else.
 */
-export type RemoteFunction<Args, Return> = ((args: Args | FormData) => Promise<Return>) & {
+export type RemoteFunction<Args, Return> = RemoteCallable<Args, Return> & {
     readonly method: HttpVerb
     readonly url: string
     readonly clients: ClientFlags

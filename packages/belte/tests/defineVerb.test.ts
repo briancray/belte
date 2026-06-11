@@ -44,6 +44,25 @@ describe('defineVerb happy path', () => {
         expect(create.clients.mcp).toBe(true)
     })
 
+    test('no-input verb is callable with zero args; required args stay required', async () => {
+        const ping = defineVerb<undefined, { ok: boolean }>('GET', '/rpc/ping', () =>
+            json({ ok: true }),
+        )
+        expect(await ping()).toEqual({ ok: true })
+        expect((await ping.raw()).status).toBe(200)
+
+        const search = defineVerb<{ q: string }, { q: string }>(
+            'GET',
+            '/rpc/search-typed',
+            ({ q }) => json({ q }),
+        )
+        // type-level only: Args without undefined keeps the parameter required
+        void (() => {
+            // @ts-expect-error — dropping required args must not typecheck
+            return search()
+        })
+    })
+
     test('schemaless verb is browser-only', () => {
         const bare = defineVerb('GET', '/rpc/bare', () => json({ ok: true }))
         expect(bare.clients).toEqual({ browser: true, mcp: false, cli: false })
