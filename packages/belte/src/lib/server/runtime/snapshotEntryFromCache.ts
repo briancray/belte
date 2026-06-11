@@ -1,4 +1,4 @@
-import { REPLAYABLE_METHODS } from '../../shared/REPLAYABLE_METHODS.ts'
+import { isReplayableMethod } from '../../shared/isReplayableMethod.ts'
 import type { CacheEntry } from '../../shared/types/CacheEntry.ts'
 import type { CacheSnapshotEntry } from '../../shared/types/CacheSnapshotEntry.ts'
 import type { CacheStore } from '../../shared/types/CacheStore.ts'
@@ -28,7 +28,7 @@ export async function snapshotEntryFromCache(
         return undefined
     }
     const method = entry.request.method.toUpperCase()
-    if (!REPLAYABLE_METHODS.has(method)) {
+    if (!isReplayableMethod(method)) {
         return undefined
     }
     const response = await readSettled(entry.promise as Promise<Response>)

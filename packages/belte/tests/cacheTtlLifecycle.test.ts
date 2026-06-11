@@ -9,6 +9,7 @@ import { cache } from '../src/lib/shared/cache.ts'
 import { cacheStoreSlot } from '../src/lib/shared/cacheStoreSlot.ts'
 import { createCacheStore } from '../src/lib/shared/createCacheStore.ts'
 import { globalCacheStoreSlot } from '../src/lib/shared/globalCacheStoreSlot.ts'
+import { isReplayableMethod } from '../src/lib/shared/isReplayableMethod.ts'
 import { keyForRemoteCall } from '../src/lib/shared/keyForRemoteCall.ts'
 import type { CacheStore } from '../src/lib/shared/types/CacheStore.ts'
 import type { RawRemoteFunction } from '../src/lib/shared/types/RawRemoteFunction.ts'
@@ -177,6 +178,10 @@ hits but the next render fetches live. The first reader's declaration wins.
 */
 describe('hydrated entries adopt the reading call site ttl', () => {
     function hydrate(store: CacheStore, remote: RawRemoteFunction<undefined>): string {
+        /* Snapshots only ever carry replayable methods; narrow so the entry types as one. */
+        if (!isReplayableMethod(remote.method)) {
+            throw new Error('hydrate() needs a replayable (GET) remote')
+        }
         const key = keyForRemoteCall(remote.method, remote.url, undefined)
         store.entries.set(
             key,

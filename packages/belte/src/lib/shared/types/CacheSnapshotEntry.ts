@@ -1,13 +1,15 @@
+import type { ReplayableMethod } from './ReplayableMethod.ts'
+
 /*
 Wire format for a single cached response shipped from SSR to client hydration.
-Only GET/DELETE entries with a textual Content-Type are emitted — POST/PUT
-bodies can't be reconstructed without shipping the original request body,
-and binary bodies don't survive a JSON round-trip.
+Only replayable entries (see REPLAYABLE_METHODS) with a textual Content-Type
+are emitted — writes must not re-fire from a snapshot, and binary bodies don't
+survive a JSON round-trip.
 */
 export type CacheSnapshotEntry = {
     key: string
     url: string
-    method: 'GET' | 'DELETE'
+    method: ReplayableMethod
     status: number
     statusText: string
     headers: Array<[string, string]>
