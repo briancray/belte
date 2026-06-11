@@ -80,8 +80,14 @@ async function runJsonl() {
         Consumer cancellation propagates to <code class="font-mono">iterator.return()</code>
         — handler <code class="font-mono">finally</code> blocks run.
         <code class="font-mono">sse()</code>
-        sends a keepalive comment every 15s so proxies don't drop idle streams. For fan-out pub/sub
-        use
+        sends a keepalive comment every 15s so proxies don't drop idle streams. A generator throw
+        mid-stream can't change the already-sent 200, so it rides the body instead:
+        <code class="font-mono">jsonl()</code>
+        emits a final
+        <code class="font-mono">{'{"$error":…}'}</code>
+        line, <code class="font-mono">sse()</code> an
+        <code class="font-mono">event: error</code>
+        frame. For fan-out pub/sub use
         <a class="underline" href="/sockets">Sockets</a>
         instead.
     </p>

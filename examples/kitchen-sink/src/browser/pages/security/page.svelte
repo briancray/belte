@@ -29,7 +29,8 @@ async function sendBeacon() {
     rpc URL inside a visitor's authenticated browser, ambient cookies attached). Reads, curl, CLI,
     and MCP clients send no <code class="font-mono">Origin</code> and pass.
     <code class="font-mono">/__belte/mcp</code>
-    gets the same check.
+    and socket publishes get the same check, so a hostile page can't ride a visitor's cookies into
+    them.
 </p>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">

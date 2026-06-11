@@ -2,7 +2,7 @@
 import CodeBlock from '$browser/CodeBlock.svelte'
 </script>
 
-<h1 class="text-3xl font-bold"><code class="font-mono">belte/bundle</code></h1>
+<h1 class="text-3xl font-bold">bundle</h1>
 <p class="mt-2 text-slate-600">
     <code class="font-mono">belte bundle</code>
     produces a movable, self-contained native desktop app for the host platform — the standalone
@@ -132,9 +132,9 @@ import CodeBlock from '$browser/CodeBlock.svelte'
         name. Subscribe with
         <code class="font-mono">onMenu</code>
         from
-        <code class="font-mono">belte/bundle/onMenu</code>: pass a name plus a handler to fire for
-        one item, or a single handler to take every name. Both return an unsubscribe, so they drop
-        straight into an
+        <code class="font-mono">@belte/belte/bundle/onMenu</code>: pass a name plus a handler to
+        fire for one item, or a single handler to take every name. Both return an unsubscribe, so
+        they drop straight into an
         <code class="font-mono">$effect</code>. Your code makes the relevant rpc call, so the menu
         can drive parameterised work. The standard App / Edit / Window menus (Quit, copy/paste,
         minimize) are always installed.
@@ -148,7 +148,7 @@ import CodeBlock from '$browser/CodeBlock.svelte'
     <p class="mt-1">
         <code class="font-mono">bundled</code>
         from
-        <code class="font-mono">belte/shared/bundled</code>
+        <code class="font-mono">@belte/belte/bundle/bundled</code>
         reports whether the code is running inside the desktop bundle —
         <code class="font-mono">true</code>
         in the bundle's webview or its embedded server process, <code class="font-mono">false</code>
@@ -181,7 +181,10 @@ import CodeBlock from '$browser/CodeBlock.svelte'
         <strong>ad-hoc code-signed</strong>
         so it launches on other Macs (a quarantined copy may still need
         <code class="font-mono">xattr -cr</code>
-        once); full distribution still needs a Developer ID signature and notarization.
+        once); full distribution still needs a Developer ID signature and notarization. Launch with
+        <code class="font-mono">BELTE_INSPECT=1</code>
+        to enable the webview's inspector (right-click → Inspect) — off in release bundles by
+        default.
     </p>
 </section>
 

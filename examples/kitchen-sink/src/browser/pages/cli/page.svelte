@@ -7,9 +7,20 @@ async function fetchInstaller() {
     const response = await fetch('/__belte/cli')
     installer = await response.text()
 }
+
+/*
+What /connect and the bundle's connect screen check before trusting a URL:
+the always-unauthenticated identity probe.
+*/
+let identity = $state('(not probed)')
+
+async function probeIdentity() {
+    const response = await fetch('/__belte/identity')
+    identity = JSON.stringify(await response.json())
+}
 </script>
 
-<h1 class="text-3xl font-bold"><code class="font-mono">belte/cli</code></h1>
+<h1 class="text-3xl font-bold">CLI</h1>
 <p class="mt-2 text-slate-600">
     <code class="font-mono">belte cli</code>
     builds a standalone binary — a thin remote client with the rpc manifest baked in, shipped beside
@@ -72,9 +83,25 @@ async function fetchInstaller() {
         <code class="font-mono">/connect</code>, <code class="font-mono">/start</code>,
         <code class="font-mono">/disconnect</code>, <code class="font-mono">/help</code>, and
         <code class="font-mono">/exit</code>
-        manage it. The saved connection lives in the per-user data dir; with none recorded the CLI
-        resumes the baked <code class="font-mono">BELTE_APP_URL</code>.
+        manage it. The saved connection lives in the per-user data dir (<code class="font-mono"
+            >appDataDir()</code
+        >, overridable via
+        <code class="font-mono">BELTE_DATA_DIR</code>); with none recorded the CLI resumes the baked
+        <code class="font-mono">BELTE_APP_URL</code>.
+        <code class="font-mono">/connect</code>
+        trusts a URL only after probing
+        <code class="font-mono">GET /__belte/identity</code>
+        — always unauthenticated, even behind an
+        <code class="font-mono">app.handle</code>
+        guard:
     </p>
+    <button
+        type="button"
+        class="mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+        onclick={probeIdentity}>
+        GET /__belte/identity
+    </button>
+    <p class="mt-2 font-mono text-xs text-slate-700">{identity}</p>
 </section>
 
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">

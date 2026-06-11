@@ -72,7 +72,9 @@ async function callRedirectFetch() {
                 <tr>
                     <td class="px-4 py-2 font-mono">redirect(url, status?)</td>
                     <td class="px-4 py-2 font-mono text-slate-500">Location header</td>
-                    <td class="px-4 py-2 text-slate-600">defaults to 302; accepts relative URLs</td>
+                    <td class="px-4 py-2 text-slate-600">
+                        defaults to 302; accepts relative URLs; 301/302/303/307/308 only
+                    </td>
                 </tr>
             </tbody>
         </table>

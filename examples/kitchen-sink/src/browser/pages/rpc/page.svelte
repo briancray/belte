@@ -113,6 +113,15 @@ const message = $state({ value: 'hello' })
             feature.
         </li>
         <li>
+            Nested rpc files keep their folders: this app's
+            <code class="font-mono">users/list.ts</code>
+            mounts at <code class="font-mono">/rpc/users/list</code> and becomes the
+            <code class="font-mono">users-list</code>
+            <a class="underline" href="/mcp">tool</a>/<a class="underline" href="/cli"
+                >subcommand</a
+            >. <code class="font-mono">[...rest]</code> folders catch all deeper segments.
+        </li>
+        <li>
             Wrong verb on a known URL → <code class="font-mono">405</code>
             with <code class="font-mono">Allow</code> header.
         </li>

@@ -11,6 +11,29 @@ let text = $state('hello socket!')
 async function send() {
     await publishChat({ from, text })
 }
+
+/*
+The socket's HTTP face at /__belte/sockets/<name> — what the CLI and MCP
+use instead of the ws multiplex. GET returns the retained tail as JSON
+(SSE with Accept: text/event-stream); POST publishes, gated by
+clientPublish — off here, so it 403s.
+*/
+let restTail = $state('(not fetched)')
+let restPublish = $state('(not tried)')
+
+async function fetchRestTail() {
+    const response = await fetch('/__belte/sockets/chat?tail=3')
+    restTail = JSON.stringify(await response.json(), undefined, 2)
+}
+
+async function tryRestPublish() {
+    const response = await fetch('/__belte/sockets/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: 'x', from: 'rest', text: 'hi', at: Date.now() }),
+    })
+    restPublish = `${response.status} ${await response.text()}`
+}
 </script>
 
 <h1 class="text-3xl font-bold">Sockets</h1>
@@ -38,39 +61,39 @@ async function send() {
                     <td class="px-4 py-2 font-mono">tail</td>
                     <td class="px-4 py-2 font-mono text-slate-500">0</td>
                     <td class="px-4 py-2 text-slate-600">
-                        retain the last N frames — the socket's tail — so readers that weren't there
-                        can seed; 0 = pure live pipe
+                        retain the last N frames; late joiners seed via
+                        <code class="font-mono">chat.tail(count?)</code>
+                        — 0 = pure live pipe
                     </td>
                 </tr>
                 <tr>
                     <td class="px-4 py-2 font-mono">ttl</td>
                     <td class="px-4 py-2 font-mono text-slate-500">undefined</td>
                     <td class="px-4 py-2 text-slate-600">
-                        per-frame max age in ms; older entries evicted lazily
+                        retained frames older than <code class="font-mono">ttl</code> ms are evicted
+                        lazily
                     </td>
                 </tr>
                 <tr>
                     <td class="px-4 py-2 font-mono">clientPublish</td>
                     <td class="px-4 py-2 font-mono text-slate-500">false</td>
-                    <td class="px-4 py-2 text-slate-600">
-                        when true, browser publishes are forwarded server-side
-                    </td>
+                    <td class="px-4 py-2 text-slate-600">browsers may publish only when set</td>
                 </tr>
                 <tr>
                     <td class="px-4 py-2 font-mono">schema</td>
                     <td class="px-4 py-2 font-mono text-slate-500">undefined</td>
                     <td class="px-4 py-2 text-slate-600">
-                        Standard Schema validating publish payloads;
+                        Standard Schema validating publishes (sync only);
                         <code class="font-mono">T</code>
-                        infers from it
+                        infers from it and the mcp/cli surfaces flip on
                     </td>
                 </tr>
                 <tr>
                     <td class="px-4 py-2 font-mono">clients</td>
                     <td class="px-4 py-2 font-mono text-slate-500">browser-only</td>
                     <td class="px-4 py-2 text-slate-600">
-                        which surfaces (browser / mcp / cli) advertise the socket; all surfaces when
-                        a schema is present
+                        per-surface exposure, same shape as rpc; all surfaces when a schema is
+                        present
                     </td>
                 </tr>
             </tbody>
@@ -115,13 +138,48 @@ async function send() {
     {/if}
 </section>
 
+<section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
+    <h2 class="text-sm font-semibold">
+        The HTTP face — <code class="font-mono">/__belte/sockets/&lt;name&gt;</code>
+    </h2>
+    <p class="mt-1 text-xs text-slate-500">
+        For clients that can't speak the ws multiplex (the CLI and MCP read through it):
+        <code class="font-mono">GET</code>
+        returns the retained tail — JSON array by default, a live SSE stream with
+        <code class="font-mono">Accept: text/event-stream</code>
+        (<code class="font-mono">?tail=N</code>
+        caps/seeds);
+        <code class="font-mono">POST</code>
+        publishes the JSON body, gated by <code class="font-mono">clientPublish</code> and validated
+        against the schema. <code class="font-mono">chat</code> keeps
+        <code class="font-mono">clientPublish</code>
+        off, so the POST below 403s.
+    </p>
+    <div class="mt-3 flex flex-wrap gap-2 text-sm">
+        <button
+            type="button"
+            class="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-100"
+            onclick={fetchRestTail}>
+            GET /__belte/sockets/chat?tail=3
+        </button>
+        <button
+            type="button"
+            class="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-100"
+            onclick={tryRestPublish}>
+            POST /__belte/sockets/chat → 403
+        </button>
+    </div>
+    <pre
+        class="mt-3 overflow-x-auto rounded-md bg-slate-900 p-4 text-xs leading-relaxed text-slate-100"><code
+        >tail: {restTail}
+publish: {restPublish}</code></pre>
+</section>
+
 <section class="mt-6 space-y-3">
     <CodeBlock
         title="src/server/sockets/chat.ts"
         code={`import { socket } from '@belte/belte/server/socket'
 import { z } from 'zod'
-
-export type ChatMessage = { id: string; from: string; text: string; at: number }
 
 const schema = z.object({
     id: z.string(),
@@ -130,9 +188,11 @@ const schema = z.object({
     at: z.number(),
 })
 
-// retain the last 100 frames, drop any older than an hour;
-// the schema validates publishes and unlocks the mcp/cli read faces
-export const chat = socket<ChatMessage>({ tail: 100, ttl: 3_600_000, schema })`} />
+// retain the last 100 frames, evict any older than an hour; the schema
+// validates publishes (sync only), infers the frame type, and flips mcp/cli on
+export const chat = socket({ schema, tail: 100, ttl: 3_600_000 })
+
+export type ChatMessage = z.infer<typeof schema>`} />
 
     <CodeBlock
         title="src/server/rpc/publishChat.ts — validated publish path"

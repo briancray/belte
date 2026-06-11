@@ -24,10 +24,11 @@ const submitting = $derived(pending(createEcho))
 /*
 Stale-while-revalidate, observed: the debounce policy means an invalidate
 hit keeps this entry and coalesces the refetch — the stale rates stay on
-screen while refreshing(getRates) is true.
+screen while refreshing(getRates, { base: 'USD' }) is true.
 */
 const rates = $derived(cache(getRates, { invalidate: { debounce: 300 } })({ base: 'USD' }))
-const updating = $derived(refreshing(getRates))
+/* Per-call selector: probes just this { base: 'USD' } entry, not every getRates call. */
+const updating = $derived(refreshing(getRates, { base: 'USD' }))
 </script>
 
 <h1 class="text-3xl font-bold">
@@ -71,6 +72,10 @@ const updating = $derived(refreshing(getRates))
                     </td>
                 </tr>
                 <tr>
+                    <td class="px-4 py-2 font-mono">pending(fn, args)</td>
+                    <td class="px-4 py-2 text-slate-600">exactly that call (per-row spinner)</td>
+                </tr>
+                <tr>
                     <td class="px-4 py-2 font-mono">{'pending({ scope })'}</td>
                     <td class="px-4 py-2 text-slate-600">a tagged group</td>
                 </tr>
@@ -87,6 +92,10 @@ const updating = $derived(refreshing(getRates))
                     <td class="px-4 py-2 text-slate-600">
                         that function revalidating (policy refetch or drop-then-reload)
                     </td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2 font-mono">refreshing(fn, args)</td>
+                    <td class="px-4 py-2 text-slate-600">exactly that call revalidating</td>
                 </tr>
                 <tr>
                     <td class="px-4 py-2 font-mono">{'refreshing({ scope })'}</td>
@@ -160,8 +169,8 @@ const updating = $derived(refreshing(getRates))
     <p class="mt-1 text-xs text-slate-500">
         The read carries <code class="font-mono">{'invalidate: { debounce: 300 }'}</code>, so an
         invalidation keeps the entry and coalesces the refetch — the stale rates stay visible while
-        <code class="font-mono">refreshing(getRates)</code>
-        is true.
+        <code class="font-mono">{"refreshing(getRates, { base: 'USD' })"}</code>
+        is true (the per-call selector probes exactly this entry).
         <code class="font-mono">pending(getRates)</code>
         stays false the whole time: there was never a moment without a value.
     </p>
@@ -197,8 +206,9 @@ const submit = cache(createEcho, { ttl: 0 })
 const submitting = $derived(pending(createEcho))
 
 // stale-while-revalidate: the policy keeps the entry; refreshing reports the gap
+// (fn, args) narrows the probe to exactly that call
 const rates = $derived(cache(getRates, { invalidate: { debounce: 300 } })({ base: 'USD' }))
-const updating = $derived(refreshing(getRates))`} />
+const updating = $derived(refreshing(getRates, { base: 'USD' }))`} />
 
     <CodeBlock
         title="cross-registry — streams answer the same questions"

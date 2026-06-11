@@ -18,11 +18,11 @@ schema's output type and the server replies with 422 on validation
 failure. An optional `outputSchema` describes the success body for the
 OpenAPI 200 response and the MCP tool output.
 
-`json(...)` from `belte/server/json` is a thin wrapper over `Response.json`
+`json(...)` from `@belte/belte/server/json` is a thin wrapper over `Response.json`
 that defaults `Cache-Control: no-store`, since intermediary caches shouldn't
 memoise rpc replies (the framework's per-request cache handles in-process
-dedupe). Other helpers are siblings, one per file: `belte/server/error`,
-`belte/server/redirect`, `belte/server/sse`, `belte/server/jsonl`.
+dedupe). Other helpers are siblings, one per file: `@belte/belte/server/error`,
+`@belte/belte/server/redirect`, `@belte/belte/server/sse`, `@belte/belte/server/jsonl`.
 
 Every rpc value also exposes `.raw(args?)` (returns the underlying
 `Response`) and `.stream(args?)` (returns a `Subscribable` over the frames —

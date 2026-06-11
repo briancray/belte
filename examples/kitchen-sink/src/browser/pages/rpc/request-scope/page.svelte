@@ -52,10 +52,13 @@ const session = await cache(getSession)()
         </table>
     </div>
     <p class="mt-2 text-xs text-slate-500">
-        In-process calls (SSR, MCP) forward only <code class="font-mono">cookie</code>,
-        <code class="font-mono">authorization</code>, and
-        <code class="font-mono">x-forwarded-*</code>
-        onto the synthesized Request — add other names via
+        In-process calls (SSR, MCP) forward only an allowlist —
+        <code class="font-mono">cookie</code>, <code class="font-mono">authorization</code>,
+        <code class="font-mono">x-forwarded-for</code>,
+        <code class="font-mono">x-forwarded-proto</code>,
+        <code class="font-mono">x-forwarded-host</code>
+        — onto the synthesized Request; a handler reading anything else during SSR sees nothing. Add
+        names via
         <code class="font-mono">forwardHeaders</code>
         in <code class="font-mono">src/app.ts</code>. This app forwards
         <code class="font-mono">user-agent</code>

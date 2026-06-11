@@ -8,8 +8,8 @@ bunfig.toml) rewrites each GET/POST into a defineVerb call, the same swap the
 server build does — so createTestClient routes to them by command name without
 a running server.
 */
-import '../src/server/rpc/createEcho.ts'
-import '../src/server/rpc/getProduct.ts'
+import '$server/rpc/createEcho.ts'
+import '$server/rpc/getProduct.ts'
 
 /*
 The client discovers verbs from the registry and routes through the same

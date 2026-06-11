@@ -2,9 +2,12 @@
 import { cache } from '@belte/belte/shared/cache'
 import { pending } from '@belte/belte/shared/pending'
 import CodeBlock from '$browser/CodeBlock.svelte'
+import { getChatCount } from '$server/rpc/getChatCount.ts'
 import { getCounter } from '$server/rpc/getCounter.ts'
 import { incrementCounter } from '$server/rpc/incrementCounter.ts'
+import { publishChat } from '$server/rpc/publishChat.ts'
 import { resetCounter } from '$server/rpc/resetCounter.ts'
+import { chat } from '$server/sockets/chat.ts'
 
 /*
 Two derivations against the same cache key, both tagged with the same
@@ -31,6 +34,17 @@ async function reset() {
     await resetCounter()
     cache.invalidate(getCounter)
 }
+
+/*
+Event-driven invalidation: one binding declares "a chat frame stales the
+chat count" — no hand-rolled $effect + tail() + edge detection. The handler
+runs once per frame with a scoped invalidate (same grammar as
+cache.invalidate); on transport loss the binding re-invalidates everything
+it has covered (a missed frame is a missed invalidation), then reconnects.
+It returns a dispose, so it drops straight into $effect; no-op during SSR.
+*/
+$effect(() => cache.on(chat, (_message, { invalidate }) => invalidate(getChatCount)))
+const chatCount = $derived(cache(getChatCount)())
 </script>
 
 <h1 class="text-3xl font-bold"><code class="font-mono">cache()</code></h1>
@@ -125,6 +139,10 @@ async function reset() {
             — drop one function's calls (a remote fn — fn or fn.raw — or a producer)
         </li>
         <li>
+            <code class="font-mono">cache.invalidate(fn, args)</code>
+            — drop exactly that call (per-row freshness)
+        </li>
+        <li>
             <code class="font-mono">{'cache.invalidate({ scope })'}</code>
             — drop every entry sharing any of the scope's tags
         </li>
@@ -138,6 +156,40 @@ async function reset() {
             / <code class="font-mono">refreshing()</code>
         </a>.
     </p>
+</section>
+
+<section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
+    <h2 class="text-sm font-semibold">
+        <code class="font-mono">cache.on</code>
+        — event-driven invalidation
+    </h2>
+    <p class="mt-1 text-xs text-slate-500">
+        <code class="font-mono">cache.on(source, handler)</code>
+        runs the handler once per frame of a socket or rpc stream, with a scoped
+        <code class="font-mono">invalidate</code>
+        — the declarative "this event stales that data" binding. This page binds the
+        <a class="underline" href="/sockets"><code class="font-mono">chat</code></a>
+        socket to the cached message count: publish and watch it refetch, in this tab and every
+        other open one. On transport loss it re-invalidates everything it has covered (a missed
+        frame is a missed invalidation), then reconnects; it's a no-op during SSR.
+    </p>
+    <div class="mt-3 flex items-center gap-4">
+        <div class="rounded-md border border-slate-200 p-3">
+            <p class="text-xs text-slate-500">messages published</p>
+            {#await chatCount}
+                <p class="mt-1 font-mono text-3xl text-slate-400">…</p>
+            {:then data}
+                <p class="mt-1 font-mono text-3xl text-slate-900">{data.published}</p>
+            {/await}
+        </div>
+        <button
+            type="button"
+            class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+            onclick={() => publishChat({ from: 'cache page', text: 'ping' })}>
+            publishChat({`{ from, text }`}
+            )
+        </button>
+    </div>
 </section>
 
 <section class="mt-6">
@@ -249,9 +301,23 @@ cache(fn, { invalidate: { throttle: 1000 } })()  // stale-while-revalidate (GET 
 
 cache.invalidate()                      // drop everything
 cache.invalidate(fn)                    // drop one function's calls
+cache.invalidate(fn, { id: 7 })         // drop exactly that call
 cache.invalidate({ scope: 'orders' })   // drop every entry sharing the tag
 
 // loading state is the standalone probes — see /probes
 import { pending } from '@belte/belte/shared/pending'
 import { refreshing } from '@belte/belte/shared/refreshing'`} />
+
+    <CodeBlock
+        title="cache.on — this page's binding"
+        code={`import { cache } from '@belte/belte/shared/cache'
+import { chat } from '$server/sockets/chat.ts'
+import { getChatCount } from '$server/rpc/getChatCount.ts'
+
+// one frame = one handler run; invalidate is scoped to this binding
+$effect(() => cache.on(chat, (_message, { invalidate }) => invalidate(getChatCount)))
+const chatCount = $derived(cache(getChatCount)())
+
+// per-call narrowing works here too:
+// cache.on(orders, (order, { invalidate }) => invalidate(getOrder, { id: order.id }))`} />
 </section>

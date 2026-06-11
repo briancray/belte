@@ -46,6 +46,13 @@ async function callChatTail() {
     })
 }
 
+async function callUsersList() {
+    callOutput = await call(10, 'tools/call', {
+        name: 'users-list',
+        arguments: { limit: 2 },
+    })
+}
+
 async function callCountLog() {
     callOutput = await call(9, 'tools/call', {
         name: 'countLog',
@@ -65,7 +72,7 @@ async function getSummarizePrompt() {
 }
 </script>
 
-<h1 class="text-3xl font-bold"><code class="font-mono">belte/mcp</code></h1>
+<h1 class="text-3xl font-bold">MCP</h1>
 <p class="mt-2 text-slate-600">
     Auto-mounted at <code class="font-mono">POST /__belte/mcp</code> — JSON-RPC 2.0, MCP protocol
     <code class="font-mono">2025-06-18</code>. Zero config: tools, prompts, and resources are
@@ -95,7 +102,9 @@ async function getSummarizePrompt() {
                         / <code class="font-mono">HEAD</code>) auto-expose; mutating verbs opt in
                         via
                         <code class="font-mono">clients.mcp</code>. The verb feeds the tool's
-                        read/write annotations.
+                        read/write annotations. Nested files join with dashes:
+                        <code class="font-mono">users/list.ts</code>
+                        → <code class="font-mono">users-list</code>.
                     </td>
                 </tr>
                 <tr>
@@ -198,6 +207,12 @@ async function getSummarizePrompt() {
             class="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-100"
             onclick={callChatTail}>
             tools/call → chat-tail
+        </button>
+        <button
+            type="button"
+            class="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-100"
+            onclick={callUsersList}>
+            tools/call → users-list
         </button>
         <button
             type="button"

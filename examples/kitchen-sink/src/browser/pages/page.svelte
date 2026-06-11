@@ -2,7 +2,7 @@
 /*
 Kitchen-sink index. One card per README concept section, in the README's
 order — rpc, Security defaults, Sockets, cache, pending / refreshing,
-Pages, url, tail, agent, MCP / CLI / bundle. The composed auth showcase
+Pages, tail, agent, MCP / CLI / bundle. The composed auth showcase
 sits below.
 */
 const cards = [
@@ -34,12 +34,7 @@ const cards = [
     {
         href: '/pages',
         title: 'Pages',
-        body: 'Folders under src/browser/pages/ are routes — [id] params, nearest-only layout.svelte, error.svelte failure boundaries — plus the reactive page state and navigate().',
-    },
-    {
-        href: '/url',
-        title: 'url',
-        body: 'One typed, base-correct builder for every in-app URL — page links, asset refs, and rpc hrefs. Reads the path to pick the resolution; carries the APP_URL subpath base so rooted links stay inside the mount.',
+        body: 'Folders under src/browser/pages/ are routes — [id] params, nearest-only layout.svelte, error.svelte failure boundaries — plus the reactive page state, navigate(), and the typed base-correct url() builder.',
     },
     {
         href: '/tail',

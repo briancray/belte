@@ -4,6 +4,7 @@ import { navigate } from '@belte/belte/browser/navigate'
 import { page } from '@belte/belte/browser/page'
 import { onMenu } from '@belte/belte/bundle/onMenu'
 import { cache } from '@belte/belte/shared/cache'
+import { url } from '@belte/belte/shared/url'
 import { getSession } from '$server/rpc/getSession.ts'
 import { logout } from '$server/rpc/logout.ts'
 
@@ -29,11 +30,12 @@ const session = await cache(getSession)()
 
 /*
 `page.url` is reassigned on every SPA navigation, so reading it inside a
-$derived re-runs without per-link plumbing. Active-link styling falls
-out for free.
+$derived re-runs without per-link plumbing. Comparing against url() output
+(not the raw prefix) keeps active-link styling correct when the app mounts
+under an APP_URL subpath — page.url is browser-space on both sides.
 */
 const linkClass = (prefix: string) =>
-    page.url.pathname === prefix || page.url.pathname.startsWith(`${prefix}/`)
+    page.url.pathname === url(prefix) || page.url.pathname.startsWith(`${url(prefix)}/`)
         ? 'font-semibold text-slate-900'
         : 'text-slate-600 hover:text-slate-900'
 
@@ -45,7 +47,6 @@ const sections = [
     ['/cache', 'cache'],
     ['/probes', 'pending / refreshing'],
     ['/pages', 'pages'],
-    ['/url', 'url'],
     ['/tail', 'tail'],
     ['/agent', 'agent'],
     ['/mcp', 'mcp'],
@@ -62,11 +63,11 @@ const sections = [
     <header class="border-b border-slate-200 bg-white">
         <nav
             class="mx-auto flex max-w-4xl flex-wrap items-center gap-x-4 gap-y-1 px-6 py-4 text-sm">
-            <a href="/" class="text-base font-semibold">belte kitchen-sink</a>
+            <a href={url('/')} class="text-base font-semibold">belte kitchen-sink</a>
             {#each sections as [ href, label ] (href)}
-                <a {href} class={linkClass(href)}>{label}</a>
+                <a href={url(href)} class={linkClass(href)}>{label}</a>
             {/each}
-            <a href="/auth/dashboard" class={linkClass('/auth')}>auth</a>
+            <a href={url('/auth/dashboard')} class={linkClass('/auth')}>auth</a>
             <div class="ml-auto flex items-center gap-3">
                 {#if session?.user}
                     <span class="text-slate-600">signed in as <strong>{session.user}</strong></span>
