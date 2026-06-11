@@ -55,6 +55,12 @@ While the backoff timer is armed, `connect()` defers to it: a consumer
 re-subscribing in reaction to the disconnect would otherwise trigger an
 immediate reconnect on every failure cycle, defeating the backoff. Its
 frames queue in `pendingSends` and flush when the timer's attempt opens.
+
+Hidden tabs hold no transport: `visibilitychange: hidden` closes the ws
+through the normal drop path above — subs tear down with the typed
+disconnect, and a resyncing consumer's fresh sub frames queue (connect()
+refuses to open while hidden) until the visible transition reconnects and
+flushes them.
 */
 export function getSocketChannel(): Channel {
     if (singleton) {
@@ -90,6 +96,10 @@ export function getSocketChannel(): Channel {
     function connect(): void {
         /* Backoff window owns reconnection; queued frames flush when its attempt opens. */
         if (reconnectTimer !== undefined) {
+            return
+        }
+        /* Hidden tabs hold no transport — frames queue, the visibility listener reconnects. */
+        if (document.hidden) {
             return
         }
         if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
@@ -193,6 +203,22 @@ export function getSocketChannel(): Channel {
             }
         }
     }
+
+    /*
+    Release the ws when the tab hides rather than hold an idle connection the
+    browser throttles. Closing rides the normal drop path (close handler →
+    typed disconnect → consumers resync), so by the visible transition the
+    resubscribed frames sit in `pendingSends` waiting for the reconnect.
+    */
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            ws?.close()
+            return
+        }
+        if (pendingSends.length > 0) {
+            connect()
+        }
+    })
 
     singleton = {
         subscribe(id, socket, replay, callbacks) {
