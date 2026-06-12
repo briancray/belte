@@ -1,5 +1,17 @@
 # @belte/belte
 
+## 0.26.0
+
+### Minor Changes
+
+- [`863b74f`](https://github.com/briancray/belte/commit/863b74f3a2ea117993bf407d6aa23f8fc62793ee) - cache read stats with belte:cache diagnostics channel ([`1f46eb1`](https://github.com/briancray/belte/commit/1f46eb16dafcb1f8d165ce9d30a7f5bfb3a47885))
+
+- [`863b74f`](https://github.com/briancray/belte/commit/863b74f3a2ea117993bf407d6aa23f8fc62793ee) - per-verb maxBodySize cap on received body bytes ([`bf7086b`](https://github.com/briancray/belte/commit/bf7086be583129e1cd0abf10c97ff1379f496074))
+
+- [`863b74f`](https://github.com/briancray/belte/commit/863b74f3a2ea117993bf407d6aa23f8fc62793ee) - unified log with trace context and DEBUG-gated channels ([`ddf6146`](https://github.com/briancray/belte/commit/ddf61460893fbdc26f04b9f7050db45c3aa71efa))
+
+- [`863b74f`](https://github.com/briancray/belte/commit/863b74f3a2ea117993bf407d6aa23f8fc62793ee) - /\_\_belte/health endpoint, app health hook, and online() probe ([`f933e16`](https://github.com/briancray/belte/commit/f933e16856fdd9b35f8dd99a12791b5d557025a2))
+
 ## 0.25.2
 
 ### Patch Changes
