@@ -1,8 +1,10 @@
 import { render } from 'svelte/server'
 import App from '../../../App.svelte'
+import { appNameSlot } from '../../shared/appNameSlot.ts'
+import { belteLog } from '../../shared/belteLog.ts'
 import { NO_STORE, SSR_CACHE_CONTROL } from '../../shared/CACHE_CONTROL_VALUES.ts'
 import { errorParamsForThrow } from '../../shared/errorParamsForThrow.ts'
-import { log } from '../../shared/log.ts'
+import { formatTraceparent } from '../../shared/formatTraceparent.ts'
 import type { ViewResolver } from '../../shared/types/ViewResolver.ts'
 import { pageUrlFromStore } from './pageUrlFromStore.ts'
 import { safeJsonForScript } from './safeJsonForScript.ts'
@@ -29,11 +31,14 @@ export function createPageRenderer({
     shell,
     base,
     viewResolver,
+    healthPayload,
 }: {
     shell: string
     /* APP_URL mount base ('' at root). Shipped in __SSR__ so the client installs the same base resolver. */
     base: string
     viewResolver: ViewResolver
+    /* Builds the /__belte/health payload for a render that read health() — the client's __SSR__ seed. */
+    healthPayload: (request: Request) => Promise<Record<string, unknown>>
 }): {
     renderPage: (
         routeUrl: string,
@@ -144,7 +149,7 @@ export function createPageRenderer({
             const { status, message, stack } = errorParamsForThrow(error)
             const rendered = await renderError(status, message, store, stack)
             if (rendered) {
-                log.error(error)
+                belteLog.error(error)
                 return rendered
             }
             throw error
@@ -192,6 +197,15 @@ export function createPageRenderer({
         }))
         const streamToken =
             pending.length > 0 ? stashPendingStream(store.cache, pending) : undefined
+        /*
+        A health() read during this render marked the store: build the payload
+        the health route would serve and ship it as the client's seed, so
+        hydration starts with the fields and the first poll waits a full
+        interval instead of re-probing the server that just delivered this
+        document. Built post-render because the app hook may be async while
+        the in-render health() read is sync. Unmarked renders ship nothing.
+        */
+        const health = store.healthRead ? await healthPayload(store.req) : undefined
         const stateTag = `<script>window.__SSR__ = ${safeJsonForScript({
             route: routeUrl,
             params,
@@ -200,6 +214,12 @@ export function createPageRenderer({
             streamToken,
             // Omitted at root mount; the client defaults base to ''.
             base: base || undefined,
+            /* This request's traceparent — the browser continues the trace that rendered the page. */
+            trace: formatTraceparent(store.trace),
+            /* The app's default log channel, so client lines speak as [appName] too. */
+            app: appNameSlot.name,
+            /* The health seed for a render that read health(); absent otherwise. */
+            health,
         })};</script>`
         const html = fillShell(rendered, stateTag)
         return new Response(html, {

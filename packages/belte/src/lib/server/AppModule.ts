@@ -30,4 +30,17 @@ export type AppModule = {
         next: (req: Request) => Promise<Response>,
     ) => Promise<Response> | Response
     handleError?: (error: unknown, request: Request) => Promise<Response> | Response
+    /*
+    App fields merged into the /__belte/health payload the client `health()`
+    polls — e.g. `{ authenticated: await sessionValid(request) }`. Runs ahead
+    of `handle` (the endpoint must answer without auth — reporting
+    "authenticated: false" requires exactly that), so the request arrives
+    unfiltered: cookies are readable, nothing is guaranteed valid. The
+    payload is public and unauthenticated — never put secrets in it. The
+    framework's identity keys (belte/name/version) win on collision; a
+    thrown hook is logged and the base payload still serves, so an app bug
+    can't masquerade as an unreachable server. Keep it cheap: the client
+    probe times out at 5s.
+    */
+    health?: (request: Request) => unknown | Promise<unknown>
 }

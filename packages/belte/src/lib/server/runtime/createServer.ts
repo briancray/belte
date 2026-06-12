@@ -6,17 +6,23 @@ import { createMcpResourceServer } from '../../mcp/createMcpResourceServer.ts'
 import { setMcpResourceServer } from '../../mcp/mcpResourceServerSlot.ts'
 import type { McpServer } from '../../mcp/types/McpServer.ts'
 import { basePathFromAppUrl } from '../../shared/basePathFromAppUrl.ts'
+import { belteLog } from '../../shared/belteLog.ts'
 import { NO_STORE } from '../../shared/CACHE_CONTROL_VALUES.ts'
 import { CLI_PATH } from '../../shared/CLI_PATH.ts'
 import { createViewResolver } from '../../shared/createViewResolver.ts'
 import { DEV_RELOAD_PATH } from '../../shared/DEV_RELOAD_PATH.ts'
 import { extraForwardHeaders } from '../../shared/extraForwardHeaders.ts'
+import { HEALTH_PATH } from '../../shared/HEALTH_PATH.ts'
+import { healthReadSlot } from '../../shared/healthReadSlot.ts'
 import { IDENTITY_PATH } from '../../shared/IDENTITY_PATH.ts'
-import { isDebugEnabled } from '../../shared/isDebugEnabled.ts'
-import { log } from '../../shared/log.ts'
+import { isDebugNegated } from '../../shared/isDebugNegated.ts'
+import { logClosingRecord } from '../../shared/logClosingRecord.ts'
+import { parseBoundedEnvInt } from '../../shared/parseBoundedEnvInt.ts'
 import { RESOLVE_STREAM_PATH } from '../../shared/RESOLVE_STREAM_PATH.ts'
 import { SOCKETS_PATH } from '../../shared/SOCKETS_PATH.ts'
+import { setAppName } from '../../shared/setAppName.ts'
 import { setBaseResolver } from '../../shared/setBaseResolver.ts'
+import { setRequestScopeResolver } from '../../shared/setRequestScopeResolver.ts'
 import { toBunRoutePattern } from '../../shared/toBunRoutePattern.ts'
 import type { AppModule } from '../AppModule.ts'
 import { handleCliDownload } from '../cli/handleCliDownload.ts'
@@ -25,6 +31,7 @@ import type { PromptRoutes } from '../prompts/types/PromptRoutes.ts'
 import type { RemoteRoutes } from '../rpc/types/RemoteRoutes.ts'
 import { createSocketDispatcher } from '../sockets/createSocketDispatcher.ts'
 import type { SocketRoutes } from '../sockets/types/SocketRoutes.ts'
+import { buildHealthPayload } from './buildHealthPayload.ts'
 import { buildOpenApiSpec } from './buildOpenApiSpec.ts'
 import { createAppAssetServer } from './createAppAssetServer.ts'
 import { createPageRenderer } from './createPageRenderer.ts'
@@ -44,6 +51,7 @@ import { logExposedSurfaces } from './logExposedSurfaces.ts'
 import { parseIdleTimeout } from './parseIdleTimeout.ts'
 import { parsePort } from './parsePort.ts'
 import { ensureRegistriesLoaded, setRegistryManifests } from './registryManifests.ts'
+import { requestContext } from './requestContext.ts'
 import { resolveStreamResponse } from './resolveStreamResponse.ts'
 import { runWithRequestScope } from './runWithRequestScope.ts'
 import { setActiveServer } from './setActiveServer.ts'
@@ -105,6 +113,16 @@ export async function createServer({
     regardless of this floor.
     */
     idleTimeout = parseIdleTimeout(process.env.BELTE_IDLE_TIMEOUT) ?? 10,
+    /*
+    Bun's server-wide request body ceiling, enforced natively by Bun.serve
+    (its own default is ~128MB). Surfaced as an option + env so deployments
+    can raise/lower it; per-verb tightening is the verbs' maxBodySize.
+    */
+    maxRequestBodySize = parseBoundedEnvInt(
+        process.env.BELTE_MAX_REQUEST_BODY_SIZE,
+        0,
+        Number.MAX_SAFE_INTEGER,
+    ),
     // Under `belte dev` the orchestrator sets this: mount the live-reload SSE
     // channel and inject its client into the served shell.
     dev = false,
@@ -128,8 +146,38 @@ export async function createServer({
     resourcesDir?: string
     port?: number
     idleTimeout?: number
+    maxRequestBodySize?: number
     dev?: boolean
 }): Promise<Server<unknown>> {
+    /*
+    Publish the ALS request scope to the shared layer: trace() and log line
+    prefixes resolve through this. Registered here (not serverEntry) so the
+    HTTP test harness gets the same behaviour as a real boot. elapsedMs is
+    computed at read time so every log line carries a current value.
+    */
+    setRequestScopeResolver(() => {
+        const store = requestContext.getStore()
+        if (!store) {
+            return undefined
+        }
+        return {
+            trace: store.trace,
+            elapsedMs: (Bun.nanoseconds() - store.start) / 1e6,
+            method: store.req.method,
+            path: store.url.pathname,
+        }
+    })
+    /*
+    health() during an SSR render marks its request through this slot; the
+    renderer stamps the health payload into __SSR__ only for marked requests,
+    so the client seed stays reader-driven like the poll itself.
+    */
+    healthReadSlot.mark = () => {
+        const store = requestContext.getStore()
+        if (store) {
+            store.healthRead = true
+        }
+    }
     // In dev, append the live-reload client to the shell so every rendered
     // page reconnects to /__belte/dev and reloads after a restart.
     const devShell = dev ? shell.replace('</body>', `${DEV_RELOAD_CLIENT_SCRIPT}</body>`) : shell
@@ -164,13 +212,16 @@ export async function createServer({
     /* The app's public identity, shared by the identity probe and the OpenAPI spec. */
     const appName = appInfo?.name ?? cliName
     const appVersion = appInfo?.version ?? '0.0.0'
+    /* The app's default log channel — every unchanneled record speaks as [appName]. */
+    setAppName(appName)
     /* Built on first request, then reused — the verb registry is frozen after load. */
     let openApiSpec: ReturnType<typeof buildOpenApiSpec> | undefined
     const cliCwd = process.cwd()
     /* Route → components: layout/error prefix matching + module loading live behind this seam. */
     const viewResolver = createViewResolver({ pages, layouts, errors })
 
-    const logRequests = isDebugEnabled('belte')
+    /* Request closing records are on by default — DEBUG=-belte is the off switch (negation, like the belte channel itself). */
+    const logRequests = !isDebugNegated('belte')
 
     // App-configured headers extend the in-process forward allowlist for the process lifetime.
     extraForwardHeaders.set(app?.forwardHeaders ?? [])
@@ -184,6 +235,8 @@ export async function createServer({
         shell: activeShell,
         base,
         viewResolver,
+        /* The wire payload, rebuilt per marked render — the __SSR__ health seed must match what /__belte/health serves. */
+        healthPayload: (request) => buildHealthPayload(request, { app, appName, appVersion }),
     })
 
     /*
@@ -279,6 +332,7 @@ export async function createServer({
         Bun.serve({
             port: boundPort,
             idleTimeout,
+            maxRequestBodySize,
             /*
             Dev workers overlap during a restart: the replacement binds while its
             predecessor still serves, and the kernel keeps delivering connections
@@ -304,15 +358,26 @@ export async function createServer({
             async fetch(req, bunServer) {
                 const url = new URL(req.url)
                 /*
-                Identity probe — answered directly, ahead of any app.handle middleware,
-                so the bundle's connect screen can confirm a URL really is a belte
-                server (and which app) before pointing the desktop window at it. It
-                must stay reachable even when the app guards everything behind auth,
-                hence the early return that bypasses dispatchRequest.
+                Health/identity probe — answered directly, ahead of any app.handle
+                middleware, so the bundle's connect screen, the CLI, and the client
+                health() can confirm a URL really is a live belte server even when
+                the app guards everything behind auth (reporting
+                `authenticated: false` requires exactly that). The app's optional
+                health hook contributes fields; the framework's identity keys win
+                on collision, and a thrown hook is logged and skipped so an app
+                bug can't masquerade as an unreachable server. IDENTITY_PATH is
+                the compatibility alias for the same payload.
                 */
-                if (url.pathname === IDENTITY_PATH) {
+                if (url.pathname === HEALTH_PATH || url.pathname === IDENTITY_PATH) {
+                    const payload = await buildHealthPayload(req, { app, appName, appVersion })
                     return Response.json(
-                        { belte: true, name: appName, version: appVersion },
+                        /*
+                        The IDENTITY_PATH alias keeps the legacy `belte: true`
+                        shape: already-shipped probers check it with strict
+                        equality, and a version string would make them treat
+                        an upgraded healthy server as not-belte.
+                        */
+                        url.pathname === IDENTITY_PATH ? { ...payload, belte: true } : payload,
                         { headers: { 'Cache-Control': NO_STORE } },
                     )
                 }
@@ -441,7 +506,12 @@ export async function createServer({
                     const start = Bun.nanoseconds()
                     const response = await serveAppAsset(req, url)
                     const ms = (Bun.nanoseconds() - start) / 1e6
-                    log.request(req.method, `${url.pathname}${url.search}`, response.status, ms)
+                    logClosingRecord(
+                        req.method,
+                        `${url.pathname}${url.search}`,
+                        response.status,
+                        ms,
+                    )
                     return response
                 }
                 /*
@@ -450,14 +520,15 @@ export async function createServer({
                 undefined so the request falls through to the 404 / middleware
                 path below.
                 */
+                const publicStart = Bun.nanoseconds()
                 const publicResponse = await servePublicAsset(req, url)
                 if (publicResponse) {
                     if (logRequests) {
-                        log.request(
+                        logClosingRecord(
                             req.method,
                             `${url.pathname}${url.search}`,
                             publicResponse.status,
-                            0,
+                            (Bun.nanoseconds() - publicStart) / 1e6,
                         )
                     }
                     return publicResponse
@@ -485,7 +556,7 @@ export async function createServer({
             },
 
             error(err) {
-                log.error(err)
+                belteLog.error(err)
                 return internalErrorResponse(err)
             },
         })
@@ -524,7 +595,7 @@ export async function createServer({
             try {
                 await cleanup()
             } catch (err) {
-                log.error(err)
+                belteLog.error(err)
             }
         }
         process.exit(0)
@@ -546,7 +617,7 @@ export async function createServer({
     if (mcp && !app?.handle) {
         await warnUnguardedMcp()
     }
-    log.success(`ready at http://localhost:${server.port}`)
+    belteLog.success(`ready at http://localhost:${server.port}`)
     // Tell the dev orchestrator (when it spawned us with ipc) that boot is
     // complete, so it can retire the previous worker — finishing the
     // zero-downtime swap. No-op on a bare server: process.send is undefined.

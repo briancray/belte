@@ -3,9 +3,9 @@ import { existsSync, statSync } from 'node:fs'
 import type { BunPlugin } from 'bun'
 import { Glob } from 'bun'
 import { belteImportName } from './lib/shared/belteImportName.ts'
+import { belteLog } from './lib/shared/belteLog.ts'
 import { fileStem } from './lib/shared/fileStem.ts'
 import { jsonSchemaForPromptArguments } from './lib/shared/jsonSchemaForPromptArguments.ts'
-import { log } from './lib/shared/log.ts'
 import { manifestModule } from './lib/shared/manifestModule.ts'
 import { pageUrlForFile } from './lib/shared/pageUrlForFile.ts'
 import { parsePromptMarkdown } from './lib/shared/parsePromptMarkdown.ts'
@@ -16,6 +16,7 @@ import { promptNameForFile } from './lib/shared/promptNameForFile.ts'
 import { readPackageJson } from './lib/shared/readPackageJson.ts'
 import { rpcUrlForFile } from './lib/shared/rpcUrlForFile.ts'
 import { socketNameForFile } from './lib/shared/socketNameForFile.ts'
+import { writeHealthDts } from './lib/shared/writeHealthDts.ts'
 import { writePublicAssetsDts } from './lib/shared/writePublicAssetsDts.ts'
 import { writeRoutesDts } from './lib/shared/writeRoutesDts.ts'
 import { writeRpcDts } from './lib/shared/writeRpcDts.ts'
@@ -154,6 +155,14 @@ export function belteResolverPlugin({
         }),
     )
     const scanSocketsOnce = once(() => scanDir(socketsDir, '**/*.ts'))
+    /* One write per build, from the belte:app loader (the seam that already knows whether src/app.ts exists). */
+    let healthDtsWritten: Promise<void> | undefined
+    const writeHealthDtsOnce = (hasAppModule: boolean): Promise<void> => {
+        healthDtsWritten ??= belteImportNameOnce().then((importName) =>
+            writeHealthDts({ cwd, hasAppModule, importName }),
+        )
+        return healthDtsWritten
+    }
     /*
     Globs public/ once per build and writes publicAssets.d.ts so url() can
     autocomplete known assets — independent of embedding (runs in dev/start
@@ -428,8 +437,11 @@ ${optionLines}
 
                 if (args.path === 'belte:app') {
                     const userApp = `${cwd}/src/app.ts`
-                    if (await Bun.file(userApp).exists()) {
-                        log.info('using custom src/app.ts')
+                    const hasAppModule = await Bun.file(userApp).exists()
+                    /* health.d.ts keys the client health() read to the app hook's return type. */
+                    await writeHealthDtsOnce(hasAppModule)
+                    if (hasAppModule) {
+                        belteLog.info('using custom src/app.ts')
                         return {
                             contents: `export * from ${JSON.stringify(userApp)}`,
                             loader: 'js',
@@ -448,7 +460,7 @@ ${optionLines}
                     */
                     const userConfig = `${serverDir}/config.ts`
                     if (await Bun.file(userConfig).exists()) {
-                        log.info('using src/server/config.ts')
+                        belteLog.info('using src/server/config.ts')
                         return {
                             contents: `export * from ${JSON.stringify(userConfig)}`,
                             loader: 'js',
@@ -497,7 +509,7 @@ ${optionLines}
                     */
                     const userFile = `${cwd}/src/bundle/window.ts`
                     if (existsSync(userFile)) {
-                        log.info('using custom src/bundle/window.ts')
+                        belteLog.info('using custom src/bundle/window.ts')
                         return {
                             contents: `export { default } from ${JSON.stringify(userFile)}`,
                             loader: 'js',
@@ -539,7 +551,7 @@ ${optionLines}
                     */
                     const userFile = `${cwd}/src/bundle/disconnected.svelte`
                     if (existsSync(userFile)) {
-                        log.info('using custom src/bundle/disconnected.svelte')
+                        belteLog.info('using custom src/bundle/disconnected.svelte')
                         return {
                             contents: `export { default } from ${JSON.stringify(userFile)}`,
                             loader: 'js',
@@ -753,7 +765,7 @@ async function embedZstdDir({
     )
     const totalBytes = encoded.reduce((total, entry) => total + entry.bytes, 0)
     const unit = precompressed ? 'KiB' : 'KiB zstd'
-    log.info(
+    belteLog.info(
         `embedded ${encoded.length} ${label} from ${source} (${(totalBytes / 1024).toFixed(1)} ${unit})`,
     )
     return `const _d = (s) => Uint8Array.fromBase64(s)
@@ -835,7 +847,7 @@ async function loadShell(cwd: string): Promise<string> {
     const defaultShell = new URL('./assets/app.html', import.meta.url).pathname
     const filepath = (await Bun.file(userShell).exists()) ? userShell : defaultShell
     if (filepath === userShell) {
-        log.info('using custom src/browser/app.html')
+        belteLog.info('using custom src/browser/app.html')
     }
     const content = await Bun.file(filepath).text()
     return await rewriteHashedClientEntries(content, cwd)

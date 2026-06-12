@@ -1,10 +1,14 @@
 import { hydrate } from 'svelte'
 import App from '../../App.svelte'
 import { createCacheStore } from '../shared/createCacheStore.ts'
+import { createTraceContext } from '../shared/createTraceContext.ts'
+import { healthSeedSlot } from '../shared/healthSeedSlot.ts'
+import { setAppName } from '../shared/setAppName.ts'
 import { setBaseResolver } from '../shared/setBaseResolver.ts'
 import { setCacheStoreResolver } from '../shared/setCacheStoreResolver.ts'
 import { setGlobalCacheStoreResolver } from '../shared/setGlobalCacheStoreResolver.ts'
 import { setPageResolver } from '../shared/setPageResolver.ts'
+import { setRequestScopeResolver } from '../shared/setRequestScopeResolver.ts'
 import type { CacheSnapshotEntry } from '../shared/types/CacheSnapshotEntry.ts'
 import type { CacheStore } from '../shared/types/CacheStore.ts'
 import type { StreamingPlaceholder } from '../shared/types/StreamingPlaceholder.ts'
@@ -38,6 +42,12 @@ declare global {
             error?: boolean
             /* APP_URL mount base (e.g. /v2); absent at root mount. */
             base?: string
+            /* traceparent of the request that rendered this page; the client continues it. */
+            trace?: string
+            /* The app's name — the default log channel client lines speak on. */
+            app?: string
+            /* Health payload seed for a page that read health() during SSR. */
+            health?: Record<string, unknown>
         }
     }
 }
@@ -122,6 +132,22 @@ export async function startClient({
     const base = window.__SSR__.base ?? ''
     setBaseResolver(() => base)
 
+    /*
+    Continue the SSR request's trace (or mint a fresh one if the stamp is
+    missing) and publish the browser's request scope: trace() and log line
+    prefixes resolve through it. elapsedMs is navigation-relative — exactly
+    what performance.now() measures — and the path tracks client navigations
+    because the resolver reads location per call.
+    */
+    setAppName(window.__SSR__.app)
+    const traceContext = createTraceContext(window.__SSR__.trace)
+    setRequestScopeResolver(() => ({
+        trace: traceContext,
+        elapsedMs: performance.now(),
+        method: 'GET',
+        path: window.location.pathname,
+    }))
+
     const cacheStore = createCacheStore()
     setCacheStoreResolver(() => cacheStore)
     /* One tab store: cache(fn, { global: true }) shares it, so global is a no-op here. */
@@ -131,6 +157,14 @@ export async function startClient({
     if (window.__SSR__.cache) {
         hydrateCacheFromSnapshot(cacheStore, window.__SSR__.cache)
     }
+
+    /*
+    Park the health seed before hydrate: the first health() subscriber —
+    typically connected during hydration — consumes it, seeding the fields
+    without the immediate first probe (the document's arrival just proved
+    the server reachable; the poll interval owns the next check).
+    */
+    healthSeedSlot.payload = window.__SSR__.health
 
     /*
     Install placeholders for pending {#await} keys before hydrate(), so cache()

@@ -143,6 +143,7 @@ describe('createServer over HTTP', () => {
     test('identity probe answers ahead of routing', async () => {
         const res = await fetch(`${origin}/__belte/identity`)
         const body = await res.json()
+        /* The alias keeps the legacy shape shipped probers check strictly. */
         expect(body.belte).toBe(true)
     })
 

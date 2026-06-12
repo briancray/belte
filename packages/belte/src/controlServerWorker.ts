@@ -7,10 +7,11 @@ import { resolveWebviewLib } from './lib/bundle/resolveWebviewLib.ts'
 import { spawnEmbeddedServer } from './lib/bundle/spawnEmbeddedServer.ts'
 import { stableLocalPort } from './lib/bundle/stableLocalPort.ts'
 import { appDataDir } from './lib/shared/appDataDir.ts'
+import { belteLog } from './lib/shared/belteLog.ts'
 import { binaryDirEnvPath } from './lib/shared/binaryDirEnvPath.ts'
 import { clearLastConnection } from './lib/shared/clearLastConnection.ts'
+import { createLivenessWatch } from './lib/shared/createLivenessWatch.ts'
 import { dataDirEnvPath } from './lib/shared/dataDirEnvPath.ts'
-import { log } from './lib/shared/log.ts'
 import { readEnvFile } from './lib/shared/readEnvFile.ts'
 import { readLastConnection } from './lib/shared/readLastConnection.ts'
 import { serializeEnv } from './lib/shared/serializeEnv.ts'
@@ -74,16 +75,15 @@ let navigate: ReturnType<typeof bindRequestNavigate> | undefined
 let webviewHandle: number | undefined
 
 /*
-Liveness watch over the currently-connected server. A recursive timer (not
-setInterval, so a slow probe never overlaps the next) probes the identity endpoint;
-a couple of consecutive misses — tolerating a transient blip or a quick restart —
-count as a death. Cleared whenever we're not connected.
+Liveness watch over the currently-connected server: the shared state machine
+(createLivenessWatch) driven by the identity-endpoint probe — a couple of
+consecutive misses, tolerating a transient blip or a quick restart, count as
+a death. Stopped whenever we're not connected.
 */
-const LIVENESS_INTERVAL_MS = 4000
-const LIVENESS_FAILURE_LIMIT = 2
-let connectedUrl: string | undefined
-let livenessTimer: ReturnType<typeof setTimeout> | undefined
-let livenessFailures = 0
+const liveness = createLivenessWatch({
+    probe: async (url) => (await probeBelteServer(url)) !== undefined,
+    onLost: handleConnectionLost,
+})
 
 // Embedded-server child, spawned on demand by Start server; undefined when none.
 let serverChild: ReturnType<typeof Bun.spawn> | undefined
@@ -136,49 +136,14 @@ function withAssistant(url: string): string {
 
 // Begin (or restart) watching `url` for liveness once the window points at it.
 function startLivenessWatch(url: string): void {
-    stopLivenessWatch()
-    connectedUrl = url
-    livenessFailures = 0
-    livenessTimer = setTimeout(runLivenessProbe, LIVENESS_INTERVAL_MS)
+    liveness.watch(url)
 }
 
 // Stop watching — on explicit disconnect, on detected death, or at shutdown.
 function stopLivenessWatch(): void {
-    if (livenessTimer) {
-        clearTimeout(livenessTimer)
-        livenessTimer = undefined
-    }
-    connectedUrl = undefined
-    livenessFailures = 0
+    liveness.stop()
     // The assistant bridge follows the connection — drop it whenever we disconnect.
     stopBridge()
-}
-
-/*
-One liveness probe of the connected server. Successes reset the miss count;
-LIVENESS_FAILURE_LIMIT consecutive misses declare it dead and hand off to
-handleConnectionLost. Reschedules itself while still connected.
-*/
-async function runLivenessProbe(): Promise<void> {
-    const url = connectedUrl
-    if (!url) {
-        return
-    }
-    const identity = await probeBelteServer(url)
-    // A disconnect or reconnect during the await may have moved us on.
-    if (connectedUrl !== url) {
-        return
-    }
-    if (identity) {
-        livenessFailures = 0
-    } else {
-        livenessFailures += 1
-        if (livenessFailures >= LIVENESS_FAILURE_LIMIT) {
-            handleConnectionLost(url)
-            return
-        }
-    }
-    livenessTimer = setTimeout(runLivenessProbe, LIVENESS_INTERVAL_MS)
 }
 
 /*
@@ -206,7 +171,7 @@ window back to the connect screen with a `lost` notice. The flag flip alone keep
 the menu honest even when the navigate is a no-op (off macOS, or no handle yet).
 */
 function handleConnectionLost(url: string): void {
-    log.warn(`connected server stopped responding: ${url}`)
+    belteLog.warn(`connected server stopped responding: ${url}`)
     becomeDisconnected()
     if (webviewHandle !== undefined) {
         navigate?.requestNavigate(webviewHandle, `${controlOrigin}/?action=lost`)
@@ -253,21 +218,21 @@ async function resolveLaunchTarget(): Promise<string> {
         try {
             const url = await startEmbeddedServer(AUTO_START_CEILING_MS)
             await becomeConnected(url)
-            log.info(`resumed embedded server at ${url}`)
+            belteLog.info(`resumed embedded server at ${url}`)
             return url
         } catch (error) {
             killServerChild()
-            log.warn(`embedded server did not resume: ${String(error)}`)
+            belteLog.warn(`embedded server did not resume: ${String(error)}`)
             return controlOrigin
         }
     }
     const identity = await probeBelteServer(last.url)
     if (identity) {
         await becomeConnected(last.url)
-        log.info(`reconnected to ${identity.name} at ${last.url}`)
+        belteLog.info(`reconnected to ${identity.name} at ${last.url}`)
         return last.url
     }
-    log.warn(`saved server did not respond: ${last.url}`)
+    belteLog.warn(`saved server did not respond: ${last.url}`)
     return `${controlOrigin}/?action=lost`
 }
 
@@ -352,13 +317,13 @@ async function handleConnect(request: Request): Promise<Response> {
     // Verify it's actually a belte server before pointing the window at it.
     const identity = await probeBelteServer(target)
     if (!identity) {
-        log.warn(`no belte server responded at ${target}`)
+        belteLog.warn(`no belte server responded at ${target}`)
         return Response.json({ error: `No belte server responded at ${target}` }, { status: 502 })
     }
     await becomeConnected(target)
     // Record the choice so the next launch reconnects here before opening.
     await writeLastConnection(programName, { kind: 'url', url: target })
-    log.info(`connecting to ${identity.name} at ${target}`)
+    belteLog.info(`connecting to ${identity.name} at ${target}`)
     return Response.json({ redirect: withAssistant(target) })
 }
 
@@ -369,7 +334,7 @@ async function handleStart(): Promise<Response> {
         await becomeConnected(localUrl)
         // Record the choice so the next launch boots the embedded server first.
         await writeLastConnection(programName, { kind: 'embedded' })
-        log.info(`started embedded server at ${localUrl}`)
+        belteLog.info(`started embedded server at ${localUrl}`)
         return Response.json({ redirect: withAssistant(localUrl) })
     } catch (error) {
         killServerChild()
@@ -424,7 +389,7 @@ async function start(init: Init): Promise<void> {
     navigate = bindRequestNavigate(libPath)
     server = listenLocalControlServer(stableLocalPort(init.programName), handleControlRequest)
     controlOrigin = `http://127.0.0.1:${server.port}`
-    log.info(`${title} control server listening at ${controlOrigin}`)
+    belteLog.info(`${title} control server listening at ${controlOrigin}`)
     const target = await resolveLaunchTarget()
     // Fold in the assistant handshake (when a bridge started) so the page is configured on first load.
     self.postMessage({ type: 'ready', origin: controlOrigin, target: withAssistant(target) })
