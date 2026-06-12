@@ -1,0 +1,13 @@
+{
+    // belte ships raw TS, so consumer tsconfig flags type-check it (the 0.24.2
+    // and parseTraceparent breakages). This probe type-checks exactly what npm
+    // ships (src + bin; template needs a scaffolded app around it and is covered
+    // by the scaffold-smoke job) under the tsconfig scaffolded apps get, plus
+    // noUncheckedIndexedAccess — the strictest indexing flag consumers enable
+    // that `strict` doesn't imply. Tests stay on the repo's own tsconfig.
+    "extends": "./tsconfig.app.json",
+    "compilerOptions": {
+        "noUncheckedIndexedAccess": true
+    },
+    "include": ["src/**/*.ts", "bin/**/*.ts"]
+}
