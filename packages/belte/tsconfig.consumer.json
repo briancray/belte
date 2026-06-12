@@ -7,7 +7,16 @@
     // that `strict` doesn't imply. Tests stay on the repo's own tsconfig.
     "extends": "./tsconfig.app.json",
     "compilerOptions": {
-        "noUncheckedIndexedAccess": true
+        "noUncheckedIndexedAccess": true,
+        // Already clean on shipped source — locked in here at zero cost so they
+        // stay that way. exactOptionalPropertyTypes (40 errors) and
+        // noPropertyAccessFromIndexSignature (58) are the measured cleanup passes
+        // still outstanding; add them only with that budget.
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true,
+        "noImplicitOverride": true
     },
     "include": ["src/**/*.ts", "bin/**/*.ts"]
 }
