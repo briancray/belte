@@ -13,10 +13,13 @@ any entry lacking it (a producer value has no rpc identity to rehydrate against)
 forever); ttl = 0 means "dedupe only" (entry is pruned as soon as the promise
 settles).
 
-`value` is set only for entries hydrated from the SSR snapshot: the
-snapshot body is pre-decoded synchronously so the first client render can
-read it without a microtask hop and byte-match the SSR DOM. Live fetches
-leave it undefined and take the async decode path.
+`value` is the decoded warm value served synchronously by the read path
+(cloned per read). It is set at hydration — the SSR snapshot body is
+pre-decoded so the first client render reads it without a microtask hop and
+byte-matches the SSR DOM — and also by cache.on's `context.patch`, which folds
+an authoritative frame delta straight onto it without a refetch (ADR-0007).
+Live fetches leave it undefined and take the async decode path until a patch
+populates it.
 
 `hydrated` marks an entry built from the SSR snapshot, which ships no wrap
 options — the first read consumes the flag and adopts its call site's `ttl`

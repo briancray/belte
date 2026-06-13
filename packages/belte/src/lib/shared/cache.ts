@@ -518,6 +518,53 @@ function selectorLabel<Args, Return>(
 cache.invalidate = invalidate
 
 /*
+Folds `updater` into every decoded remote entry matching the selector, writing
+the result to entry.value so the warm-sync read path serves it and emitting the
+keys so readers re-run (ADR-0007). The authoritative-broadcast write path: no
+refetch and no rollback — the caller (a cache.on frame) is the truth. Only
+entry.value is written; entry.promise is left untouched so raw readers of the
+same key keep reading the wire Response. Producer entries (no request) are
+skipped — patching is a decoded-value operation. The current value is
+entry.value when warm (hydrated or already patched), else the entry's settled
+Response decoded — hence async; the first patch of a live-fetched entry hops a
+decode, subsequent ones are synchronous. Returns the keys touched so the on()
+context can register them for reconnect resync. Exposed only via the cache.on
+context, never as a global cache.patch (an unscoped write is the optimistic
+problem — a different temporality with rollback; ADR-0007).
+*/
+async function patchEntries<Args, Return>(
+    arg: CacheSelector<Args, Return>,
+    updater: (current: Return) => Return,
+    args?: Args,
+    /* The caller (on().patch) resolves the prefix for its coverage label; reuse it so selectorPrefix runs once per patch. */
+    prefix?: string,
+): Promise<string[]> {
+    const matches = selectorMatcher(arg, args, prefix ?? selectorPrefix(arg, args))
+    const touched: string[] = []
+    for (const store of cacheStores()) {
+        const affected: string[] = []
+        for (const entry of store.entries.values()) {
+            if (!matches(entry) || entry.request === undefined) {
+                continue
+            }
+            const current = (entry.value ??
+                (await decodeResponse(
+                    await shareable(entry.promise as Promise<Response>),
+                ))) as Return
+            entry.value = structuredClone(updater(current))
+            entry.settled = true
+            entry.refreshing = false
+            store.markLifecycle(entry.key)
+            affected.push(entry.key)
+        }
+        emit(store, affected)
+        store.markLifecycle()
+        touched.push(...affected)
+    }
+    return touched
+}
+
+/*
 Event-driven cache maintenance: subscribes to a Subscribable (socket or rpc
 stream) and runs `handler` once per frame — the declarative home for "this
 socket event stales that cached data", replacing the hand-rolled $effect +
@@ -558,6 +605,21 @@ function on<T>(
         invalidate<Args, Return>(arg?: CacheSelector<Args, Return>, args?: Args): void {
             coverage.set(selectorLabel(arg, args), () => invalidate(arg, args))
             invalidate(arg, args)
+        },
+        /*
+        Register the selector (not the delta) for reconnect: a discarded delta
+        can't be replayed, so a transport gap resyncs the patched keys by full
+        invalidate — reusing the same coverage machinery as invalidate above.
+        */
+        patch<Args, Return>(
+            arg: CacheSelector<Args, Return>,
+            updater: (current: Return) => Return,
+            args?: Args,
+        ): Promise<string[]> {
+            /* Resolve the prefix once; the coverage label and patchEntries both consume it. */
+            const prefix = selectorPrefix(arg, args)
+            coverage.set(selectorLabel(arg, args, prefix), () => invalidate(arg, args))
+            return patchEntries(arg, updater, args, prefix)
         },
         signal: controller.signal,
     }
