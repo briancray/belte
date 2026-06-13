@@ -92,10 +92,10 @@ const backend = $derived(health())
         <code class="font-mono">src/app.ts</code>
         — this app reports
         <code class="font-mono">authenticated</code>
-        from the session cookie (<a class="underline" href="/auth/login">log in</a> and watch it
-        flip on the next poll). The endpoint answers ahead of all middleware — reporting
-        "authenticated: false" requires exactly that — and the payload is public: never put secrets
-        in it. The hook's resolved return types the read via the generated
+        from the session cookie (<a class="underline" href="/auth/login">log in</a>
+        and watch it flip on the next poll). The endpoint answers ahead of all middleware —
+        reporting "authenticated: false" requires exactly that — and the payload is public: never
+        put secrets in it. The hook's resolved return types the read via the generated
         <code class="font-mono">AppHealth</code>, and the last-known fields persist while
         unreachable, so "was authenticated, currently unreachable" stays distinguishable from
         "reachable, not authenticated".
