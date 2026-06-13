@@ -114,7 +114,11 @@ Section order (rename/drop/add as the code dictates, keep the altitude):
 11. **agent** — snippet + two lines (engines are provider packages; frames).
 12. **MCP / CLI / bundle** — one three-row table covering all three.
 13. **Deploy** — single-process truth in ≤ 3 sentences, the Dockerfile,
-    compile targets, `PORT` / idle-timeout line.
+    compile targets, `PORT` / idle-timeout line. The Dockerfile ships the
+    **compiled binary**, never `bun run build` + `bun run start`: a
+    multi-stage build that runs `belte compile` in an `oven/bun` stage, then
+    `COPY --from=build` the standalone binary into a minimal runtime image
+    (e.g. `debian:bookworm-slim`) that needs neither Bun nor `node_modules`.
 14. **Reference** — commands table, framework-routes table, typed-env
     snippet, app-hooks line, testing snippet (`createTestClient` + the
     bunfig preload).
