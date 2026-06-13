@@ -3,6 +3,7 @@ import { cache } from '@belte/belte/shared/cache'
 import { pending } from '@belte/belte/shared/pending'
 import CodeBlock from '$browser/CodeBlock.svelte'
 import { getChatCount } from '$server/rpc/getChatCount.ts'
+import { getChatLog } from '$server/rpc/getChatLog.ts'
 import { getCounter } from '$server/rpc/getCounter.ts'
 import { incrementCounter } from '$server/rpc/incrementCounter.ts'
 import { publishChat } from '$server/rpc/publishChat.ts'
@@ -45,6 +46,20 @@ It returns a dispose, so it drops straight into $effect; no-op during SSR.
 */
 $effect(() => cache.on(chat, (_message, { invalidate }) => invalidate(getChatCount)))
 const chatCount = $derived(cache(getChatCount)())
+
+/*
+The other half of the context: patch. The frame *is* the new data
+(authoritative broadcast), so instead of refetching we fold it straight
+into the cached list — no round-trip, every reader re-runs. patch covers
+the touched keys for reconnect resync just like invalidate; a transport
+gap re-invalidates them (a discarded delta can't be replayed).
+*/
+$effect(() =>
+    cache.on(chat, (message, { patch }) =>
+        patch(getChatLog, (log) => ({ messages: [...log.messages, message].slice(-20) })),
+    ),
+)
+const chatLog = $derived(cache(getChatLog)())
 </script>
 
 <h1 class="text-3xl font-bold"><code class="font-mono">cache()</code></h1>
@@ -161,35 +176,54 @@ const chatCount = $derived(cache(getChatCount)())
 <section class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
     <h2 class="text-sm font-semibold">
         <code class="font-mono">cache.on</code>
-        — event-driven invalidation
+        — event-driven invalidate &amp; patch
     </h2>
     <p class="mt-1 text-xs text-slate-500">
         <code class="font-mono">cache.on(source, handler)</code>
-        runs the handler once per frame of a socket or rpc stream, with a scoped
-        <code class="font-mono">invalidate</code>
-        — the declarative "this event stales that data" binding. This page binds the
+        runs the handler once per frame of a socket or rpc stream. The context carries two ways to
+        keep the cache fresh: <code class="font-mono">invalidate</code> drops the entry and refetches;
+        <code class="font-mono">patch</code>
+        folds the frame's own payload into the cached value with no round-trip. Both bind the
         <a class="underline" href="/sockets"><code class="font-mono">chat</code></a>
-        socket to the cached message count: publish and watch it refetch, in this tab and every
-        other open one. On transport loss it re-invalidates everything it has covered (a missed
-        frame is a missed invalidation), then reconnects; it's a no-op during SSR.
+        socket below — publish and watch each update, in this tab and every other open one. On
+        transport loss the binding re-invalidates its covered keys (a missed frame is a missed
+        update), then reconnects; it's a no-op during SSR.
     </p>
-    <div class="mt-3 flex items-center gap-4">
+    <div class="mt-3 grid gap-3 sm:grid-cols-2">
         <div class="rounded-md border border-slate-200 p-3">
-            <p class="text-xs text-slate-500">messages published</p>
+            <p class="text-xs text-slate-500">
+                messages published — <code class="font-mono">invalidate</code> (refetched)
+            </p>
             {#await chatCount}
                 <p class="mt-1 font-mono text-3xl text-slate-400">…</p>
             {:then data}
                 <p class="mt-1 font-mono text-3xl text-slate-900">{data.published}</p>
             {/await}
         </div>
-        <button
-            type="button"
-            class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
-            onclick={() => publishChat({ from: 'cache page', text: 'ping' })}>
-            publishChat({`{ from, text }`}
-            )
-        </button>
+        <div class="rounded-md border border-slate-200 p-3">
+            <p class="text-xs text-slate-500">
+                recent — <code class="font-mono">patch</code> (folded in, no refetch)
+            </p>
+            {#await chatLog then data}
+                {#if data.messages.length === 0}
+                    <p class="mt-1 text-sm text-slate-400">none yet</p>
+                {:else}
+                    <ul class="mt-1 space-y-0.5 text-sm text-slate-700">
+                        {#each data.messages.slice(-5) as message (message.id)}
+                            <li><strong>{message.from}</strong>: {message.text}</li>
+                        {/each}
+                    </ul>
+                {/if}
+            {/await}
+        </div>
     </div>
+    <button
+        type="button"
+        class="mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+        onclick={() => publishChat({ from: 'cache page', text: 'ping' })}>
+        publishChat({`{ from, text }`}
+        )
+    </button>
 </section>
 
 <section class="mt-6">
@@ -309,15 +343,20 @@ import { pending } from '@belte/belte/shared/pending'
 import { refreshing } from '@belte/belte/shared/refreshing'`} />
 
     <CodeBlock
-        title="cache.on — this page's binding"
+        title="cache.on — this page's bindings (invalidate vs patch)"
         code={`import { cache } from '@belte/belte/shared/cache'
 import { chat } from '$server/sockets/chat.ts'
-import { getChatCount } from '$server/rpc/getChatCount.ts'
 
-// one frame = one handler run; invalidate is scoped to this binding
+// invalidate: a frame stales a derived read — drop it, let the next read refetch
 $effect(() => cache.on(chat, (_message, { invalidate }) => invalidate(getChatCount)))
-const chatCount = $derived(cache(getChatCount)())
 
-// per-call narrowing works here too:
+// patch: the frame IS the new data — fold it into the cached value, no refetch
+$effect(() =>
+    cache.on(chat, (message, { patch }) =>
+        patch(getChatLog, (log) => ({ messages: [...log.messages, message].slice(-20) })),
+    ),
+)
+
+// per-call narrowing works on both:
 // cache.on(orders, (order, { invalidate }) => invalidate(getOrder, { id: order.id }))`} />
 </section>

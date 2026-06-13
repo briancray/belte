@@ -3,7 +3,7 @@ import { json } from '@belte/belte/server/json'
 import { POST } from '@belte/belte/server/POST'
 import { z } from 'zod'
 import { type ChatMessage, chat } from '$server/sockets/chat.ts'
-import { chatState } from '../../chatState.ts'
+import { recordChat } from '../../chatState.ts'
 
 const inputSchema = z.object({ from: z.string(), text: z.string() })
 
@@ -29,8 +29,8 @@ export const publishChat = POST(
             text: trimmedText,
             at: Date.now(),
         }
+        recordChat(message)
         chat.publish(message)
-        chatState.published += 1
         return json(message)
     },
     { inputSchema },
