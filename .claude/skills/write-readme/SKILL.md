@@ -29,17 +29,56 @@ facts; treat the budgets below as the authority for length.
   if a feature in the section plan no longer exists, drop its section; if a
   new public surface exists, add one at the same altitude and budget.
 
+## Run the inventory first — the generative spine
+
+Do not start from a remembered list of surfaces; lists drift. Derive the
+surface set from the code every run:
+
+```sh
+bun run packages/belte/scripts/readmeSurfaces.ts
+```
+
+It reports four things and **fails** if any export is undocumented-by-omission:
+
+1. **exports grouped by `@readme` disposition.** Every `exports` target
+   carries a `// @readme <slug>` tag *above its export*, co-located so
+   placement can't drift from the code (a renamed/moved export takes its
+   disposition with it). The slug names the section the export is documented
+   in; `plumbing` means a build/bundler/codegen/test helper that carries no
+   prose. **The inventory's printed groups are the section list — don't keep a
+   copy of the slugs here.** Some sections are **structural**: no export is
+   tagged for them because they describe cross-cutting behaviour or repo shape
+   (the body plan marks which). An untagged export is a hard failure — a
+   capability with no disposition; add a `// @readme <slug>` line (use
+   `plumbing` only if it genuinely carries no user-facing prose), then place
+   it at that slug's altitude. A brand-new slug means a new section.
+2. **env vars** split `DOCUMENT` vs `internal`. Every `DOCUMENT` row must
+   appear in the README (Deploy / Reference / its section).
+3. **routes** split the same way; every `DOCUMENT` route must appear.
+4. **change ledger** — every source file and changeset added/removed/modified
+   since the README was last regenerated (working tree included, so
+   uncommitted work counts). This is the only check that catches *behaviour*
+   changes, not just new export keys: walk every `A`/`D` line and every
+   changeset and give each an explicit disposition — reflected in the README,
+   or internal-only. (This is how an `online()`/timeout behaviour change or a
+   `createTestClient → createTestApp` rename gets caught.)
+
+When the inventory and a hardcoded claim below disagree, the inventory wins —
+fix the claim.
+
 ## Verify before you write — the claim ledger
 
-Re-confirm each load-bearing claim against its file before writing. If the
-evidence has changed, rewrite or drop the claim.
+The ledger pins **nuance that can't be derived** (a default, a union type, a
+replay rule) to its file. It is deliberately *not* an export list — the
+inventory owns enumeration. Never add a row that just names an export; only
+add rows for behaviour a reader would get wrong without the note. Re-confirm
+each row against its file before writing; if the evidence changed, rewrite or
+drop it.
 
 | Claim | Verify against |
 | --- | --- |
 | One declared rpc = SSR call + browser fetch + MCP tool + CLI subcommand + OpenAPI op | `src/belteResolverPlugin.ts`, `src/lib/shared/createRemoteFunction.ts`, `src/lib/mcp/dispatchMcpRequest.ts`, `src/lib/server/runtime/buildOpenApiSpec.ts` |
-| Zero runtime dependencies; Svelte the only required peer | `package.json` — `dependencies` absent; `peerDependencies` |
-| Bun-only (`engines.bun`); Svelte-only web surface | `package.json` `engines`, `src/lib/browser/*` |
-| The boot surface map's exact format (three glyph tables under `DEBUG=belte`) | `src/lib/server/runtime/logExposedSurfaces.ts` — reproduce its real output, never invent columns |
+| The boot surface map's exact format (three glyph tables, printed by default — silence with `DEBUG=-belte`) | `src/lib/server/runtime/logExposedSurfaces.ts` + `createServer.ts` (`!isDebugNegated('belte')`) — reproduce its real output, never invent columns |
 | Mutating verbs never auto-expose to MCP | `src/lib/server/rpc/defineVerb.ts`, `src/lib/shared/resolveClientFlags.ts`, `src/lib/shared/isReadOnlyMethod.ts` |
 | Cross-origin browser mutations 403 by default; `crossOrigin: true` opts a verb out; the MCP mount gets the same Origin check | `src/lib/server/runtime/createRouteDispatcher.ts`, `src/lib/server/runtime/isCrossOriginRequest.ts`, `createServer.ts` MCP mount |
 | Boot warns when MCP tools are exposed with no `app.handle` | `src/lib/server/runtime/warnUnguardedMcp.ts` + its call in `createServer.ts` |
@@ -48,81 +87,112 @@ evidence has changed, rewrite or drop the claim.
 | Query args travel as strings (the `z.coerce` warning) | `src/lib/shared/queryStringFromArgs.ts`, `src/lib/server/rpc/parseArgs.ts` |
 | Probes (`pending`/`refreshing`) have their own paths and report-never-act | `src/lib/shared/pending.ts`, `refreshing.ts`, `probeRegistries.ts` |
 | The streaming consumer is `tail` (status/error/reconnect semantics) | `src/lib/browser/tail.ts` + the `exports` map |
-| `scaffold <name>` installs and (interactively) starts dev — one command | `src/scaffold.ts`, `bin/belte.ts` scaffoldCmd |
 | In-process calls forward only the header allowlist | `src/lib/shared/forwardHeaders.ts` |
+| The testing entry is `createTestApp` (boots the real app in-process); there is no `createTestClient`/`clearVerbRegistry` | `src/lib/test/createTestApp.ts`, `package.json` `exports` (`./test/*`) |
 | Single-process deploy truth (`global` cache, socket retention, fan-out are process memory) | `src/lib/shared/globalCacheStore.ts`, socket registry/dispatcher, `Bun.serve` in `createServer.ts` |
 
 The ledger is the floor, not the ceiling — verify every option, default,
 helper, env var, and route in the body the same way.
 
-## The opening — reproduce this shape
+## The opening — a lean banner
 
-Lowercase `# belte`, then in order, nothing else between:
+The banner is a pitch, not a demo: the proof artifacts (declare snippet,
+fan-out diagram, boot map) open the first body phase instead, so the page
+leads with the claim and the demonstration lands where the reader starts
+reading. Lowercase `# belte`, then in order, nothing else between:
 
 1. The bold capability line: **"Write one function. Get a web app, a CLI, and
    an AI tool — from the same line of code."**
-2. Two sentences max saying what belte is and that the bundler swaps the
-   runtime per target.
-3. The declare snippet (one schema-bearing GET, filename-is-identity comment).
-4. The ASCII fan-out diagram — one line per surface, each a real consume form.
-5. One lead-in line, then the **real** boot surface map (`DEBUG=belte`),
-   copied from `logExposedSurfaces.ts`'s actual format.
-6. One sentence on gating: schema gates machine surfaces, mutations need
-   explicit `clients: { mcp: true }`.
-7. Exactly two one-line bullets: zero runtime dependencies; one runtime.
-8. The quickstart — ideally a single command. State in a trailing comment
-   what it does (scaffolds, installs, starts dev) only if the code still does
-   all three.
+2. As few sentences as carry it (terse cap, not a target) on what belte is
+   and that the bundler swaps the runtime per target.
+3. One bullet per footprint fact that is true today (today two: zero runtime
+   dependencies; one runtime) — add or drop a bullet if the fact set changes,
+   don't pad to a fixed count.
+4. The quickstart, two paths:
+   - **Start a project** — ideally one command (`belte scaffold <name>`).
+     State in a trailing comment what it does (scaffolds, installs, starts
+     dev) only if the code still does all three.
+   - **See everything live** — clone the repo and run the kitchen-sink
+     example, which exercises every surface. Verify the commands against
+     `examples/kitchen-sink/package.json` before pasting:
+
+     ```sh
+     git clone https://github.com/briancray/belte
+     cd belte && bun install
+     cd examples/kitchen-sink && bun run dev
+     ```
 
 **Do not add**: a comparison/"why not X" section, an API stability table, a
 scope/maturity essay, adjectives, superlatives, or any paragraph whose job is
 to justify adoption. The artifacts argue; prose doesn't.
 
-## The body — section plan and budgets
+## The body — the story arc
 
-Hard budget: **≤ 400 lines total** (target ~350). Per concept: **one snippet,
+Budget: target ~400 lines, ceiling ~450 (the phase headers and merged
+sections cost a little over the old flat layout). Per concept: **one snippet,
 one table, at most one `>` warning line, prose ≤ 2 sentences.** Tables first
 for anything enumerable; bullets for one-line rules; prose only for a nuance
-neither can hold. If the draft exceeds the budget, cut prose — never facts.
+neither can hold. Over budget → cut prose, never facts.
 
-Section order (rename/drop/add as the code dictates, keep the altitude):
+The body is a **four-phase story arc**: each phase a `##` with a one-line
+intent, each surface a `###` under it. The phase arc and which surface sits in
+which phase is the one editorial layer the code can't derive — everything else
+comes from the inventory. The table gives each surface its **altitude** only
+(snippet / table / budget); read its internal sub-surfaces (which options,
+which consume forms) from the code each time, so the plan can't go stale one
+level down. *Structural* sections carry no `@readme` export (cross-cutting
+behaviour or repo shape). A slug the inventory reports with no row = a new
+capability; slot it into the phase its neighbours imply. A merged section
+(e.g. Sockets & tail) draws from more than one slug — note both.
 
-1. **Layout** — namespace sentence + project tree. The namespace sentence is
-   about *import* namespaces: spell the full `@belte/belte/server|browser|shared/*`
-   prefixes and name example `shared/*` exports, because `shared/*` is not a
-   project directory and the tree that follows must not imply it is. Lead the
-   tree with "A project:". Tree comments ≤ ~72 columns; point long lists
-   (e.g. app hooks) at Reference instead of inlining them.
-2. **rpc** — verbs list, options table (incl. `clients.*` defaults and
-   `crossOrigin`), consume table (`fn` / `.raw` / `.stream`), the `z.coerce`
-   warning, one `withJsonSchema` line.
-3. **Response helpers** — table only, plus one line on shared defaults.
-4. **Request scope** — table (`request`/`cookies`/`server`) + the
-   forward-headers allowlist warning.
-5. **Security defaults** — three bullets (mutation Origin gate + opt-out, MCP
-   same check, boot warning) + the `app.handle` auth snippet + one proxy
-   `Host` caveat line.
-6. **Sockets** — snippet, options table, two lines on publish/iterate/tail.
-7. **cache** — snippet (dedupe + the `ttl: 0` mutation idiom), options table,
-   `cache.invalidate` line, SSR consumption-form line, then one bullet each
-   for the warm-sync union, the top-level-await sweep, and producer hoisting.
-8. **pending / refreshing** — snippet + two definition lines.
-9. **Pages** — three bullets (routes, nearest-only layouts, error boundary) +
-   `page`/`navigate` snippet + two lines.
-10. **tail** — snippet + status/error/reconnect in ≤ 4 lines + the SSR no-op
-    line (seed with `cache()`, layer `tail()`).
-11. **agent** — snippet + two lines (engines are provider packages; frames).
-12. **MCP / CLI / bundle** — one three-row table covering all three.
-13. **Deploy** — single-process truth in ≤ 3 sentences, the Dockerfile,
-    compile targets, `PORT` / idle-timeout line. The Dockerfile ships the
-    **compiled binary**, never `bun run build` + `bun run start`: a
-    multi-stage build that runs `belte compile` in an `oven/bun` stage, then
-    `COPY --from=build` the standalone binary into a minimal runtime image
-    (e.g. `debian:bookworm-slim`) that needs neither Bun nor `node_modules`.
-14. **Reference** — commands table, framework-routes table, typed-env
-    snippet, app-hooks line, testing snippet (`createTestClient` + the
-    bunfig preload).
-15. `MIT` as the last line.
+**The demonstration leads the first phase, not the banner**: declare snippet →
+fan-out diagram → boot surface map (copied from `logExposedSurfaces.ts`'s
+actual format — it prints by default, no `DEBUG=belte`) → the one-line gating
+note (schema gates the machine surfaces; mutations need explicit
+`clients: { mcp: true }`).
+
+| Phase (`##`) | Section (`###`) | From | Altitude & budget |
+| --- | --- | --- | --- |
+| **Define behaviour once** | rpc | `rpc` | verb-list line + options table (incl. `timeout`) + consume table + one `withJsonSchema` line |
+| | Response helpers | `response` | table + one line on shared defaults |
+| | Request scope | `request-scope` | table + forward-headers warning |
+| **Build the web app** | Pages | `pages` | bullets + `page` snippet |
+| | navigate | `navigate` | snippet + ≤ 2 lines |
+| | cache | `cache` | snippet (one-shot + `$derived` reactive + `ttl:0`) + options table + `cache.invalidate`/`cache.on` line + nuance bullets |
+| | pending / refreshing / online | `probes` | snippet (all three) + ≤ 2 lines |
+| | Sockets & tail | `sockets` + `tail` | socket snippet + options table + tail snippet + status/reconnect + SSR no-op |
+| | url | `url` | snippet + base-prefix line |
+| **Reach it beyond the browser** | CLI | structural | ≤ 2 lines (human + script surface) |
+| | MCP & agent | structural + `agent` | MCP mount line + agent snippet + ≤ 2 lines |
+| | bundle | `bundle` | ≤ 2 lines (window/menu/`appDataDir`) |
+| **Configure, test, ship** | Configuration | `configuration` | typed-env snippet + app-hooks line |
+| | Security defaults | structural | bullets (Origin gate + opt-out, MCP same check, boot warning) + `app.handle` snippet + `Host` caveat |
+| | Testing | `testing` | `createTestApp` prose + bunfig preload + example |
+| | Deploy | structural | single-process truth + the Dockerfile + `PORT`/idle line |
+| | Observability | `observability` | grouped: `health()` + `reachable()` + `log`/`trace`, a snippet per cluster |
+| | Reference | structural + `reference` | structure (namespace sentence + project tree) + commands table + routes table + env table |
+| | (last line) | — | `MIT` |
+
+**Non-derivable nuances to carry** (not in the claim ledger, easy to lose):
+
+* *Reference / structure* — the namespace sentence is about *import*
+  namespaces: spell the full `@belte/belte/server|browser|shared/*` prefixes
+  and name example `shared/*` exports, because `shared/*` is not a project
+  directory and the tree must not imply it is. Lead the tree with "A project:";
+  tree comments ≤ ~72 cols.
+* *rpc* — the `z.coerce` query-args-travel-as-strings warning; the per-verb
+  `timeout` (504, server-side) is distinct from `BELTE_CLIENT_TIMEOUT`
+  (client fetch wait).
+* *cache* — the one-shot vs `$derived`-reactive read (`cache.invalidate`
+  re-runs the scope) and the `ttl: 0` mutation idiom in the snippet, plus one
+  bullet each for the warm-sync union, the top-level-await sweep, and producer
+  hoisting.
+* *tail* — the SSR no-op (seed with `cache()`, layer `tail()`).
+* *Deploy* — the Dockerfile ships the **compiled binary**, never `bun run
+  build` + `bun run start`: a multi-stage build that runs `belte compile` in
+  an `oven/bun` stage, then `COPY --from=build` the standalone binary into a
+  minimal runtime image (e.g. `debian:bookworm-slim`) needing neither Bun nor
+  `node_modules`.
 
 ## Validation pass — run before finishing
 
@@ -135,46 +205,32 @@ Section order (rename/drop/add as the code dictates, keep the altitude):
    ```
 
    Every concrete path must be an exports key. Fix the README, not the map.
-2. **Surface accountability — the completeness gate.** Import-path checking
-   only proves what's *in* the README is real; it can't catch a public
-   surface the fixed section plan never had a slot for (this is how the
-   `url` helper and `APP_URL` subpath mounting shipped undocumented). So
-   enumerate every public surface from the code and account for each member
-   — the unit is "consciously placed", not "has its own section":
+2. **Surface accountability — re-run the inventory.** Import-path checking
+   only proves what's *in* the README is real; it can't catch a surface the
+   draft skipped (this is how the `url` helper and `APP_URL` mounting once
+   shipped undocumented). The inventory from the top of this skill is the
+   gate — re-run it against the finished draft:
 
    ```sh
-   # public exports
-   grep -oE '"\./[a-zA-Z/-]+":' packages/belte/package.json | tr -d '":'
-   # env vars the runtime reads
-   grep -rhoE 'Bun\.env\.[A-Z_]+|process\.env\.[A-Z_]+' packages/belte/src | sort -u
-   # framework routes
-   grep -rhoE '/__belte/[a-z]+|/openapi\.json' packages/belte/src | sort -u
+   bun run packages/belte/scripts/readmeSurfaces.ts
    ```
 
-   Each **exports key** must resolve to exactly one of: (a) documented in a
-   section, (b) named in the Layout namespace line (minor shared utils only,
-   e.g. `log`), or (c) on the plumbing allowlist below. Each **env var** and
-   **route** must appear in the README (Deploy / Reference / a section) *or*
-   be internal-only (dev/hot-reload/bundler plumbing — `BELTE_DEV*`,
-   `BELTE_PARENT_PID`, `BELTE_SVELTE_MODE`, `BELTE_WEBVIEW_LIB`,
-   `/__belte/dev`, `/__belte/reload`, `/__belte/resolve`,
-   `/__belte/disconnect`, `/__belte/config`). Anything left unaccounted-for
-   is a gap: **an export with no home means a new capability arrived since
-   the section plan was written — add a section at the right altitude and
-   budget (the source-of-truth rule), don't bury it in the namespace line.**
-
-   **Plumbing allowlist** — build/bundler/codegen exports that carry no
-   prose (re-confirm each still belongs; never grow it to silence a real
-   surface): `tsconfig`, `build`, `compile`, `preload`, `svelte-plugin`,
-   `resolver-plugin`, `browser/remoteProxy`, `browser/socketProxy`,
-   `server/AppModule`, `server/rpc/defineVerb`, `server/sockets/defineSocket`,
-   `server/prompts/definePrompt`, `server/prompts/renderPromptTemplate`,
-   `mcp/createMcpServer`, `test/clearVerbRegistry`,
-   `test/createScriptedSurface`, `test/assertAgentFrameConformance`.
-3. **Budget**: `wc -l` ≤ 400.
+   It must exit OK (every export tagged), and you must be able to point each
+   **non-plumbing** export, each `DOCUMENT` env var, and each `DOCUMENT`
+   route to a place in the README. The disposition lives in the code (the
+   `@readme` tag), so there is no allowlist to maintain here: an export that
+   should carry no prose is marked `// @readme plumbing` at its source, and a
+   new untagged export fails the script. Then walk the **change ledger** one
+   more time — every `A`/`D`/changeset since the last README — and confirm
+   each is either reflected or consciously internal.
+3. **Budget**: `wc -l` ≤ 450.
 4. **Tree width**: no line in a `text` tree block over ~76 columns (GitHub
    clips them).
-5. **Boot map**: matches the current `logExposedSurfaces.ts` columns exactly.
+5. **Boot map**: matches the current `logExposedSurfaces.ts` columns exactly,
+   and is introduced as default-on (no `DEBUG=belte` prefix).
+6. **Phase order**: the four `##` phases appear in arc order, surfaces as
+   `###` under them; the demonstration leads the first phase, structure sits
+   in Reference.
 
 ## Write to the right file
 

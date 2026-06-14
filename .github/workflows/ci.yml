@@ -32,6 +32,12 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      # Every name in the exports map must carry a `// @readme <slug>` tag, so a
+      # new public surface can't ship undocumented-by-omission. Fails on any
+      # untagged export.
+      - name: Check @readme tags
+        run: bun run check:readme-tags
+
       - name: Test
         run: bun run test
 
