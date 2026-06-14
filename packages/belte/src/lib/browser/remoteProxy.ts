@@ -1,6 +1,9 @@
 import { browserClientFlags } from '../shared/browserClientFlags.ts'
 import { buildRpcRequest } from '../shared/buildRpcRequest.ts'
 import { createRemoteFunction } from '../shared/createRemoteFunction.ts'
+import { HttpError } from '../shared/HttpError.ts'
+import { OFFLINE_HEADER } from '../shared/OFFLINE_HEADER.ts'
+import { rpcTimeoutSlot } from '../shared/rpcTimeoutSlot.ts'
 import { trace } from '../shared/trace.ts'
 import type { HttpVerb } from '../shared/types/HttpVerb.ts'
 import type { RemoteFunction } from '../shared/types/RemoteFunction.ts'
@@ -19,6 +22,7 @@ the query string (GET/DELETE/HEAD). Plain `fn(args)` decodes the Response
 by Content-Type and throws HttpError on non-2xx; `.raw(args)` is the
 escape hatch that returns the Response untouched.
 */
+// @readme plumbing
 export function remoteProxy<Args, Return>(
     method: HttpVerb,
     url: string,
@@ -38,24 +42,57 @@ export function remoteProxy<Args, Return>(
                 url: withBase(url),
                 args,
                 baseUrl: window.location.href,
-                headers: traceHeaders(),
+                headers: rpcHeaders(),
             }),
         /*
         Forcing `getRequest()` once builds the Request and seeds the
         cache meta thunk in createRemoteFunction with the same instance,
         so cache() readers don't reconstruct it.
         */
-        invoke: (_args, getRequest) => fetch(getRequest()),
+        invoke: (_args, getRequest) => fetchWithTimeout(getRequest()),
     })
 }
 
-/* The page's traceparent rides every RPC fetch so the server scope continues the same trace. */
-function traceHeaders(): Headers | undefined {
-    const traceparent = trace()
-    if (!traceparent) {
-        return undefined
+/*
+Applies the env-configured client timeout (BELTE_CLIENT_TIMEOUT, ms) when one
+is set; an unset slot fetches unbounded, exactly as before. A timeout abort
+surfaces as a 504 HttpError so the error boundary reports an honest status
+(errorParamsForThrow reads HttpError.status) instead of a raw DOMException →
+500. Other rejections (genuine network failure) propagate untouched.
+*/
+function fetchWithTimeout(request: Request): Promise<Response> {
+    const timeout = rpcTimeoutSlot.ms
+    if (timeout === undefined) {
+        return fetch(request)
     }
+    return fetch(request, { signal: AbortSignal.timeout(timeout) }).catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'TimeoutError') {
+            throw new HttpError(
+                new Response('client timeout', { status: 504, statusText: 'Gateway Timeout' }),
+            )
+        }
+        throw error
+    })
+}
+
+/*
+belte's per-RPC headers: the page traceparent (continues the server trace) and,
+only while offline, the offline marker so the handler's online() reflects the
+caller's connectivity. Returns undefined when neither applies so the
+allocation-free fetch path stays the common case.
+*/
+function rpcHeaders(): Headers | undefined {
     const headers = new Headers()
-    headers.set('traceparent', traceparent)
-    return headers
+    let any = false
+    const traceparent = trace()
+    if (traceparent) {
+        headers.set('traceparent', traceparent)
+        any = true
+    }
+    /* Presence = offline; absence = online/unknown. navigator.onLine's offline signal is the reliable direction. */
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        headers.set(OFFLINE_HEADER, '1')
+        any = true
+    }
+    return any ? headers : undefined
 }

@@ -1,8 +1,9 @@
 import { dispatchVerbInProcess } from '../server/rpc/dispatchVerbInProcess.ts'
 import { findVerbByCommandName } from '../server/rpc/findVerbByCommandName.ts'
+import { buildRpcProxy } from '../shared/buildRpcProxy.ts'
 import { buildRpcRequest } from '../shared/buildRpcRequest.ts'
-import { decodeResponse } from '../shared/decodeResponse.ts'
 import type { HttpVerb } from '../shared/types/HttpVerb.ts'
+import type { RpcInvoker } from '../shared/types/RpcInvoker.ts'
 import type { CliManifest } from './types/CliManifest.ts'
 
 /*
@@ -10,24 +11,9 @@ Each property of the client is a callable: invoking it decodes the body
 (plain call), while `.raw(args)` returns the underlying Response without
 decoding or throwing on non-2xx — the escape hatch the CLI uses to sniff
 the Content-Type and stream sse/jsonl bodies frame-by-frame instead of
-buffering through decodeResponse.
+buffering through decodeResponse. buildRpcProxy owns that invoker contract.
 */
-type ClientInvoker = ((args?: unknown) => Promise<unknown>) & {
-    raw: (args?: unknown) => Promise<Response>
-}
-
-type AnyApi = Record<string, ClientInvoker>
-
-/*
-A command resolved to its raw-dispatch closure. `method`/`url` label the
-command for error messages; `send` issues one call — over the network in
-remote mode, through dispatchVerbInProcess in in-process mode.
-*/
-type ResolvedSend = {
-    method: HttpVerb
-    url: string
-    send: (args: unknown) => Promise<Response>
-}
+type AnyApi = Record<string, RpcInvoker>
 
 /*
 Builds a typed proxy over the project's RPCs for use in scripts, tests,
@@ -72,50 +58,42 @@ export function createClient<Api extends AnyApi = AnyApi>(opts?: {
     }
 
     /*
-    Resolves a command name to its dispatch closure, or undefined when the
-    name is unknown in the active mode. Remote mode (url set) resolves
-    method + url from the baked manifest — registry fallback for same-project
-    callers — and sends the synthesized Request over the network. In-process
-    mode resolves the verb from the registry and routes through
+    Resolves a command name to the closure that issues its wire call, or
+    undefined when the name is unknown in the active mode. Remote mode (url set)
+    resolves method + url from the baked manifest — registry fallback for
+    same-project callers — and sends the synthesized Request over the network.
+    In-process mode resolves the verb from the registry and routes through
     dispatchVerbInProcess, the same synthesize-and-fetch the MCP dispatcher
     uses, so the two consumer surfaces can't drift on how a verb is invoked.
     */
-    function resolve(name: string): ResolvedSend | undefined {
+    function resolveSend(name: string): ((args?: unknown) => Promise<Response>) | undefined {
         if (url) {
             const command = manifest?.[name] ?? registryCommand(name)
             if (!command) {
                 return undefined
             }
-            return {
-                method: command.method,
-                url: command.url,
-                send: (args) =>
-                    fetch(
-                        buildRpcRequest({
-                            method: command.method,
-                            url: command.url,
-                            args,
-                            baseUrl: url,
-                            headers: requestHeaders(command.accept),
-                        }),
-                    ),
-            }
+            return (args) =>
+                fetch(
+                    buildRpcRequest({
+                        method: command.method,
+                        url: command.url,
+                        args,
+                        baseUrl: url,
+                        headers: requestHeaders(command.accept),
+                    }),
+                )
         }
         const entry = findVerbByCommandName(name)
         if (!entry) {
             return undefined
         }
-        return {
-            method: entry.remote.method,
-            url: entry.remote.url,
-            send: (args) =>
-                dispatchVerbInProcess({
-                    entry,
-                    args,
-                    baseUrl: 'http://localhost/',
-                    headers: requestHeaders(),
-                }),
-        }
+        return (args) =>
+            dispatchVerbInProcess({
+                remote: entry.remote,
+                args,
+                baseUrl: 'http://localhost/',
+                headers: requestHeaders(),
+            })
     }
 
     // Remote-mode registry fallback for callers passing a url but no manifest.
@@ -126,38 +104,5 @@ export function createClient<Api extends AnyApi = AnyApi>(opts?: {
         return found ? { method: found.remote.method, url: found.remote.url } : undefined
     }
 
-    /*
-    Memoise per-name so repeated `client.foo` accesses skip both the
-    registry scan in resolve() and a fresh closure allocation. The
-    manifest + registry are fixed for a client's lifetime, so a resolved
-    invoker (or its absence) never changes.
-    */
-    const invokerCache = new Map<string, ClientInvoker | undefined>()
-
-    /*
-    Build a memoised invoker for a resolved command. The plain call and
-    `.raw` share one `send`, so they can't diverge on URL/headers — the
-    plain call just decodes the body, and decodeResponse throws HttpError
-    on non-2xx (keeping the response), matching the remote-function path.
-    */
-    function buildInvoker(resolved: ResolvedSend): ClientInvoker {
-        const invoker = (async (args?: unknown) => {
-            return decodeResponse(await resolved.send(args))
-        }) as ClientInvoker
-        invoker.raw = (args?: unknown) => resolved.send(args)
-        return invoker
-    }
-
-    return new Proxy({} as Api, {
-        get(_target, prop): ClientInvoker | undefined {
-            if (typeof prop !== 'string') {
-                return undefined
-            }
-            // Caches undefined too, so an unknown name resolves once, not per access.
-            return invokerCache.getOrInsertComputed(prop, () => {
-                const resolved = resolve(prop)
-                return resolved ? buildInvoker(resolved) : undefined
-            })
-        },
-    })
+    return buildRpcProxy<Api>(resolveSend)
 }

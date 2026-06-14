@@ -1,9 +1,29 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import { createLivenessWatch } from '../src/lib/shared/createLivenessWatch.ts'
 import { online } from '../src/lib/shared/online.ts'
+import { requestScopeSlot } from '../src/lib/shared/requestScopeSlot.ts'
+import type { RequestScopeInfo } from '../src/lib/shared/types/RequestScopeInfo.ts'
 
-describe('online()', () => {
-    test('constant true outside a browser — the server is its own backend', () => {
+/* A request scope reporting a given connectivity, standing in for createServer's resolver. */
+const scopeWith = (online: boolean | undefined) => () =>
+    ({ method: 'GET', path: '/', elapsedMs: 0, online }) as unknown as RequestScopeInfo
+
+describe('online() on the server', () => {
+    afterEach(() => {
+        requestScopeSlot.resolver = undefined
+    })
+
+    test('true outside any request scope — boot, cron, the server is its own backend', () => {
+        expect(online()).toBe(true)
+    })
+
+    test('false when the request scope reports the calling client offline (OFFLINE_HEADER)', () => {
+        requestScopeSlot.resolver = scopeWith(false)
+        expect(online()).toBe(false)
+    })
+
+    test('true when the scope omits online — a non-belte-client request carries no header', () => {
+        requestScopeSlot.resolver = scopeWith(undefined)
         expect(online()).toBe(true)
     })
 })

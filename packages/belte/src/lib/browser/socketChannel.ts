@@ -1,30 +1,11 @@
 import type { SocketClientFrame } from '../server/sockets/types/SocketClientFrame.ts'
 import type { SocketServerFrame } from '../server/sockets/types/SocketServerFrame.ts'
 import { SOCKETS_PATH } from '../shared/SOCKETS_PATH.ts'
+import type { SocketChannel } from '../shared/types/SocketChannel.ts'
+import type { SocketSubCallbacks } from '../shared/types/SocketSubCallbacks.ts'
 import { withBase } from '../shared/withBase.ts'
 
-type SubCallbacks = {
-    onMessage(message: unknown): void
-    /* The sub's batched seed from the retained tail (possibly empty) — the replay/live boundary. */
-    onReplay(messages: unknown[]): void
-    onError(message: string): void
-    onEnd(): void
-    /* Transport loss (ws close), as opposed to a per-sub server `err` frame — recoverable. */
-    onDisconnect(): void
-}
-
-type Channel = {
-    subscribe(
-        sub: string,
-        socket: string,
-        replay: number | undefined,
-        callbacks: SubCallbacks,
-    ): void
-    unsubscribe(sub: string): void
-    publish(socket: string, message: unknown): void
-}
-
-let singleton: Channel | undefined
+let singleton: SocketChannel | undefined
 
 /*
 Lazily opens the single multiplexed ws used by every socket proxy on
@@ -61,11 +42,11 @@ disconnect, and a resyncing consumer's fresh sub frames queue (connect()
 refuses to open while hidden) until the visible transition reconnects and
 flushes them.
 */
-export function getSocketChannel(): Channel {
+export function getSocketChannel(): SocketChannel {
     if (singleton) {
         return singleton
     }
-    const subs = new Map<string, { socket: string; callbacks: SubCallbacks }>()
+    const subs = new Map<string, { socket: string; callbacks: SocketSubCallbacks }>()
     const subsBySocket = new Map<string, Set<string>>()
     let ws: WebSocket | undefined
     let pendingSends: string[] = []
