@@ -105,7 +105,18 @@ export function createChannelLog(
             if (enabled()) {
                 return traceWork(name, work, getChannel())
             }
-            return (async () => work())()
+            /*
+            No span: skip the async-wrapper allocation that every other method
+            already gates away, and hand back work()'s own promise untouched so
+            a coalesced cache join keeps the shared promise's identity. A
+            synchronous throw still surfaces as a rejection, matching traceWork.
+            */
+            try {
+                const result = work()
+                return result instanceof Promise ? result : Promise.resolve(result)
+            } catch (error) {
+                return Promise.reject(error)
+            }
         },
     })
 }

@@ -16,6 +16,14 @@ export type LogRecord = {
     channel?: string
     /* Full 32-hex trace id; tsv mode prints the first 8 chars. */
     trace?: string
+    /* The emitting request's own trace span id (TraceContext.spanId). Stable across
+       every record one request emits, so a consumer can split a multi-request trace
+       (a propagated session) back into its individual requests. */
+    requestSpan?: string
+    /* The span this request descends from (TraceContext.parentSpanId); absent when
+       belte started the trace — the journey's root request. Lets a consumer nest
+       requests within a trace. */
+    parentSpan?: string
     /* Ms since the request scope opened (navigation start in the browser). */
     elapsedMs?: number
     method?: string

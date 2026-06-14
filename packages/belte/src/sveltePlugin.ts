@@ -15,6 +15,7 @@ modules are first transpiled by Bun.Transpiler so the svelte compiler only
 sees stripped JS. `generate` chooses 'server' (SSR) or 'client' (hydration);
 the build pipeline constructs a separate plugin instance per target.
 */
+// @readme plumbing
 export function sveltePlugin(options: {
     generate: 'server' | 'client'
     svelteConfig?: SvelteConfig

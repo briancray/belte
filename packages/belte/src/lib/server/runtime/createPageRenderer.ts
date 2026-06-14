@@ -12,6 +12,9 @@ import { serializeCacheSnapshot } from './serializeCacheSnapshot.ts'
 import { stashPendingStream } from './streamStash.ts'
 import type { RequestStore } from './types/RequestStore.ts'
 
+/* SSR render spans, opt-in via DEBUG=belte:render — timed render of the view tree. */
+const renderLog = belteLog.channel('belte:render')
+
 function wantsJson(req: Request): boolean {
     return (req.headers.get('accept') ?? '').includes('application/json')
 }
@@ -30,12 +33,15 @@ it once; the route dispatcher and the 404 path are its only callers.
 export function createPageRenderer({
     shell,
     base,
+    clientTimeout,
     viewResolver,
     healthPayload,
 }: {
     shell: string
     /* APP_URL mount base ('' at root). Shipped in __SSR__ so the client installs the same base resolver. */
     base: string
+    /* BELTE_CLIENT_TIMEOUT (ms) for client RPC fetches; shipped in __SSR__, undefined = unbounded. */
+    clientTimeout: number | undefined
     viewResolver: ViewResolver
     /* Builds the /__belte/health payload for a render that read health() — the client's __SSR__ seed. */
     healthPayload: (request: Request) => Promise<Record<string, unknown>>
@@ -98,14 +104,20 @@ export function createPageRenderer({
            (renderError bypasses renderPage, which is where normal renders set them). */
         store.route = pathname
         store.params = errorParams
-        const rendered = await render(App, {
-            props: {
-                state: {
-                    page: { route: pathname, params: errorParams, url: pageUrlFromStore(store) },
-                    render: { Layout, Page: ErrorView },
+        const rendered = await renderLog.trace('render-error ' + pathname, () =>
+            render(App, {
+                props: {
+                    state: {
+                        page: {
+                            route: pathname,
+                            params: errorParams,
+                            url: pageUrlFromStore(store),
+                        },
+                        render: { Layout, Page: ErrorView },
+                    },
                 },
-            },
-        })
+            }),
+        )
         const stateTag = `<script>window.__SSR__ = ${safeJsonForScript({ error: true })};</script>`
         const html = fillShell(rendered, stateTag)
         return new Response(html, {
@@ -147,7 +159,7 @@ export function createPageRenderer({
             presentable page. With no error.svelte covering the path, rethrow so
             app.handleError — or the framework 500 — takes it.
             */
-            const { status, message, stack } = errorParamsForThrow(error)
+            const { status, message, stack } = await errorParamsForThrow(error)
             const rendered = await renderError(status, message, store, stack)
             if (rendered) {
                 belteLog.error(error)
@@ -163,18 +175,20 @@ export function createPageRenderer({
         store: RequestStore,
     ): Promise<Response> {
         const { Page, Layout } = await viewResolver.view(routeUrl)
-        const rendered = await render(App, {
-            props: {
-                state: {
-                    page: {
-                        route: routeUrl,
-                        params,
-                        url: pageUrlFromStore(store),
+        const rendered = await renderLog.trace('render ' + routeUrl, () =>
+            render(App, {
+                props: {
+                    state: {
+                        page: {
+                            route: routeUrl,
+                            params,
+                            url: pageUrlFromStore(store),
+                        },
+                        render: { Layout, Page },
                     },
-                    render: { Layout, Page },
                 },
-            },
-        })
+            }),
+        )
         /*
         Settled entries (awaited reads render() blocked on) inline into the
         first chunk; pending entries ({#await} reads) stream a resolve script
@@ -221,6 +235,8 @@ export function createPageRenderer({
             app: appNameSlot.name,
             /* The health seed for a render that read health(); absent otherwise. */
             health,
+            /* The client RPC fetch timeout (ms); absent = unbounded. */
+            clientTimeout,
         })};</script>`
         const html = fillShell(rendered, stateTag)
         return new Response(html, {

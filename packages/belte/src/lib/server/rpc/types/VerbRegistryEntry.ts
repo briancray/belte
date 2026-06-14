@@ -26,4 +26,10 @@ export type VerbRegistryEntry = {
     outputSchema: StandardSchemaV1 | undefined
     filesSchema: StandardSchemaV1 | undefined
     clients: ClientFlags
+    /* The verb's declared opts, recorded so introspection (inspector) can report
+       the deadline/body-cap/CSRF-exemption a handler runs under. Undefined = the
+       framework default (no deadline, Bun's server-wide body ceiling, gated). */
+    timeout: number | undefined
+    maxBodySize: number | undefined
+    crossOrigin: boolean | undefined
 }

@@ -11,4 +11,6 @@ export type RequestScopeInfo = {
     elapsedMs: number
     method: string
     path: string
+    /* The calling client's reported connectivity (server only, from OFFLINE_HEADER); drives server-side online(). Omitted client-side — online() reads navigator there. */
+    online?: boolean
 }

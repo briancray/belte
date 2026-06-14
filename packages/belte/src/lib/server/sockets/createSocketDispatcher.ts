@@ -13,6 +13,9 @@ import type { SocketServerFrame } from './types/SocketServerFrame.ts'
 // Reused across every inbound binary frame rather than allocated per message.
 const textDecoder = new TextDecoder()
 
+/* Socket REST-face spans (CLI/MCP tail + publish), opt-in via DEBUG=belte:sockets. */
+const socketsLog = belteLog.channel('belte:sockets')
+
 type SocketDispatcher = {
     open(ws: ServerWebSocket<unknown>): void
     message(ws: ServerWebSocket<unknown>, data: string | Buffer): void
@@ -236,6 +239,10 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
     its defineSocket call populates the registry.
     */
     async function rest(req: Request, name: string): Promise<Response> {
+        return socketsLog.trace(`socket-rest ${name}`, () => restImpl(req, name))
+    }
+
+    async function restImpl(req: Request, name: string): Promise<Response> {
         const resolution = await resolveEntry(name)
         if ('failure' in resolution) {
             return resolution.failure === 'load-failed'

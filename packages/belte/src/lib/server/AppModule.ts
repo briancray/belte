@@ -13,6 +13,7 @@ Inside request scopes, the live Bun.Server is reachable via the
 exported `server()` function from `belte/server`; `init` receives it
 explicitly because it runs outside a request.
 */
+// @readme plumbing
 export type AppModule = {
     /*
     Extra inbound header names to forward onto in-process rpc Requests, on

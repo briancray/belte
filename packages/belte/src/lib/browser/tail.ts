@@ -108,6 +108,7 @@ from a $derived can't crash the component. Status distinguishes "haven't
 received the first frame" (pending) from "stream ended cleanly" (done) and
 "wire layer surfaced an error" (error).
 */
+// @readme tail
 export function tail<T>(subscribable: Subscribable<T>): T | undefined
 export function tail<T>(subscribable: Subscribable<T>, options: TailOptions): T[]
 export function tail<T>(subscribable: Subscribable<T>, options?: TailOptions): T | T[] | undefined {

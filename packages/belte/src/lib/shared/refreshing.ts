@@ -20,6 +20,7 @@ no value yet?", refreshing answers "is a held value being superseded?".
 Probes report, never act. Scan semantics (tap order, selector grammar,
 registry spans) live in probeRegistries.
 */
+// @readme probes
 export function refreshing<Args, Return>(
     arg?: CacheSelector<Args, Return> | Subscribable<unknown>,
     args?: Args,

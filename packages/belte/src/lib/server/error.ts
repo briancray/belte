@@ -55,6 +55,7 @@ the union of branches in a handler narrow to whatever the success
 branch carries (`TypedResponse<{user}> | TypedResponse<never>` → Return
 = {user}).
 */
+// @readme response
 export function error(status: number, message?: string, init?: ResponseInit): TypedResponse<never> {
     const body = message ?? STATUS_TEXT[status] ?? `HTTP ${status}`
     return new Response(

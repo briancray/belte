@@ -4,6 +4,7 @@ import { findVerbByCommandName } from '../server/rpc/findVerbByCommandName.ts'
 import { verbRegistry } from '../server/rpc/verbRegistry.ts'
 import { socketOperations } from '../server/sockets/socketOperations.ts'
 import { socketRegistry } from '../server/sockets/socketRegistry.ts'
+import { belteLog } from '../shared/belteLog.ts'
 import { commandNameForUrl } from '../shared/commandNameForUrl.ts'
 import { forwardHeaders } from '../shared/forwardHeaders.ts'
 import { jsonSchemaForSchema } from '../shared/jsonSchemaForSchema.ts'
@@ -151,6 +152,10 @@ export function buildPrompts(): PromptDescriptor[] {
     })
 }
 
+/* MCP tool-dispatch spans, opt-in via DEBUG=belte:mcp — a model's tool call,
+   wrapping the underlying verb dispatch in the same trace. */
+const mcpLog = belteLog.channel('belte:mcp')
+
 function textResult(text: string, isError = false): ToolResult {
     return { content: [{ type: 'text', text }], ...(isError ? { isError: true } : {}) }
 }
@@ -214,7 +219,7 @@ export async function callTool(
     const entry = findVerbByCommandName(toolName)
     if (entry?.clients.mcp) {
         const response = await dispatchVerbInProcess({
-            entry,
+            remote: entry.remote,
             args,
             baseUrl: `${new URL(inbound.url).origin}/`,
             headers: forwardHeaders(inbound.headers),
@@ -270,7 +275,7 @@ export function mcpSurface(request: Request): McpSurface {
             prompts ??= buildPrompts()
             return prompts
         },
-        call: (name, args) => callTool(name, args, request),
+        call: (name, args) => mcpLog.trace(`mcp ${name}`, () => callTool(name, args, request)),
         /* The conversation-seeding messages, without the wire-shape wrapping. */
         getPrompt: (name, args) => renderPrompt(name, args).messages,
         async listResources() {

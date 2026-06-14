@@ -7,6 +7,7 @@ the fetch boundary. Throws if called outside a request scope (e.g. from
 top-level module code or from app.ts init) — silent undefined would mask
 the misuse.
 */
+// @readme request-scope
 export function request(): Request {
     const store = requestContext.getStore()
     if (!store) {

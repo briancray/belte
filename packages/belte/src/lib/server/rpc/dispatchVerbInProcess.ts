@@ -1,17 +1,19 @@
 import { buildRpcRequest } from '../../shared/buildRpcRequest.ts'
+import type { RemoteFunction } from '../../shared/types/RemoteFunction.ts'
 import type { AppModule } from '../AppModule.ts'
 import { runWithRequestScope } from '../runtime/runWithRequestScope.ts'
-import type { VerbRegistryEntry } from './types/VerbRegistryEntry.ts'
 
 /*
-Runs a registered verb in-process: synthesizes the rpc Request from the
-entry's own method + url and pipes it through entry.remote.fetch — the
-same handler/validation/error path the HTTP router uses, no network hop.
-The single in-process dispatch every registry-backed consumer surface (the
-CLI client, the MCP tool dispatcher, and the test client) routes through, so
-they can't drift on how a verb is invoked. `baseUrl` gives the synthetic
-Request its origin (handlers reading request.url see the caller's host);
-`headers` carries forwarded auth/identity context.
+Runs a verb in-process: synthesizes the rpc Request from the remote's own
+method + url and pipes it through remote.fetch — the same handler/validation/
+error path the HTTP router uses, no network hop. The single in-process
+dispatch every consumer surface (the CLI client, the MCP tool dispatcher, and
+the test client) routes through, so they can't drift on how a verb is invoked.
+Takes the RemoteFunction directly — invocation never reads the registry
+entry's schemas/clients (validation is closed over inside the remote), so the
+entry is not a dependency here. `baseUrl` gives the synthetic Request its
+origin (handlers reading request.url see the caller's host); `headers` carries
+forwarded auth/identity context.
 
 Runs inside the runWithRequestScope seam createServer crosses for real
 requests, so a handler sees an identical scope to a live HTTP request: a fresh
@@ -21,26 +23,24 @@ synthesized Request is shared between the scope store and the handler fetch so
 request() returns the same Request parseArgs read from.
 */
 export function dispatchVerbInProcess({
-    entry,
+    remote,
     args,
     baseUrl,
     headers,
     app,
 }: {
-    entry: VerbRegistryEntry
+    remote: RemoteFunction<unknown, unknown>
     args: unknown
     baseUrl: string
     headers?: Headers
     app?: AppModule
 }): Promise<Response> {
     const request = buildRpcRequest({
-        method: entry.remote.method,
-        url: entry.remote.url,
+        method: remote.method,
+        url: remote.url,
         args,
         baseUrl,
         headers,
     })
-    return runWithRequestScope(request, { app, logRequests: false }, () =>
-        entry.remote.fetch(request),
-    )
+    return runWithRequestScope(request, { app, logRequests: false }, () => remote.fetch(request))
 }

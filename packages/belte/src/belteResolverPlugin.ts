@@ -20,6 +20,8 @@ import { writeHealthDts } from './lib/shared/writeHealthDts.ts'
 import { writePublicAssetsDts } from './lib/shared/writePublicAssetsDts.ts'
 import { writeRoutesDts } from './lib/shared/writeRoutesDts.ts'
 import { writeRpcDts } from './lib/shared/writeRpcDts.ts'
+import { writeTestRpcDts } from './lib/shared/writeTestRpcDts.ts'
+import { writeTestSocketsDts } from './lib/shared/writeTestSocketsDts.ts'
 
 /*
 Resolves a bare directory or extensionless path to a concrete file. Mirrors
@@ -98,6 +100,7 @@ Also rewrites modules under src/server/rpc and src/server/sockets:
   defineSocket on the server (with the socket name + opts) or
   socketProxy on the client (name only — opts are server-side).
 */
+// @readme plumbing
 export function belteResolverPlugin({
     cwd = process.cwd(),
     embedAssets = false,
@@ -145,16 +148,24 @@ export function belteResolverPlugin({
     )
     const scanRpcOnce = once(() =>
         scanDir(rpcDir, '**/*.ts').then(async (rpcFiles) => {
-            await writeRpcDts({
-                cwd,
-                rpcDir,
-                rpcFiles,
-                importName: await belteImportNameOnce(),
-            })
+            const importName = await belteImportNameOnce()
+            await writeRpcDts({ cwd, rpcDir, rpcFiles, importName })
+            /* Typed createTestApp `app.rpc.<verb>` surface. */
+            await writeTestRpcDts({ cwd, rpcFiles, importName })
             return rpcFiles
         }),
     )
-    const scanSocketsOnce = once(() => scanDir(socketsDir, '**/*.ts'))
+    const scanSocketsOnce = once(() =>
+        scanDir(socketsDir, '**/*.ts').then(async (socketFiles) => {
+            /* Typed createTestApp `app.sockets.<name>` surface. */
+            await writeTestSocketsDts({
+                cwd,
+                socketFiles,
+                importName: await belteImportNameOnce(),
+            })
+            return socketFiles
+        }),
+    )
     /* One write per build, from the belte:app loader (the seam that already knows whether src/app.ts exists). */
     let healthDtsWritten: Promise<void> | undefined
     const writeHealthDtsOnce = (hasAppModule: boolean): Promise<void> => {

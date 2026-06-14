@@ -116,6 +116,7 @@ keep streaming reads in a parent that never top-level awaits — the
 await-everything mode is per component instance, so a child's await blocks only
 the child.
 */
+// @readme cache
 export function cache<Args, Return>(
     fn: RemoteFunction<Args, Return>,
     options?: CacheOptions,
@@ -287,9 +288,17 @@ function invokeProducer<Args, Return>(
     if (existing) {
         tagScope(existing, options?.scope)
         attachPolicy(existing, options, () => producer(args))
-        return existing.promise as Promise<Return>
+        const shared = existing.promise as Promise<Return>
+        /* A coalesced join waits on the in-flight producer — time the block so the
+           waterfall shows it; a settled hit returns immediately, so no span. */
+        return existing.settled === true
+            ? shared
+            : cacheLog.trace<Return>(`cache wait ${key}`, () => shared)
     }
-    const promise = producer(args)
+    /* Miss: time the producer run — where a request's time actually goes (an
+       external fetch, a computation). Producer path only; the remote path must
+       keep its own promise so getRemoteMeta can read the recorded Request. */
+    const promise = cacheLog.trace<Return>(`cache ${key}`, () => producer(args))
     registerEntry(store, key, promise, options, undefined, () => producer(args))
     return promise
 }

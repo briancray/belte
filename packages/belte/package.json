@@ -46,17 +46,19 @@
         "./server/error": "./src/lib/server/error.ts",
         "./server/redirect": "./src/lib/server/redirect.ts",
         "./server/request": "./src/lib/server/request.ts",
+        "./server/reachable": "./src/lib/server/reachable.ts",
         "./server/cookies": "./src/lib/server/cookies.ts",
         "./server/env": "./src/lib/server/env.ts",
         "./server/appDataDir": "./src/lib/server/appDataDir.ts",
         "./server/server": "./src/lib/server/server.ts",
         "./server/AppModule": "./src/lib/server/AppModule.ts",
+        "./server/InspectorContext": "./src/lib/server/runtime/types/InspectorContext.ts",
         "./server/agent": "./src/lib/server/agent.ts",
         "./server/rpc/defineVerb": "./src/lib/server/rpc/defineVerb.ts",
         "./server/sockets/defineSocket": "./src/lib/server/sockets/defineSocket.ts",
         "./server/prompts/definePrompt": "./src/lib/server/prompts/definePrompt.ts",
         "./browser/page": "./src/lib/browser/page.svelte.ts",
-        "./browser/navigate": "./src/lib/browser/page.svelte.ts",
+        "./browser/navigate": "./src/lib/browser/navigate.ts",
         "./browser/tail": "./src/lib/browser/tail.ts",
         "./shared/cache": "./src/lib/shared/cache.ts",
         "./shared/pending": "./src/lib/shared/pending.ts",
@@ -74,8 +76,7 @@
         "./bundle/BundleMenuItem": "./src/lib/bundle/BundleMenuItem.ts",
         "./bundle/onMenu": "./src/lib/bundle/onMenu.ts",
         "./bundle/bundled": "./src/lib/bundle/bundled.ts",
-        "./test/createTestClient": "./src/lib/test/createTestClient.ts",
-        "./test/clearVerbRegistry": "./src/lib/test/clearVerbRegistry.ts",
+        "./test/createTestApp": "./src/lib/test/createTestApp.ts",
         "./test/createScriptedSurface": "./src/lib/test/createScriptedSurface.ts",
         "./test/assertAgentFrameConformance": "./src/lib/test/assertAgentFrameConformance.ts",
         "./tsconfig": "./tsconfig.app.json",
@@ -112,6 +113,7 @@
         }
     },
     "devDependencies": {
+        "@belte/inspector": "workspace:*",
         "bun-plugin-tailwind": "^0.1.2",
         "tailwindcss": "^4.0.0"
     }

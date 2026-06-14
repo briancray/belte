@@ -10,6 +10,7 @@ the path derives from the bundler-injected program name, not the process working
 directory (which `open` sets to `/`). Pure: computes the path, never touches the
 filesystem.
 */
+// @readme reference
 export function appDataDir(): string {
     return appDataDirForName(cliProgramName)
 }

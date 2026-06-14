@@ -13,6 +13,7 @@ diagnostic channel (browser: the `belte-debug` localStorage key). Renders as
 the tab-separated tsv format (default) or one JSON object per line under
 BELTE_LOG_FORMAT=json.
 */
+// @readme observability
 export const log: Log = Object.assign(
     createChannelLog(() => appNameSlot.name ?? 'app', true),
     {

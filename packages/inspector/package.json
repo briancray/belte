@@ -1,0 +1,46 @@
+{
+    "name": "@belte/inspector",
+    "version": "0.1.0",
+    "type": "module",
+    "description": "Opt-in inspector for belte — a live view of your app's machine surface and request traffic, activated by BELTE_ENABLE_INSPECTOR=true",
+    "license": "MIT",
+    "author": "Brian Cray",
+    "homepage": "https://github.com/briancray/belte#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/briancray/belte.git",
+        "directory": "packages/inspector"
+    },
+    "bugs": {
+        "url": "https://github.com/briancray/belte/issues"
+    },
+    "keywords": [
+        "belte",
+        "inspector",
+        "devtools",
+        "observability",
+        "debugging"
+    ],
+    "engines": {
+        "bun": ">=1.3.0"
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "exports": {
+        ".": "./src/mountInspector.ts",
+        "./mountInspector": "./src/mountInspector.ts"
+    },
+    "files": [
+        "src"
+    ],
+    "peerDependencies": {
+        "@belte/belte": ">=0.27.0"
+    },
+    "peerDependenciesMeta": {
+        "@belte/belte": {
+            "optional": true
+        }
+    }
+}

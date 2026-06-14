@@ -1,3 +1,4 @@
+import { belteLog } from '../../shared/belteLog.ts'
 import { buildRpcRequest } from '../../shared/buildRpcRequest.ts'
 import { createRemoteFunction } from '../../shared/createRemoteFunction.ts'
 import { forwardHeaders } from '../../shared/forwardHeaders.ts'
@@ -11,7 +12,21 @@ import { json } from '../json.ts'
 import { requestContext } from '../runtime/requestContext.ts'
 import { parseArgs } from './parseArgs.ts'
 import { registerVerb } from './registerVerb.ts'
+import { runWithVerbTimeout } from './runWithVerbTimeout.ts'
 import type { RemoteHandler } from './types/RemoteHandler.ts'
+
+/*
+Stash for the per-request AbortController a timed verb composes into the
+inbound signal — read back in invoke's deadline callback to fire it. Lives on
+the scope's Request (one verb per .fetch — network or in-process dispatch) so
+an SSR pass's many in-process cache reads, which call invoke() directly and
+never reach parseArgsForFetch, can't cross-cancel.
+*/
+const VERB_TIMEOUT_ABORT = Symbol('belteVerbTimeoutAbort')
+
+/* Verb dispatch + validation spans, opt-in via DEBUG=belte:rpc. Reveals an
+   in-process RPC→RPC call (same request scope, same trace) as a nested span. */
+const rpcLog = belteLog.channel('belte:rpc')
 
 /*
 Builds a RemoteFunction from an HTTP verb + RPC URL + handler. The bundler
@@ -29,6 +44,7 @@ the Request via parseArgs).
 Every raw invocation records the synthesized Request against the returned
 promise so cache() can stash it on the entry without re-building.
 */
+// @readme plumbing
 export function defineVerb<Args, Return>(
     method: HttpVerb,
     url: string,
@@ -41,8 +57,11 @@ export function defineVerb<Args, Return>(
         crossOrigin?: boolean
         /* Per-verb cap on actual received body bytes (413 past it); omitted = Bun's server-wide maxRequestBodySize. */
         maxBodySize?: number
+        /* Per-verb handler deadline (ms): a 504 once exceeded, on every surface (SSR/MCP/CLI/network). */
+        timeout?: number
     },
 ): RemoteFunction<Args, Return> {
+    const timeout = opts?.timeout
     const inputSchema = opts?.inputSchema
     const outputSchema = opts?.outputSchema
     const filesSchema = opts?.filesSchema
@@ -76,7 +95,10 @@ export function defineVerb<Args, Return>(
     escaping the request scope.
     */
     async function runHandler(args: Args | undefined): Promise<Response> {
-        return handler(args as Args) as unknown as Response
+        return rpcLog.trace(
+            `rpc ${method} ${url}`,
+            () => handler(args as Args) as unknown as Response,
+        )
     }
 
     /*
@@ -89,7 +111,9 @@ export function defineVerb<Args, Return>(
     async function validateThenHandle(args: Args | undefined): Promise<Response> {
         let value: unknown = args
         if (inputSchema) {
-            const result = await inputSchema['~standard'].validate(value)
+            const result = await rpcLog.trace(`validate ${url}`, () =>
+                inputSchema['~standard'].validate(value),
+            )
             if (result.issues) {
                 return json({ issues: result.issues }, { status: 422 })
             }
@@ -113,8 +137,25 @@ export function defineVerb<Args, Return>(
     synthesize its Request without forcing the server to allocate one per
     SSR call.
     */
+    /* Abort the controller parseArgsForFetch stashed on store.req; a no-op when none was stashed (SSR cache reads). */
+    function abortVerbTimeout(): void {
+        const req = requestContext.getStore()?.req as
+            | (Request & { [VERB_TIMEOUT_ABORT]?: AbortController })
+            | undefined
+        req?.[VERB_TIMEOUT_ABORT]?.abort(new DOMException('handler timeout', 'TimeoutError'))
+    }
+
     function invoke(args: Args | undefined): Promise<Response> {
-        return inputSchema || filesSchema ? validateThenHandle(args) : runHandler(args)
+        const work = inputSchema || filesSchema ? validateThenHandle(args) : runHandler(args)
+        if (timeout === undefined) {
+            return work
+        }
+        /*
+        On the deadline, fire the controller parseArgsForFetch composed into
+        request().signal (absent on the SSR cache-read path, so a sibling
+        verb's outbound fetch is never cancelled) — then 504.
+        */
+        return runWithVerbTimeout(work, timeout, abortVerbTimeout)
     }
 
     const remote = createRemoteFunction<Args, Return>({
@@ -124,8 +165,36 @@ export function defineVerb<Args, Return>(
         crossOrigin: opts?.crossOrigin,
         buildRequest,
         invoke,
-        parseArgsForFetch: (request) =>
-            parseArgs(method, request, opts?.maxBodySize) as Promise<Args | undefined>,
+        parseArgsForFetch: async (request) => {
+            const args = await parseArgs(method, request, opts?.maxBodySize)
+            /*
+            Compose this verb's deadline into request().signal so a handler's
+            fetch(ext, { signal: request().signal }) is cancelled when the
+            timeout fires — not just abandoned. Applied after parseArgs onto the
+            scope's *final* request: a maxBodySize verb swaps store.req for a
+            buffered copy (readBodyWithinLimit) and an app.handle hook may
+            rewrite it, so composing onto the inbound `request` would leave
+            request() — and abortVerbTimeout, which reads store.req — pointed at
+            an un-cancellable signal. Only the signal is shadowed; the body
+            stays readable. The store always exists here (network + in-process
+            dispatch both run inside runWithRequestScope); SSR cache reads call
+            invoke() directly, never this path, so a sibling verb is never
+            cross-cancelled.
+            */
+            if (timeout !== undefined) {
+                const req = requestContext.getStore()?.req
+                if (req) {
+                    const controller = new AbortController()
+                    const composed = AbortSignal.any([req.signal, controller.signal])
+                    Object.defineProperty(req, 'signal', { value: composed, configurable: true })
+                    Object.defineProperty(req, VERB_TIMEOUT_ABORT, {
+                        value: controller,
+                        configurable: true,
+                    })
+                }
+            }
+            return args as Args | undefined
+        },
     })
     registerVerb({
         remote: remote as RemoteFunction<unknown, unknown>,
@@ -133,6 +202,9 @@ export function defineVerb<Args, Return>(
         outputSchema,
         filesSchema,
         clients,
+        timeout,
+        maxBodySize: opts?.maxBodySize,
+        crossOrigin: opts?.crossOrigin,
     })
     return remote
 }

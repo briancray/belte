@@ -7,6 +7,7 @@ import {
     renderState,
 } from '../src/lib/browser/page.svelte.ts'
 import { baseSlot } from '../src/lib/shared/baseSlot.ts'
+import { HttpError } from '../src/lib/shared/HttpError.ts'
 import { settle } from './support/settle.ts'
 
 /* Distinct component stand-ins so assertions can check identity, not just shape. */
@@ -61,6 +62,23 @@ describe('handleRenderError', () => {
         expect(params.message).toBe('boom')
         expect(typeof params.stack).toBe('string')
         expect(resetCalls).toBe(1)
+    })
+
+    test('an HttpError swaps in error.svelte with its real status and body message, not 500', async () => {
+        await bindPage({ pages, layouts, errors, ssr })
+
+        handleRenderError(
+            new HttpError(
+                new Response('order not found', { status: 404, statusText: 'Not Found' }),
+            ),
+            () => {},
+        )
+        await settle()
+
+        expect(renderState.Page).toBe(components.rootError)
+        const params = clientPageState.params as unknown as ErrorParams
+        expect(params.status).toBe(404)
+        expect(params.message).toBe('order not found')
     })
 
     test('under a mount base, the browser-space pathname still finds the boundary', async () => {

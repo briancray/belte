@@ -18,6 +18,7 @@ Inert during SSR and in a plain browser tab — `$effect` only runs client-side,
 the native menu that fires the event exists only in the bundled desktop app,
 and `window` is guarded so importing the module never assumes a DOM.
 */
+// @readme bundle
 export function onMenu(handler: (name: string) => void): () => void
 export function onMenu(name: string, handler: () => void): () => void
 export function onMenu(

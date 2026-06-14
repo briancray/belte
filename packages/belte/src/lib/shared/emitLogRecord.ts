@@ -1,3 +1,4 @@
+import { logTapSlot } from './logTapSlot.ts'
 import { requestScopeSlot } from './requestScopeSlot.ts'
 import type { LogRecord } from './types/LogRecord.ts'
 import type { LogVoice } from './types/LogVoice.ts'
@@ -78,10 +79,15 @@ export function emitLogRecord(fields: Omit<LogRecord, 'ts'>, voice?: LogVoice): 
     const record: LogRecord = { ts: Date.now(), ...fields }
     if (scope) {
         record.trace = scope.trace.traceId
+        record.requestSpan = scope.trace.spanId
+        record.parentSpan = scope.trace.parentSpanId
         record.elapsedMs = scope.elapsedMs
         record.method = fields.method ?? scope.method
         record.path = fields.path ?? scope.path
     }
+    // Hand the finished record to the inspector tap (when installed) before
+    // formatting — it observes the same structure the console receives.
+    logTapSlot.tap?.(record)
     if (useJson()) {
         printJson(record)
         return

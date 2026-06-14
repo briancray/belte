@@ -1,9 +1,13 @@
 import type { Errors } from '../browser/types/Errors.ts'
 import type { Layouts } from '../browser/types/Layouts.ts'
 import type { Pages } from '../browser/types/Pages.ts'
+import { belteLog } from './belteLog.ts'
 import { nearestLayoutPrefix, normalizeLayoutPrefixes } from './nearestLayoutPrefix.ts'
 import type { ResolvedView } from './types/ResolvedView.ts'
 import type { ViewResolver } from './types/ViewResolver.ts'
+
+/* View-resolution spans (module load + nearest layout), opt-in via DEBUG=belte:view. */
+const viewLog = belteLog.channel('belte:view')
 
 /*
 Isomorphic view resolution: a matched route in, mountable components out.
@@ -52,7 +56,7 @@ export function createViewResolver({
             if (!loadPage) {
                 throw new Error(`[belte] unknown route: ${route}`)
             }
-            return loadWithLayout(route, loadPage)
+            return viewLog.trace(`view ${route}`, () => loadWithLayout(route, loadPage))
         },
 
         error: async (pathname) => {
@@ -61,7 +65,9 @@ export function createViewResolver({
             if (!loadError) {
                 return undefined
             }
-            return loadWithLayout(pathname, loadError)
+            return viewLog.trace(`view-error ${pathname}`, () =>
+                loadWithLayout(pathname, loadError),
+            )
         },
 
         prefixes: (route) => ({

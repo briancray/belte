@@ -1,3 +1,4 @@
+// @readme plumbing
 import { plugin } from 'bun'
 import { belteResolverPlugin } from './belteResolverPlugin.ts'
 import { loadSvelteConfig } from './lib/shared/loadSvelteConfig.ts'

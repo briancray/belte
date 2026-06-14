@@ -34,6 +34,7 @@ last-good server) survives instead of crashing and orphaning the child. By
 default a failure exits the process (one-shot `belte build` / `compile`);
 the dev orchestrator passes `exitOnFailure: false`.
 */
+// @readme plumbing
 export async function build({
     cwd = process.cwd(),
     svelteConfig,

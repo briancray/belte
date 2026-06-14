@@ -26,6 +26,7 @@ its *rendering context* (the webview) is inside it.
 Distinct from runningAsStandaloneBinary(), which is also true for a plain compiled
 (install-tarball) server binary — still a web app, not a bundle.
 */
+// @readme bundle
 export function bundled(): boolean {
     if (typeof window === 'undefined') {
         return Boolean(Bun.env.BELTE_PARENT_PID)

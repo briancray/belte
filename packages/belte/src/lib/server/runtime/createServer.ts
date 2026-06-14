@@ -15,8 +15,10 @@ import { extraForwardHeaders } from '../../shared/extraForwardHeaders.ts'
 import { HEALTH_PATH } from '../../shared/HEALTH_PATH.ts'
 import { healthReadSlot } from '../../shared/healthReadSlot.ts'
 import { IDENTITY_PATH } from '../../shared/IDENTITY_PATH.ts'
+import { INSPECTOR_PATH } from '../../shared/INSPECTOR_PATH.ts'
 import { isDebugNegated } from '../../shared/isDebugNegated.ts'
 import { logClosingRecord } from '../../shared/logClosingRecord.ts'
+import { OFFLINE_HEADER } from '../../shared/OFFLINE_HEADER.ts'
 import { parseBoundedEnvInt } from '../../shared/parseBoundedEnvInt.ts'
 import { RESOLVE_STREAM_PATH } from '../../shared/RESOLVE_STREAM_PATH.ts'
 import { SOCKETS_PATH } from '../../shared/SOCKETS_PATH.ts'
@@ -48,6 +50,7 @@ import { disableIdleTimeoutForStream } from './disableIdleTimeoutForStream.ts'
 import { internalErrorResponse } from './internalErrorResponse.ts'
 import { listenOnOpenPort } from './listenOnOpenPort.ts'
 import { logExposedSurfaces } from './logExposedSurfaces.ts'
+import { maybeMountInspector } from './maybeMountInspector.ts'
 import { parseIdleTimeout } from './parseIdleTimeout.ts'
 import { parsePort } from './parsePort.ts'
 import { ensureRegistriesLoaded, setRegistryManifests } from './registryManifests.ts'
@@ -165,6 +168,8 @@ export async function createServer({
             elapsedMs: (Bun.nanoseconds() - store.start) / 1e6,
             method: store.req.method,
             path: store.url.pathname,
+            /* The calling client's reported connectivity — drives server-side online(). Absent header = online. */
+            online: !store.req.headers.has(OFFLINE_HEADER),
         }
     })
     /*
@@ -214,6 +219,12 @@ export async function createServer({
     const appVersion = appInfo?.version ?? '0.0.0'
     /* The app's default log channel — every unchanneled record speaks as [appName]. */
     setAppName(appName)
+    /*
+    Opt-in inspector (BELTE_ENABLE_INSPECTOR=true): a dynamically-imported
+    `@belte/inspector` handler, or undefined when the flag is off / the package
+    isn't installed. Resolved at boot so the fetch route below can branch on it.
+    */
+    const inspectorHandler = await maybeMountInspector({ name: appName, version: appVersion })
     /* Built on first request, then reused — the verb registry is frozen after load. */
     let openApiSpec: ReturnType<typeof buildOpenApiSpec> | undefined
     const cliCwd = process.cwd()
@@ -234,6 +245,7 @@ export async function createServer({
     const { renderPage, renderError } = createPageRenderer({
         shell: activeShell,
         base,
+        clientTimeout: parseBoundedEnvInt(process.env.BELTE_CLIENT_TIMEOUT, 1, 600_000),
         viewResolver,
         /* The wire payload, rebuilt per marked render — the __SSR__ health seed must match what /__belte/health serves. */
         healthPayload: (request) => buildHealthPayload(request, { app, appName, appVersion }),
@@ -379,6 +391,26 @@ export async function createServer({
                         */
                         url.pathname === IDENTITY_PATH ? { ...payload, belte: true } : payload,
                         { headers: { 'Cache-Control': NO_STORE } },
+                    )
+                }
+                /*
+                Inspector surface — answered directly, ahead of app.handle, since
+                it's privileged operator tooling gated by BELTE_ENABLE_INSPECTOR
+                (not the app's user auth). Undefined handler = flag off, so the
+                whole block compiles out of the hot path when the inspector's off.
+                */
+                if (
+                    inspectorHandler &&
+                    (url.pathname === INSPECTOR_PATH ||
+                        url.pathname.startsWith(`${INSPECTOR_PATH}/`))
+                ) {
+                    // The events feed is long-lived SSE: opt it out of the idle
+                    // timeout, else Bun reaps it and the reconnect replays the
+                    // whole buffer (duplicate boot logs every ~10s).
+                    return disableIdleTimeoutForStream(
+                        bunServer,
+                        req,
+                        await inspectorHandler(req, url),
                     )
                 }
                 /*

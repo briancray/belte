@@ -1,5 +1,6 @@
 import { createPushIterator } from '../../shared/createPushIterator.ts'
 import { resolveClientFlags } from '../../shared/resolveClientFlags.ts'
+import { socketTapSlot } from '../../shared/socketTapSlot.ts'
 import type { TailHooks } from '../../shared/types/TailHooks.ts'
 import { getActiveServer } from '../runtime/getActiveServer.ts'
 import { registerSocket } from './registerSocket.ts'
@@ -25,6 +26,7 @@ called server-side it both notifies in-process iterators and broadcasts
 to remote subscribers; called client-side (via socketProxy) it sends a
 `pub` frame the dispatcher validates and forwards.
 */
+// @readme plumbing
 export function defineSocket<T>(name: string, opts: SocketOptions = {}): Socket<T> {
     const retention = opts.tail ?? 0
     const ttl = opts.ttl
@@ -109,6 +111,8 @@ export function defineSocket<T>(name: string, opts: SocketOptions = {}): Socket<
         for (const notify of subscribers) {
             notify(validated)
         }
+        // Observe the fanned-out frame (inspector); no-op when unobserved.
+        socketTapSlot.tap?.({ socket: name, message: validated })
         if (cachedServer === undefined) {
             cachedServer = getActiveServer()
         }
