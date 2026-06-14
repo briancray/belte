@@ -1,4 +1,5 @@
 import { GET } from '@belte/belte/server/GET'
+import { log } from '@belte/belte/shared/log'
 
 /*
 Returns JSON with a custom `x-report-version` header — used by the
@@ -6,13 +7,33 @@ Returns JSON with a custom `x-report-version` header — used by the
 the header off the underlying Response. Calling `getReport({...})`
 (without .raw) would still resolve to the decoded body and discard
 the header.
+
+The two `log.trace(...)` steps each time their work and emit a span on the
+app's always-on channel, so a call to this verb shows up in the inspector's
+Traces tab as a waterfall: the request bar plus `load-rows` then `summarize`.
+log.trace runs the work, logs the name + duration at settle, and rethrows
+failures — instrumentation never changes the result or swallows errors.
 */
-export const getReport = GET<{ id: string }, { id: string; rows: number[] }>(({ id }) =>
-    Response.json(
-        { id, rows: [1, 2, 3] },
-        { headers: { 'x-report-version': '7', 'Cache-Control': 'no-store' } },
-    ),
-)
+export const getReport = GET<{ id: string }, { id: string; rows: number[] }>(async ({ id }) => {
+    const rows = await log.trace('load-rows', async () => {
+        await Bun.sleep(15)
+        return [1, 2, 3]
+    })
+    const total = await log.trace('summarize', async () => {
+        await Bun.sleep(25)
+        return rows.reduce((sum, value) => sum + value, 0)
+    })
+    return Response.json(
+        { id, rows },
+        {
+            headers: {
+                'x-report-version': '7',
+                'x-report-total': String(total),
+                'Cache-Control': 'no-store',
+            },
+        },
+    )
+})
 /*
 This route deliberately returns a bare `Response.json(...)` (not the
 `json()` helper) to show the raw-escape-hatch path, so it doesn't carry

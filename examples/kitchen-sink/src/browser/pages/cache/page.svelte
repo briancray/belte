@@ -181,7 +181,8 @@ const chatLog = $derived(cache(getChatLog)())
     <p class="mt-1 text-xs text-slate-500">
         <code class="font-mono">cache.on(source, handler)</code>
         runs the handler once per frame of a socket or rpc stream. The context carries two ways to
-        keep the cache fresh: <code class="font-mono">invalidate</code> drops the entry and refetches;
+        keep the cache fresh: <code class="font-mono">invalidate</code> drops the entry and
+        refetches;
         <code class="font-mono">patch</code>
         folds the frame's own payload into the cached value with no round-trip. Both bind the
         <a class="underline" href="/sockets"><code class="font-mono">chat</code></a>

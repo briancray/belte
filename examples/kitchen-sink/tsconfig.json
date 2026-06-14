@@ -1,6 +1,6 @@
 {
     "extends": "@belte/belte/tsconfig",
-    "include": ["src/**/*.ts", "src/**/*.svelte", "test/**/*.ts"],
+    "include": ["src/**/*.ts", "src/.belte/**/*.ts", "src/**/*.svelte", "test/**/*.ts"],
     "compilerOptions": {
         "paths": {
             "$server": ["./src/server"],

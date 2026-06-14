@@ -20,6 +20,7 @@
         "zod": "^4.0.0"
     },
     "devDependencies": {
+        "@belte/inspector": "workspace:*",
         "bun-plugin-tailwind": "latest",
         "tailwindcss": "^4.0.0"
     }
