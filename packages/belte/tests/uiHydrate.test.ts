@@ -392,5 +392,7 @@ describe('hydrate — adopt server DOM', () => {
         expect(calls).toBe(1) // resumed from the manifest — the promise never re-ran
         expect(ul.childNodes[0]).toBe(firstRowBefore) // rows adopted, not recreated
         expect(ul.childNodes.map((row) => row.textContent)).toEqual(['ada', 'margaret'])
+
+        delete RESUME[0] // the manifest is process-global; don't leak into other tests
     })
 })

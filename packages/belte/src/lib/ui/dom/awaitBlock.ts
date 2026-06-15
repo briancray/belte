@@ -9,11 +9,14 @@ Async binding — the runtime for `<template await>`. Renders the pending branch
 then swaps to the resolved branch (with the value) or the error branch on settle.
 Each branch builds in its own ownership scope, anchored for correct placement.
 
-Hydration (the resume manifest): when adopting an SSR stream, the resolved value
-was serialized into `RESUME[id]` (see `belte/ui/runtime/RESUME`). With an entry
-present, the resolved branch the stream already swapped into the DOM is adopted in
-place with the real value — no re-fetch, no flash. Without one (an await page not
-delivered via the stream), the SSR boundary is discarded and the promise re-runs.
+Hydration adopts in place, by precedence:
+  1. a streamed resume value (`RESUME[id]`, serialized into the stream) → adopt the
+     resolved branch the stream already swapped in, no re-fetch;
+  2. a warm-sync read (e.g. a warm `belte/shared/cache` entry seeded by the SSR
+     cache snapshot) → the promise resolves synchronously, so adopt the SSR branch
+     with that value — no flash, no fetch;
+  3. otherwise (a genuinely pending read with no resume value) → discard the SSR
+     boundary and run fresh.
 
 Cache-compatible by the warm-sync rule: `belte/shared/cache` returns a settled
 value synchronously for a warm key and a Promise otherwise. A non-thenable result
@@ -35,22 +38,41 @@ export function awaitBlock(
         const open = claimChild(hydration, parent)
         const entry = RESUME[id]
         if (entry !== undefined) {
-            /* Adopt the streamed resolved branch in place, binding the value. */
-            hydration.next.set(parent, open?.nextSibling ?? null)
-            if (entry.ok) {
-                renderThen(parent, entry.value)
-            } else {
-                renderCatch(parent, entry.error)
-            }
-            /* Cursor now sits on the close marker; step past it. */
-            const close = claimChild(hydration, parent)
-            hydration.next.set(parent, close?.nextSibling ?? null)
+            /* (1) streamed resume value → adopt the resolved branch in place. */
+            adoptResolved(hydration, parent, open, () =>
+                entry.ok ? renderThen(parent, entry.value) : renderCatch(parent, entry.error),
+            )
             return
         }
-        /* No resume value: drop the SSR boundary and fall through to a fresh run. */
+        const result = promiseThunk()
+        if (!isThenable(result)) {
+            /* (2) warm-sync read (warm cache) → adopt the SSR branch with the value. */
+            adoptResolved(hydration, parent, open, () => renderThen(parent, result))
+            return
+        }
+        /* (3) genuinely pending, no resume value → drop the SSR boundary, run fresh. */
         discardBoundary(parent, open, `/belte:await:${id}`, hydration)
+        mountAwait(parent, result, renderPending, renderThen, renderCatch)
+        return
     }
 
+    mountAwait(parent, promiseThunk(), renderPending, renderThen, renderCatch)
+}
+
+/* Whether a value is a Promise-like (the cold path); a non-thenable is warm-sync. */
+function isThenable(value: unknown): value is Promise<unknown> {
+    return value !== null && typeof (value as { then?: unknown })?.then === 'function'
+}
+
+/* Anchored pending→resolved swapping for a fresh (non-adopted) await. A non-thenable
+   `result` renders the resolved branch immediately (warm-sync, no pending flash). */
+function mountAwait(
+    parent: Node,
+    result: unknown,
+    renderPending: ((parent: Node) => Node) | undefined,
+    renderThen: (parent: Node, value: unknown) => Node,
+    renderCatch: (parent: Node, error: unknown) => Node,
+): void {
     const anchor = document.createTextNode('')
     parent.appendChild(anchor)
     let active: EachRow | undefined
@@ -72,16 +94,30 @@ export function awaitBlock(
         parent.insertBefore(active.node, anchor)
     }
 
-    const result = promiseThunk()
-    if (result === null || typeof (result as { then?: unknown })?.then !== 'function') {
+    if (!isThenable(result)) {
         swap(() => renderThen(parent, result)) // warm-sync value → resolved now, no pending flash
         return
     }
     swap(renderPending === undefined ? undefined : () => renderPending(parent))
-    ;(result as Promise<unknown>).then(
+    result.then(
         (value) => swap(() => renderThen(parent, value)),
         (error) => swap(() => renderCatch(parent, error)),
     )
+}
+
+/* Adopt an SSR-resolved branch sitting between the boundary markers: step the
+   hydration cursor past the open marker, build the branch (claiming the resolved
+   nodes in place), then step past the close marker. */
+function adoptResolved(
+    hydration: NonNullable<(typeof RENDER)['hydration']>,
+    parent: Node,
+    open: Node | null,
+    render: () => Node,
+): void {
+    hydration.next.set(parent, open?.nextSibling ?? null)
+    render()
+    const close = claimChild(hydration, parent)
+    hydration.next.set(parent, close?.nextSibling ?? null)
 }
 
 /* Remove the SSR boundary — open marker through close marker (inclusive) — and
