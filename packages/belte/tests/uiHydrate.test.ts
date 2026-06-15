@@ -8,6 +8,8 @@ import { appendText } from '../src/lib/ui/dom/appendText.ts'
 import { hydrate } from '../src/lib/ui/dom/hydrate.ts'
 import { on } from '../src/lib/ui/dom/on.ts'
 import { openChild } from '../src/lib/ui/dom/openChild.ts'
+import { openRoot } from '../src/lib/ui/dom/openRoot.ts'
+import { when } from '../src/lib/ui/dom/when.ts'
 import { effect } from '../src/lib/ui/effect.ts'
 import type { SsrRender } from '../src/lib/ui/runtime/types/SsrRender.ts'
 import { state } from '../src/lib/ui/state.ts'
@@ -67,5 +69,69 @@ describe('hydrate — adopt server DOM', () => {
         buttonBefore.dispatchEvent({ type: 'click' })
         expect(host.textContent).toBe('count: 1')
         expect(host.childNodes[0]).toBe(mainBefore) // still the same node after update
+    })
+
+    test('adopts an if/else branch in place, then toggles', () => {
+        // template-only component with an external doc, so the test can drive it
+        const model = doc({ on: true, label: 'hi' })
+        const source = `
+            <main>
+                <template if={model.on}>
+                    <span>{model.label}</span>
+                    <template else><b>off</b></template>
+                </template>
+            </main>
+        `
+        const runtime = {
+            doc,
+            state,
+            derived,
+            effect,
+            openChild,
+            openRoot,
+            appendText,
+            appendStatic,
+            on,
+            when,
+            model,
+        }
+        const names = Object.keys(runtime)
+        const values = names.map((n) => runtime[n as keyof typeof runtime])
+
+        // server render (if true → the span branch)
+        const server = new Function(
+            'doc',
+            'state',
+            'derived',
+            'effect',
+            'model',
+            compileSSR(source),
+        )(doc, state, derived, effect, model) as SsrRender
+        expect(server.html).toBe('<main><span>hi</span></main>')
+
+        // parse + hydrate
+        const host = document.createElement('div')
+        host.innerHTML = server.html
+        const spanBefore = (host.childNodes[0] as unknown as { childNodes: unknown[] })
+            .childNodes[0]
+        const body = compileComponent(source)
+        hydrate(host, (target) => {
+            new Function('host', ...names, body)(target, ...values)
+        })
+
+        // the branch node was adopted, not recreated
+        const span = (host.childNodes[0] as unknown as { childNodes: unknown[] }).childNodes[0]
+        expect(span).toBe(spanBefore)
+        expect(host.textContent).toBe('hi')
+
+        // reactive on the adopted node
+        model.replace('label', 'yo')
+        expect(host.textContent).toBe('yo')
+
+        // toggle to the else branch (built fresh, post-hydration), and back
+        model.replace('on', false)
+        expect(host.textContent).toBe('off')
+        model.replace('on', true)
+        expect(host.textContent).toBe('yo')
     })
 })

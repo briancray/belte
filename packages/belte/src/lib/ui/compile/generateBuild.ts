@@ -124,15 +124,17 @@ export function generateBuild(
                 (child): child is Extract<TemplateNode, { kind: 'case' }> => child.kind === 'case',
             )
             .map((branch) => {
+                const param = nextVar('p')
                 const root = singleElementRoot(
                     branch.children,
                     '<template case> must contain a single element',
+                    param,
                 )
                 const match =
                     branch.match === undefined
                         ? 'undefined'
                         : `() => (${lowerExpression(branch.match)})`
-                return `{ match: ${match}, render: () => {\n${root.code}return ${root.varName};\n} }`
+                return `{ match: ${match}, render: (${param}) => {\n${root.code}return ${root.varName};\n} }`
             })
             .join(', ')
         return `switchBlock(${parentVar}, () => (${lowerExpression(node.subject)}), [${cases}]);\n`
@@ -197,13 +199,14 @@ export function generateBuild(
         paramName: string | undefined,
         fallback?: string,
     ): string {
+        const parentParam = nextVar('p')
         const root = children.find((child) => child.kind === 'element')
         if (root === undefined || root.kind !== 'element') {
             return fallback === undefined ? 'undefined' : `() => document.createTextNode("")`
         }
-        const built = generateElement(root, `document.createElement(${JSON.stringify(root.tag)})`)
-        const param = fallback === undefined ? '' : (paramName ?? fallback)
-        return `(${param}) => {\n${built.code}return ${built.varName};\n}`
+        const built = generateElement(root, `openRoot(${parentParam}, ${JSON.stringify(root.tag)})`)
+        const value = fallback === undefined ? '' : `, ${paramName ?? fallback}`
+        return `(${parentParam}${value}) => {\n${built.code}return ${built.varName};\n}`
     }
 
     /* A conditional with an optional nested `<template else>` (a `case` child).
@@ -213,19 +216,23 @@ export function generateBuild(
             (child): child is Extract<TemplateNode, { kind: 'case' }> => child.kind === 'case',
         )
         const thenChildren = node.children.filter((child) => child.kind !== 'case')
+        const thenParam = nextVar('p')
         const thenRoot = singleElementRoot(
             thenChildren,
             '<template if> must contain a single element',
+            thenParam,
         )
-        const thenThunk = `() => {\n${thenRoot.code}return ${thenRoot.varName};\n}`
+        const thenThunk = `(${thenParam}) => {\n${thenRoot.code}return ${thenRoot.varName};\n}`
         if (elseBranch === undefined) {
             return `when(${parentVar}, () => (${lowerExpression(node.condition)}), ${thenThunk});\n`
         }
+        const elseParam = nextVar('p')
         const elseRoot = singleElementRoot(
             elseBranch.children,
             '<template else> must contain a single element',
+            elseParam,
         )
-        const elseThunk = `() => {\n${elseRoot.code}return ${elseRoot.varName};\n}`
+        const elseThunk = `(${elseParam}) => {\n${elseRoot.code}return ${elseRoot.varName};\n}`
         return `when(${parentVar}, () => (${lowerExpression(node.condition)}), ${thenThunk}, ${elseThunk});\n`
     }
 
@@ -234,30 +241,33 @@ export function generateBuild(
         node: Extract<TemplateNode, { kind: 'each' }>,
         parentVar: string,
     ): string {
+        const rowParam = nextVar('p')
         const row = singleElementRoot(
             node.children,
             '<template each> must contain a single element row',
+            rowParam,
         )
         const keyExpression = node.key === undefined ? node.as : lowerExpression(node.key)
         return (
             `each(${parentVar}, () => (${lowerExpression(node.items)}), ` +
-            `(${node.as}) => (${keyExpression}), (${node.as}) => {\n${row.code}return ${row.varName};\n});\n`
+            `(${node.as}) => (${keyExpression}), (${rowParam}, ${node.as}) => {\n${row.code}return ${row.varName};\n});\n`
         )
     }
 
     /* Builds the lone element child of a control-flow block (each/if return one
-       node), erroring if the block isn't a single element. */
+       node), erroring if the block isn't a single element. The root is opened
+       with `openRoot(parentVar, tag)` so it's detached on create and claimed on
+       hydrate — `parentVar` is the render thunk's parent parameter. */
     function singleElementRoot(
         children: TemplateNode[],
         message: string,
+        parentVar: string,
     ): { code: string; varName: string } {
         const root = children.find((child) => child.kind === 'element')
         if (root === undefined || root.kind !== 'element') {
             throw new Error(`[belte] ${message}`)
         }
-        /* A returned root (row/branch) is created directly — these live inside
-           control-flow blocks, which are create-mode only. */
-        return generateElement(root, `document.createElement(${JSON.stringify(root.tag)})`)
+        return generateElement(root, `openRoot(${parentVar}, ${JSON.stringify(root.tag)})`)
     }
 
     return nodes.map((node) => generateChild(node, hostVar)).join('')

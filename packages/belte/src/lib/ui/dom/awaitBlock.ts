@@ -17,9 +17,9 @@ the renderer flushes — this is the client half.)
 export function awaitBlock(
     parent: Node,
     promiseThunk: () => unknown,
-    renderPending: (() => Node) | undefined,
-    renderThen: (value: unknown) => Node,
-    renderCatch: (error: unknown) => Node,
+    renderPending: ((parent: Node) => Node) | undefined,
+    renderThen: (parent: Node, value: unknown) => Node,
+    renderCatch: (parent: Node, error: unknown) => Node,
 ): void {
     const anchor = document.createTextNode('')
     parent.appendChild(anchor)
@@ -44,12 +44,12 @@ export function awaitBlock(
 
     const result = promiseThunk()
     if (result === null || typeof (result as { then?: unknown })?.then !== 'function') {
-        swap(() => renderThen(result)) // warm-sync value → resolved now, no pending flash
+        swap(() => renderThen(parent, result)) // warm-sync value → resolved now, no pending flash
         return
     }
-    swap(renderPending)
+    swap(renderPending === undefined ? undefined : () => renderPending(parent))
     ;(result as Promise<unknown>).then(
-        (value) => swap(() => renderThen(value)),
-        (error) => swap(() => renderCatch(error)),
+        (value) => swap(() => renderThen(parent, value)),
+        (error) => swap(() => renderCatch(parent, error)),
     )
 }

@@ -8,6 +8,7 @@ import { attr } from '../src/lib/ui/dom/attr.ts'
 import { each } from '../src/lib/ui/dom/each.ts'
 import { on } from '../src/lib/ui/dom/on.ts'
 import { openChild } from '../src/lib/ui/dom/openChild.ts'
+import { openRoot } from '../src/lib/ui/dom/openRoot.ts'
 import { text } from '../src/lib/ui/dom/text.ts'
 import { when } from '../src/lib/ui/dom/when.ts'
 import { effect } from '../src/lib/ui/effect.ts'
@@ -26,6 +27,7 @@ function render(source: string): HTMLElement {
         'doc',
         'text',
         'openChild',
+        'openRoot',
         'appendText',
         'appendStatic',
         'attr',
@@ -34,7 +36,7 @@ function render(source: string): HTMLElement {
         'when',
         'effect',
         body,
-    )(host, doc, text, openChild, appendText, appendStatic, attr, on, each, when, effect)
+    )(host, doc, text, openChild, openRoot, appendText, appendStatic, attr, on, each, when, effect)
     return host
 }
 
@@ -91,6 +93,7 @@ describe('compileComponent — end to end', () => {
             'doc',
             'text',
             'openChild',
+            'openRoot',
             'appendText',
             'appendStatic',
             'attr',
@@ -100,7 +103,21 @@ describe('compileComponent — end to end', () => {
             'effect',
             'model',
             body,
-        )(host, doc, text, openChild, appendText, appendStatic, attr, on, each, when, effect, model)
+        )(
+            host,
+            doc,
+            text,
+            openChild,
+            openRoot,
+            appendText,
+            appendStatic,
+            attr,
+            on,
+            each,
+            when,
+            effect,
+            model,
+        )
         const div = host.childNodes[0] as unknown as { textContent: string }
         expect(div.textContent).toBe('hi')
         model.replace('label', 'yo') // field-reactive while shown
@@ -138,6 +155,7 @@ describe('compileComponent — end to end', () => {
             'doc',
             'text',
             'openChild',
+            'openRoot',
             'appendText',
             'appendStatic',
             'attr',
@@ -146,7 +164,20 @@ describe('compileComponent — end to end', () => {
             'effect',
             'model',
             body,
-        )(host, doc, text, openChild, appendText, appendStatic, attr, on, each, effect, model)
+        )(
+            host,
+            doc,
+            text,
+            openChild,
+            openRoot,
+            appendText,
+            appendStatic,
+            attr,
+            on,
+            each,
+            effect,
+            model,
+        )
         const list = host.childNodes[0] as unknown as { children: Element[] }
         expect(list.children.map((child) => child.textContent)).toEqual(['1', '2'])
         model.replace('byId/a/n', 9)

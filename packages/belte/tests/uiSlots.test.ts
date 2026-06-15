@@ -11,6 +11,7 @@ import { each } from '../src/lib/ui/dom/each.ts'
 import { mount } from '../src/lib/ui/dom/mount.ts'
 import { on } from '../src/lib/ui/dom/on.ts'
 import { openChild } from '../src/lib/ui/dom/openChild.ts'
+import { openRoot } from '../src/lib/ui/dom/openRoot.ts'
 import { switchBlock } from '../src/lib/ui/dom/switchBlock.ts'
 import { text } from '../src/lib/ui/dom/text.ts'
 import { when } from '../src/lib/ui/dom/when.ts'
@@ -29,6 +30,7 @@ const RUNTIME = {
     derived,
     effect,
     openChild,
+    openRoot,
     appendText,
     appendStatic,
     text,

@@ -1,3 +1,4 @@
+import { claimChild } from '../runtime/claimChild.ts'
 import { RENDER } from '../runtime/RENDER.ts'
 
 /*
@@ -10,12 +11,11 @@ lines up; nothing is bound since the text never changes.
 export function appendStatic(parent: Node, value: string): void {
     const hydration = RENDER.hydration
     if (hydration !== undefined) {
-        const index = hydration.index.get(parent) ?? 0
-        hydration.index.set(parent, index + 1)
-        const node = parent.childNodes[index] as unknown as Text
-        if (node !== undefined && value.length < node.data.length) {
+        const node = claimChild(hydration, parent) as unknown as Text
+        if (node !== null && value.length < node.data.length) {
             node.splitText(value.length)
         }
+        hydration.next.set(parent, node === null ? null : node.nextSibling)
         return
     }
     parent.appendChild(document.createTextNode(value))

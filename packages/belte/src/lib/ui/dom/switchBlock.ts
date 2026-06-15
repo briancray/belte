@@ -38,7 +38,7 @@ export function switchBlock(parent: Node, subject: () => unknown, cases: SwitchC
         }
         let node: Node | undefined
         const dispose = scope(() => {
-            node = chosen.render()
+            node = chosen.render(parent)
         })
         active = { node: node as Node, dispose }
         parent.insertBefore(active.node, anchor)

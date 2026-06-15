@@ -16,7 +16,7 @@ export function each<T>(
     parent: Node,
     items: () => T[],
     keyOf: (item: T) => string,
-    render: (item: T) => Node,
+    render: (parent: Node, item: T) => Node,
 ): void {
     const rows = new Map<string, EachRow>()
     effect(() => {
@@ -31,7 +31,7 @@ export function each<T>(
             if (row === undefined) {
                 let node: Node | undefined
                 const dispose = scope(() => {
-                    node = render(item)
+                    node = render(parent, item)
                 })
                 row = { node: node as Node, dispose }
                 rows.set(key, row)

@@ -82,7 +82,7 @@ describe('keyed each', () => {
                 list,
                 () => model.read<string[]>('order'),
                 (key) => key,
-                (key) => {
+                (_parent, key) => {
                     const li = document.createElement('li')
                     li.appendChild(text(() => model.read(`byId/${key}/n`)))
                     return li
@@ -115,7 +115,7 @@ describe('keyed each', () => {
                 list,
                 () => model.read<{ id: string }[]>('items'),
                 (item) => item.id,
-                (item) => {
+                (_parent, item) => {
                     const li = document.createElement('li')
                     li.setAttribute('data-id', item.id)
                     nodes[item.id] = li
