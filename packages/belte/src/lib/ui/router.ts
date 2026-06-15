@@ -30,10 +30,19 @@ export function router(host: Element, routes: Record<string, Route>): () => void
         document.addEventListener('click', onClick as EventListener)
     }
 
-    /* Re-mounts the matching page whenever the path changes. */
+    /* First render adopts the server-rendered DOM (when the matching page is
+       hydratable); navigation after that re-mounts fresh. */
+    let first = true
     const stop = effect(() => {
         const page = routes[runtimePath.value] ?? routes['*']
         disposePage?.()
+        if (first) {
+            first = false
+            if (page?.hydratable === true && page.hydrate !== undefined) {
+                disposePage = page.hydrate(host)
+                return
+            }
+        }
         host.innerHTML = ''
         disposePage = page === undefined ? undefined : (page(host) ?? undefined)
     })

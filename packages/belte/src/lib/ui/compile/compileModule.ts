@@ -17,7 +17,9 @@ what the `.belte` bundler loader emits.
 */
 export function compileModule(source: string): string {
     /* Component-authored imports (e.g. child components) hoisted to module scope. */
-    const userImports = analyzeComponent(source).imports
+    const analyzed = analyzeComponent(source)
+    const userImports = analyzed.imports
+    const body = indent(compileComponent(source))
     return `import { doc } from 'belte/ui/doc'
 import { state } from 'belte/ui/state'
 import { derived } from 'belte/ui/derived'
@@ -34,11 +36,19 @@ import { when } from 'belte/ui/dom/when'
 import { awaitBlock } from 'belte/ui/dom/awaitBlock'
 import { switchBlock } from 'belte/ui/dom/switchBlock'
 import { injectStyle } from 'belte/ui/dom/injectStyle'
+import { hydrate } from 'belte/ui/dom/hydrate'
 ${userImports}
 
 export default function component(host, $props) {
     return mount(host, (host) => {
-${indent(compileComponent(source))}
+${body}
+    })
+}
+
+/* Adopt the server-rendered DOM in place instead of rebuilding it. */
+export function hydrateInto(host, $props) {
+    return hydrate(host, (host) => {
+${body}
     })
 }
 
@@ -47,6 +57,8 @@ ${indent(compileSSR(source))}
 }
 
 component.render = render
+component.hydrate = hydrateInto
+component.hydratable = ${analyzed.hydratable}
 `
 }
 

@@ -18,6 +18,7 @@ const clientJs = await buildClient()
 assert(clientJs.includes('mount('), 'client bundle wires the mount runtime')
 assert(clientJs.includes('.cell('), 'client bundle uses hoisted cells')
 assert(clientJs.includes('popstate'), 'client bundle includes the router')
+assert(clientJs.includes('hydratable'), 'client bundle wires hydration (router adopts SSR on load)')
 
 /* 2) the server (real SSR build) serves every route over HTTP */
 const server = await serve(0)

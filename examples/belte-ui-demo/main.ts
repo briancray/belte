@@ -4,11 +4,11 @@ import Data from './Data.belte'
 import Form from './Form.belte'
 import Home from './Home.belte'
 
-/* Client entry: take over the server-rendered shell and drive SPA routing.
-   (No DOM-adoption yet, so clear the SSR markup and mount fresh — identical
-   output, just live handlers + client navigation.) */
+/* Client entry: the router adopts the server-rendered #app in place (hydration)
+   for the initial route, then drives SPA navigation — no clearing, no re-render
+   on load. (The `/data` route uses `await`, which isn't adoptable yet, so the
+   router mounts it fresh.) */
 const app = document.getElementById('app')
 if (app !== null) {
-    app.innerHTML = ''
     router(app, { '/': Home, '/about': About, '/form': Form, '/data': Data })
 }

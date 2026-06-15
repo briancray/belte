@@ -3,6 +3,7 @@ import { lowerDocAccess } from './lowerDocAccess.ts'
 import { parseTemplate } from './parseTemplate.ts'
 import { scopeCss } from './scopeCss.ts'
 import type { AnalyzedComponent } from './types/AnalyzedComponent.ts'
+import type { TemplateNode } from './types/TemplateNode.ts'
 
 /*
 The shared compile front-end: splits `<script>` and `<style>` (and the optional
@@ -43,14 +44,25 @@ export function analyzeComponent(source: string): AnalyzedComponent {
                   const attribute = `data-b-${hashString(styleBody)}`
                   return { attribute, css: scopeCss(styleBody, attribute) }
               })()
+    const nodes = parseTemplate(template)
     return {
         script,
         imports: imports.join('\n'),
         stateNames,
         derivedNames,
-        nodes: parseTemplate(template),
+        nodes,
         style,
+        /* Hydration adopts every block except `await` (it needs the resolved value
+           serialized). A component is hydratable if its template has no await. */
+        hydratable: !hasAwait(nodes),
     }
+}
+
+/* Whether any node in the tree is an `await` block. */
+function hasAwait(nodes: TemplateNode[]): boolean {
+    return nodes.some(
+        (node) => node.kind === 'await' || ('children' in node && hasAwait(node.children)),
+    )
 }
 
 /* Small stable hash (djb2 → base36) for a per-component scope attribute. */

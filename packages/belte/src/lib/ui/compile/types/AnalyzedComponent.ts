@@ -17,4 +17,7 @@ export type AnalyzedComponent = {
     /* Present when the component has a `<style>`: the scope attribute every
        element carries and the scoped CSS to inject. */
     style: { attribute: string; css: string } | undefined
+    /* False when the template contains an `await` block (not adoptable yet) — the
+       router mounts (re-renders) rather than hydrates such a page. */
+    hydratable: boolean
 }
