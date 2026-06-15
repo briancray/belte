@@ -103,8 +103,8 @@ describe('health endpoint', () => {
     test('a page that reads health() during SSR ships the seed in __SSR__', async () => {
         const { origin, stop } = await bootTestServer({
             pages: {
-                '/health-page': () => import('./support/fixtures/pages/health.svelte'),
-                '/plain': () => import('./support/fixtures/pages/home.svelte'),
+                '/health-page': () => import('./support/fixtures/pages/health.belte'),
+                '/plain': () => import('./support/fixtures/pages/home.belte'),
             },
             app: { health: () => ({ authenticated: true }) },
         })

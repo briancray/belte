@@ -1,6 +1,4 @@
 import type { Server } from 'bun'
-import type { Errors } from '../../src/lib/browser/types/Errors.ts'
-import type { Layouts } from '../../src/lib/browser/types/Layouts.ts'
 import type { Pages } from '../../src/lib/browser/types/Pages.ts'
 import type { McpServer } from '../../src/lib/mcp/types/McpServer.ts'
 import type { AppModule } from '../../src/lib/server/AppModule.ts'
@@ -31,8 +29,6 @@ wiring into other test files in the same process.
 */
 export async function bootTestServer(manifests: {
     pages?: Pages
-    layouts?: Layouts
-    errors?: Errors
     rpc?: RemoteRoutes
     sockets?: SocketRoutes
     app?: AppModule
@@ -60,8 +56,6 @@ export async function bootTestServer(manifests: {
         rpc: manifests.rpc ?? {},
         sockets: manifests.sockets ?? {},
         prompts: {},
-        layouts: manifests.layouts,
-        errors: manifests.errors,
         shell: manifests.shell ?? TEST_SHELL,
         app: manifests.app,
         mcp: manifests.mcp,

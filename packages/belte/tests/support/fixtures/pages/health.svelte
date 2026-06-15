@@ -1,8 +1,0 @@
-<script lang="ts">
-import { health } from '../../../../src/lib/shared/health.ts'
-
-/* A server-side health() read — marks the request so the renderer stamps the seed. */
-const state = health()
-</script>
-
-<p>reachable: {state.reachable}</p>

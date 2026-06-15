@@ -133,8 +133,8 @@ describe('compileComponent — end to end', () => {
             <script>const model = doc({ count: 0 })</script>
             <p>{model.count}</p>
         `)
-        expect(module).toContain("import { mount } from 'belte/ui/dom/mount'")
-        expect(module).toContain("import { doc } from 'belte/ui/doc'")
+        expect(module).toContain("import { mount } from '@belte/belte/ui/dom/mount'")
+        expect(module).toContain("import { doc } from '@belte/belte/ui/doc'")
         expect(module).toContain('export default function component(host, $props)')
         expect(module).toContain('mount(host, (host) =>')
         expect(module).toContain('model.cell("count")')

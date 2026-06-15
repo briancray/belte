@@ -1,3 +1,4 @@
+import { BELTE_PACKAGE_NAME } from '../../shared/BELTE_PACKAGE_NAME.ts'
 import { analyzeComponent } from './analyzeComponent.ts'
 import { compileComponent } from './compileComponent.ts'
 import { compileSSR } from './compileSSR.ts'
@@ -20,23 +21,24 @@ export function compileModule(source: string): string {
     const analyzed = analyzeComponent(source)
     const userImports = analyzed.imports
     const body = indent(compileComponent(source))
-    return `import { doc } from 'belte/ui/doc'
-import { state } from 'belte/ui/state'
-import { derived } from 'belte/ui/derived'
-import { effect } from 'belte/ui/effect'
-import { mount } from 'belte/ui/dom/mount'
-import { openChild } from 'belte/ui/dom/openChild'
-import { openRoot } from 'belte/ui/dom/openRoot'
-import { appendText } from 'belte/ui/dom/appendText'
-import { appendStatic } from 'belte/ui/dom/appendStatic'
-import { attr } from 'belte/ui/dom/attr'
-import { on } from 'belte/ui/dom/on'
-import { each } from 'belte/ui/dom/each'
-import { when } from 'belte/ui/dom/when'
-import { awaitBlock } from 'belte/ui/dom/awaitBlock'
-import { switchBlock } from 'belte/ui/dom/switchBlock'
-import { injectStyle } from 'belte/ui/dom/injectStyle'
-import { hydrate } from 'belte/ui/dom/hydrate'
+    const ui = `${BELTE_PACKAGE_NAME}/ui`
+    return `import { doc } from '${ui}/doc'
+import { state } from '${ui}/state'
+import { derived } from '${ui}/derived'
+import { effect } from '${ui}/effect'
+import { mount } from '${ui}/dom/mount'
+import { openChild } from '${ui}/dom/openChild'
+import { openRoot } from '${ui}/dom/openRoot'
+import { appendText } from '${ui}/dom/appendText'
+import { appendStatic } from '${ui}/dom/appendStatic'
+import { attr } from '${ui}/dom/attr'
+import { on } from '${ui}/dom/on'
+import { each } from '${ui}/dom/each'
+import { when } from '${ui}/dom/when'
+import { awaitBlock } from '${ui}/dom/awaitBlock'
+import { switchBlock } from '${ui}/dom/switchBlock'
+import { injectStyle } from '${ui}/dom/injectStyle'
+import { hydrate } from '${ui}/dom/hydrate'
 ${userImports}
 
 export default function component(host, $props) {
