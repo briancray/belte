@@ -1,6 +1,6 @@
 {
     "name": "@belte/inspector",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "type": "module",
     "description": "Opt-in inspector for belte — a live view of your app's machine surface and request traffic, activated by BELTE_ENABLE_INSPECTOR=true",
     "license": "MIT",
