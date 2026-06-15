@@ -1,5 +1,11 @@
 # @belte/belte
 
+## 0.30.1
+
+### Patch Changes
+
+- [`ce3d836`](https://github.com/briancray/belte/commit/ce3d836b50743823e4a6b8eab24c8dcc77ee1c63) - accept required-arg producers as cache selectors ([`d983355`](https://github.com/briancray/belte/commit/d983355b3ed22f086edcc5f80ff53eb909250e30))
+
 ## 0.30.0
 
 ### Minor Changes
