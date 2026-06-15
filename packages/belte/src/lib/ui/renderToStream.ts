@@ -4,8 +4,8 @@ import type { SsrAwait, SsrRender } from './runtime/types/SsrRender.ts'
 Out-of-order SSR streaming. Yields the pending shell first (so the browser paints
 immediately), then one resolved fragment per await block as its promise settles —
 in completion order, not source order, so a slow read never blocks a fast one.
-Each resolved fragment is a `<template data-belte-resolve="ID">…</template>` that
-the client swaps into the matching `<!--belte:await:ID-->` boundary.
+Each resolved fragment is a `<belte-resolve data-id="ID">…</belte-resolve>` that
+`applyResolved` swaps into the matching `<!--belte:await:ID-->` boundary.
 
 This is the await-block-streams half of the cache rule: a top-level `await` in the
 script would have blocked the shell (inlined), but an await *block* flushes its
@@ -23,7 +23,7 @@ export async function* renderToStream(render: () => SsrRender): AsyncGenerator<s
     while (inflight.size > 0) {
         const resolved = await Promise.race(inflight.values())
         inflight.delete(resolved.id)
-        yield `<template data-belte-resolve="${resolved.id}">${resolved.html}</template>`
+        yield `<belte-resolve data-id="${resolved.id}">${resolved.html}</belte-resolve>`
     }
 }
 

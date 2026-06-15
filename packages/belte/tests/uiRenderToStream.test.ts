@@ -54,8 +54,8 @@ describe('renderToStream — out-of-order SSR streaming', () => {
                 '</div>',
         )
         // 2) resolved fragments out of order: fast (id 1) before slow (id 0)
-        expect(chunks[1]).toBe('<template data-belte-resolve="1"><b>FAST</b></template>')
-        expect(chunks[2]).toBe('<template data-belte-resolve="0"><span>SLOW</span></template>')
+        expect(chunks[1]).toBe('<belte-resolve data-id="1"><b>FAST</b></belte-resolve>')
+        expect(chunks[2]).toBe('<belte-resolve data-id="0"><span>SLOW</span></belte-resolve>')
         expect(chunks).toHaveLength(3)
     })
 
@@ -69,7 +69,7 @@ describe('renderToStream — out-of-order SSR streaming', () => {
             </template>
         `)
         expect(chunks[0]).toContain('<!--belte:await:0--><p>loading</p><!--/belte:await:0-->')
-        expect(chunks[1]).toBe('<template data-belte-resolve="0"><i>nope</i></template>')
+        expect(chunks[1]).toBe('<belte-resolve data-id="0"><i>nope</i></belte-resolve>')
     })
 
     test('a fully synchronous component streams just the shell', async () => {

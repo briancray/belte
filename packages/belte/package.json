@@ -82,6 +82,7 @@
         "./ui/dom/when": "./src/lib/ui/dom/when.ts",
         "./ui/dom/awaitBlock": "./src/lib/ui/dom/awaitBlock.ts",
         "./ui/dom/switchBlock": "./src/lib/ui/dom/switchBlock.ts",
+        "./ui/dom/applyResolved": "./src/lib/ui/dom/applyResolved.ts",
         "./ui/renderToStream": "./src/lib/ui/renderToStream.ts",
         "./ui-plugin": "./src/lib/ui/compile/belteUiPlugin.ts",
         "./mcp/createMcpServer": "./src/lib/mcp/createMcpServer.ts",
