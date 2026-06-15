@@ -112,6 +112,8 @@ export function createPageRenderer({
                             route: pathname,
                             params: errorParams,
                             url: pageUrlFromStore(store),
+                            // No client transition server-side; always settled.
+                            navigating: false,
                         },
                         render: { Layout, Page: ErrorView },
                     },
@@ -183,6 +185,8 @@ export function createPageRenderer({
                             route: routeUrl,
                             params,
                             url: pageUrlFromStore(store),
+                            // No client transition server-side; always settled.
+                            navigating: false,
                         },
                         render: { Layout, Page },
                     },
