@@ -1,5 +1,11 @@
 # @belte/belte
 
+## 0.30.0
+
+### Minor Changes
+
+- [`4fddbe1`](https://github.com/briancray/belte/commit/4fddbe17fc289ef91f94851e29422f8aa8f91db4) - label producer trace spans and inspector by function name ([`2524240`](https://github.com/briancray/belte/commit/2524240272599bf564e1e62896f4394feeed7576))
+
 ## 0.29.1
 
 ### Patch Changes
