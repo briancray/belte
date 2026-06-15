@@ -8,8 +8,8 @@
 </script>
 
 <main>
-  <h1>belte-ui demo</h1>
-  <p>A single-file <code>.belte</code> component: signals, events, derived, keyed each — rendered on the server and made interactive on the client.</p>
+  <h1>belte-ui demo — home</h1>
+  <nav><a href="/about">about →</a></nav>
 
   <button onclick={inc}>count: {count}</button>
   <button onclick={add}>add item (have {total})</button>

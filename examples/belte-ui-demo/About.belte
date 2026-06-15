@@ -1,0 +1,9 @@
+<script>
+  let framework = state('belte-ui')
+</script>
+
+<main>
+  <h1>about</h1>
+  <p>This page is server-rendered, then navigated client-side by the {framework} router — no full reload.</p>
+  <nav><a href="/">← home</a></nav>
+</main>

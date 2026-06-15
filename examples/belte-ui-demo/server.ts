@@ -5,24 +5,26 @@ import { compileSSR } from '../../packages/belte/src/lib/ui/compile/compileSSR.t
 import { derived } from '../../packages/belte/src/lib/ui/derived.ts'
 import { doc } from '../../packages/belte/src/lib/ui/doc.ts'
 import { effect } from '../../packages/belte/src/lib/ui/effect.ts'
-import { state } from '../../packages/belte/src/lib/ui/state.ts'
 import type { SsrRender } from '../../packages/belte/src/lib/ui/runtime/types/SsrRender.ts'
+import { state } from '../../packages/belte/src/lib/ui/state.ts'
 
 /*
-A real running belte-ui app, end to end through the actual pipeline:
+A real multi-page belte-ui app, end to end through the actual pipeline:
 
   - the CLIENT bundle is built by `Bun.build` + `belteUiPlugin` (the real `.belte`
-    loader), with a resolver that maps the emitted `belte/ui/*` imports to source;
-  - the page is SERVER-rendered via `compileSSR` and served over HTTP by `Bun.serve`.
+    loader) — one bundle with both pages + the router — with a resolver mapping the
+    emitted `belte/ui/*` imports to source;
+  - each route is SERVER-rendered via `compileSSR` and served by `Bun.serve`; the
+    client router then takes over for in-place navigation.
 
 In a published app these would be `belte build` / `belte start`; here the example
-lives beside the in-development framework, so it wires the pieces directly. The
-SSR HTML paints first; the client bundle then mounts for interactivity.
+sits beside the in-development framework, so it wires the pieces directly.
 */
 
 const UI_SRC = resolve(import.meta.dir, '../../packages/belte/src/lib/ui')
+const PAGES: Record<string, string> = { '/': 'Home.belte', '/about': 'About.belte' }
 
-/* Maps the `belte/ui/*` specifiers the compiled component emits to the framework
+/* Maps the `belte/ui/*` specifiers compiled components emit to the framework
    source (in a published package these resolve through `@belte/belte`'s exports). */
 const belteUiResolver: BunPlugin = {
     name: 'belte-ui-resolve',
@@ -33,7 +35,7 @@ const belteUiResolver: BunPlugin = {
     },
 }
 
-/* Builds the browser bundle for the page's client entry. */
+/* Builds the one browser bundle (both pages + router) for the client. */
 export async function buildClient(): Promise<string> {
     const built = await Bun.build({
         entrypoints: [resolve(import.meta.dir, 'main.ts')],
@@ -46,16 +48,15 @@ export async function buildClient(): Promise<string> {
     return built.outputs[0].text()
 }
 
-/* Server-renders the component to HTML via the SSR back-end. */
-export async function renderShell(): Promise<string> {
-    const source = await Bun.file(resolve(import.meta.dir, 'Counter.belte')).text()
+/* Server-renders the page for `path` via the SSR back-end. */
+export async function renderShell(path = '/'): Promise<string> {
+    const source = await Bun.file(resolve(import.meta.dir, PAGES[path] ?? PAGES['/'])).text()
     const render = new Function('doc', 'state', 'derived', 'effect', compileSSR(source)) as (
         ...runtime: unknown[]
     ) => SsrRender
     return render(doc, state, derived, effect).html
 }
 
-/* Assembles the full HTML document: SSR shell + inlined client bundle. */
 function page(shell: string, clientJs: string): string {
     return `<!doctype html>
 <html lang="en">
@@ -64,16 +65,19 @@ function page(shell: string, clientJs: string): string {
 </html>`
 }
 
-/* Starts the HTTP server. `port: 0` picks a free port (used by the verifier). */
+/* Starts the HTTP server: one client bundle, SSR per route. */
 export async function serve(port = 3737) {
-    const [clientJs, shell] = await Promise.all([buildClient(), renderShell()])
-    const html = page(shell, clientJs)
+    const clientJs = await buildClient()
     return Bun.serve({
         port,
-        fetch(request) {
-            return new URL(request.url).pathname === '/'
-                ? new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
-                : new Response('not found', { status: 404 })
+        async fetch(request) {
+            const path = new URL(request.url).pathname
+            if (!(path in PAGES)) {
+                return new Response('not found', { status: 404 })
+            }
+            return new Response(page(await renderShell(path), clientJs), {
+                headers: { 'content-type': 'text/html; charset=utf-8' },
+            })
         },
     })
 }

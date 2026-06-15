@@ -1,10 +1,12 @@
-import Counter from './Counter.belte'
+import { router } from 'belte/ui/router'
+import About from './About.belte'
+import Home from './Home.belte'
 
-/* Client entry: take over the server-rendered shell and mount for interactivity.
-   (No DOM-adoption yet, so clear the SSR markup and mount fresh — the rendered
-   output is identical, so there's no visible change, just live event handlers.) */
+/* Client entry: take over the server-rendered shell and drive SPA routing.
+   (No DOM-adoption yet, so clear the SSR markup and mount fresh — identical
+   output, just live handlers + client navigation.) */
 const app = document.getElementById('app')
 if (app !== null) {
     app.innerHTML = ''
-    Counter(app)
+    router(app, { '/': Home, '/about': About })
 }
