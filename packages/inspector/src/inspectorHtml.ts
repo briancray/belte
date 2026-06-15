@@ -33,7 +33,7 @@ export function inspectorHtml(appName: string): string {
   .panel { display: none; height: 100%; overflow: auto; }
   .panel.active { display: block; }
 
-  .filters { position: sticky; top: 0; z-index: 1; display: flex; gap: 8px; align-items: center; padding: 8px 16px; background: #0c0d10; border-bottom: 1px solid #1d2026; }
+  .filters { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: center; padding: 8px 16px; background: #0c0d10; border-bottom: 1px solid #1d2026; }
   .filters select, .filters input { background: #14161b; border: 1px solid #1d2026; color: #d7dae0; border-radius: 4px; padding: 4px 8px; font: inherit; }
   .filters input { flex: 1; min-width: 60px; }
   .filters .pill { color: #6b7280; font-size: 11px; }
@@ -58,20 +58,37 @@ export function inspectorHtml(appName: string): string {
   .cache { color: #56b6c2; font-size: 11px; }
   .lvl-error .body { color: #d96a6a; } .lvl-warn .body { color: #d9a441; }
 
-  .twrap { padding: 8px 16px; border-bottom: 1px solid #1d2026; }
-  .thead { display: flex; gap: 12px; align-items: baseline; cursor: pointer; }
-  .thead:hover { color: #fff; }
-  .tid { flex: none; width: 72px; color: #5b8def; }
+  /* Each trace opens with a full-bleed banded header (accent top border) so a new
+     trace is unmistakable when scrolling past a long multi-request one. */
+  .twrap { padding: 0 16px 12px; }
+  /* Sticky under the axis toolbar (top ≈ its height) so the current trace's header
+     stays visible while scrolling its requests; toolbar z-index sits above it. */
+  .thead { position: sticky; top: 46px; z-index: 1; display: flex; gap: 10px; align-items: baseline; cursor: pointer; background: #14161b; margin: 0 -16px 8px; padding: 8px 16px; border-top: 2px solid #34507e; }
+  .thead:hover { background: #181c24; color: #fff; }
+  /* Click a header to collapse its trace (open by default); the caret rotates to show state. */
+  .tcaret { flex: none; width: 12px; color: #6b7280; transition: transform 0.12s; }
+  .twrap.collapsed .tcaret { transform: rotate(-90deg); }
+  .twrap.collapsed .thead { margin-bottom: 0; }
+  .twrap.collapsed > :not(.thead) { display: none; }
+  .tid { flex: none; width: 72px; color: #6f9bf2; font-weight: 700; }
   .tpath { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .span { display: grid; grid-template-columns: 220px 1fr; gap: 10px; align-items: center; margin-top: 4px; }
+  /* Row highlight on hover so a thin bar stays trackable across the empty track. */
+  .span:hover { background: #15181e; }
+  .span:hover .track { background: #0e0f13; }
   .slabel { display: flex; gap: 6px; align-items: baseline; overflow: hidden; font-size: 12px; }
   .sname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #9aa0aa; }
-  .sdur { flex: none; margin-left: auto; color: #6b7280; }
+  /* Duration riding the bar: trailing the right edge, or right-tucked inside (.in) for near-full bars. */
+  .bdur { position: absolute; top: 0; line-height: 14px; font-size: 11px; white-space: nowrap; padding-left: 4px; color: #9aa0aa; pointer-events: none; }
+  .bdur.in { padding-left: 0; padding-right: 4px; color: #c5cad3; }
+  /* Narrow bar at the right edge: dim label trailing to the left, off the bar. */
+  .bdur.left { padding-left: 0; padding-right: 4px; }
   .track { position: relative; height: 14px; background: #07080a; border-radius: 3px; }
   .bar { position: absolute; top: 0; height: 100%; background: #3b5da8; border-radius: 3px; min-width: 2px; }
   .bar.req { background: #2d3b57; }
-  .qhead { display: flex; gap: 10px; align-items: baseline; margin-top: 8px; }
-  .qpath { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d7dae0; }
+  /* The request header row: extra top gap separates requests; its path flexes + brightens. */
+  .span.qrow { margin-top: 12px; }
+  .qname { flex: 1; min-width: 0; color: #d7dae0; }
 
   h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; margin: 16px 16px 8px; }
   table.surface { width: calc(100% - 32px); margin: 0 16px 16px; border-collapse: collapse; }
@@ -115,7 +132,12 @@ export function inspectorHtml(appName: string): string {
     </div>
     <div id="feed"><div class="empty">waiting for activity…</div></div>
   </section>
-  <section class="panel" data-tab="traces"><div id="traces"><div class="empty">no traces yet…</div></div></section>
+  <section class="panel" data-tab="traces">
+    <div class="filters">
+      <button id="traceAxis" title="normalized: each request fills its lane; clock: real wall-clock waterfall across the trace">axis: normalized</button>
+    </div>
+    <div id="traces"><div class="empty">no traces yet…</div></div>
+  </section>
   <section class="panel" data-tab="cache"><div id="cache" class="empty">loading cache…</div></section>
   <section class="panel" data-tab="surface"><div id="surface" class="empty">loading surface…</div></section>
 </main>
@@ -130,6 +152,11 @@ const ROW_CAP = 800
 const records = []
 const filters = { channel: '', trace: '', text: '' }
 let activeTab = 'logs'
+// 'normalized' = each request fills its own lane (relative shape); 'clock' = all
+// requests laid on one shared wall-clock axis (real gaps + overlap across the trace).
+let traceAxis = 'normalized'
+// Trace ids the user collapsed — persisted across re-renders so a new record doesn't reopen them.
+const collapsedTraces = new Set()
 
 const feedEl = document.getElementById('feed')
 const tracesEl = document.getElementById('traces')
@@ -166,7 +193,13 @@ function rowEl(r) {
     block = true
     const tag = r.channel ? '<span class="channel">[' + esc(r.channel) + ']</span> ' : ''
     const extra = r.data !== undefined ? ' ' + JSON.stringify(r.data) : ''
-    body = '<pre class="msg">' + tag + esc(stripAnsi(r.msg || '') + extra) + '</pre>'
+    // Span records (log.trace) carry the operation in name with an empty msg;
+    // show name + its own duration (an error span keeps msg), mirroring the console formatter.
+    const span = r.name !== undefined && r.durationMs !== undefined
+    const label = span
+      ? r.name + ' ' + r.durationMs.toFixed(2) + 'ms' + (r.level === 'error' && r.msg ? ' ' + r.msg : '')
+      : (r.msg || '')
+    body = '<pre class="msg">' + tag + esc(stripAnsi(label) + extra) + '</pre>'
   }
   const cache = r.cache && (r.cache.hits + r.cache.misses + r.cache.coalesced) > 0
     ? '<span class="cache" title="cache hits/misses/coalesced">⚡ ' + r.cache.hits + '/' + r.cache.misses + '/' + r.cache.coalesced + '</span>'
@@ -221,13 +254,33 @@ function renderTraces() {
 }
 const last = (a) => a[a.length - 1]
 
-// One bar on a request's own 0..total axis. Name truncates; duration is its own
-// column so it's never ellipsis'd off the end.
-function spanBar(start, dur, total, cls, name) {
+// The track + positioned bar at start/scale, width dur/scale (caller picks the axis:
+// the request's own total, or the trace's shared wall-clock window). The duration
+// label sits where it reads cleanly: trailing the bar's right edge when there's room,
+// tucked inside a wide bar that ends near full, else trailing left of a narrow edge bar
+// (never sitting on a thin bar, which read as a highlighted pill).
+function barTrack(start, dur, scale, cls) {
+  const left = (start / scale) * 100
+  const width = Math.max((dur / scale) * 100, 0.4)
+  const end = left + width
+  const label = dur.toFixed(1) + 'ms'
+  const LABEL_W = 5 // approx label width as % of track — room needed to trail without clipping
+  const durEl =
+    end + LABEL_W <= 100
+      ? '<span class="bdur" style="left:' + end + '%">' + label + '</span>'
+      : width >= 14
+        ? '<span class="bdur in" style="right:' + (100 - end) + '%">' + label + '</span>'
+        : '<span class="bdur left" style="right:' + (100 - left) + '%">' + label + '</span>'
+  return (
+    '<div class="track"><div class="bar ' + cls + '" style="left:' + left +
+    '%;width:' + width + '%"></div>' + durEl + '</div>'
+  )
+}
+
+// One span row: a truncating name, then the bar (the bar carries its duration).
+function spanBar(start, dur, scale, cls, name) {
   return '<div class="span"><span class="slabel"><span class="sname">' + esc(name) +
-    '</span><span class="sdur">' + dur.toFixed(1) + 'ms</span></span>' +
-    '<div class="track"><div class="bar ' + cls + '" style="left:' + (start / total * 100) +
-    '%;width:' + Math.max(dur / total * 100, 0.4) + '%"></div></div></div>'
+    '</span></span>' + barTrack(start, dur, scale, cls) + '</div>'
 }
 
 // Reduce the records sharing a request span into one request: its root timing
@@ -240,6 +293,14 @@ function buildRequest(span, recs) {
     .filter((r) => r.name && r.durationMs !== undefined)
     .map((r) => ({ name: r.name, start: (r.elapsedMs ?? r.durationMs) - r.durationMs, dur: r.durationMs }))
     .sort((a, b) => a.start - b.start)
+  // Wall-clock start (ms epoch): a record's emission ts minus its time-since-
+  // request-start (the closing record's total, or any record's request-relative
+  // elapsed). ts is the only clock shared across requests, so it anchors the
+  // clock-axis waterfall; intra-request precision still comes from elapsedMs.
+  const anchor = closing || recs.find((r) => r.elapsedMs !== undefined) || recs[0]
+  const absStart = anchor
+    ? anchor.ts - (closing ? closing.durationMs : anchor.elapsedMs || 0)
+    : 0
   return {
     span,
     parent: recs[0] && recs[0].parentSpan,
@@ -248,6 +309,7 @@ function buildRequest(span, recs) {
     path: (closing && closing.path) || (recs[0] && recs[0].path),
     status: closing ? closing.status : undefined,
     total,
+    absStart,
     spans,
   }
 }
@@ -270,31 +332,60 @@ function traceHtml(id, recs) {
   const childrenOf = (span) => requests.filter((q) =>
     q !== root && (known.has(q.parent) ? q.parent === span : span === root.span))
   const totalSpans = requests.reduce((n, q) => n + q.spans.length, 0)
+  // Shared wall-clock window for the clock axis: earliest request start to latest end.
+  const tStart = Math.min(...requests.map((q) => q.absStart))
+  const tWindow = Math.max(...requests.map((q) => q.absStart + q.total)) - tStart || 1
   const head =
     '<div class="thead">' +
+    '<span class="tcaret">▾</span>' +
     '<span class="tid">' + esc(id.slice(0, 8)) + '</span>' +
-    '<span class="tpath">trace · ' + requests.length + ' request' + (requests.length === 1 ? '' : 's') + '</span>' +
+    '<span class="tpath">trace · ' + requests.length + ' request' + (requests.length === 1 ? '' : 's') +
+      (traceAxis === 'clock' ? ' · ' + tWindow.toFixed(0) + 'ms wall' : '') + '</span>' +
     '<span class="channel">' + totalSpans + ' spans</span>' +
     '</div>'
-  return '<div class="twrap">' + head + requestHtml(root, childrenOf, 0) + '</div>'
+  const collapsed = collapsedTraces.has(id) ? ' collapsed' : ''
+  return '<div class="twrap' + collapsed + '" data-trace="' + esc(id) + '">' +
+    head + requestHtml(root, childrenOf, 0, tStart, tWindow) + '</div>'
 }
 
-// One request lane (its own axis) + operation spans, then its child requests indented.
-function requestHtml(q, childrenOf, depth) {
+// One request lane + operation spans, then its child requests indented. On the
+// normalized axis each request fills its own track (base 0, scaled to its total);
+// on the clock axis bars sit on the shared trace window at their wall-clock offset.
+function requestHtml(q, childrenOf, depth, tStart, tWindow) {
   if (!q || depth > 8) return ''
+  const clock = traceAxis === 'clock'
+  const base = clock ? q.absStart - tStart : 0
+  const scale = clock ? tWindow : q.total
   const pad = 'style="padding-left:' + depth * 16 + 'px"'
+  // The request header IS its own bar row: method/path/status in the label column,
+  // the request track on the right — no separate "request" line restating the header.
+  const status = q.status !== undefined
+    ? '<span class="status s' + String(q.status)[0] + '">' + q.status + '</span>'
+    : '<span class="ms">…</span>'
   const header =
-    '<div class="qhead" ' + pad + '>' +
+    '<div class="span qrow" ' + pad + '>' +
+    '<span class="slabel">' +
     '<span class="method ' + esc(q.method || '') + '">' + esc(q.method || '') + '</span>' +
-    '<span class="qpath">' + esc(q.path || q.span.slice(0, 8)) + '</span>' +
-    (q.status !== undefined ? '<span class="status s' + String(q.status)[0] + '">' + q.status + '</span>' : '<span class="ms">…</span>') +
-    '<span class="ms">' + q.total.toFixed(1) + 'ms</span>' +
+    '<span class="sname qname">' + esc(q.path || q.span.slice(0, 8)) + '</span>' +
+    status +
+    '</span>' +
+    barTrack(base, q.total, scale, 'req') +
     '</div>'
+  // Spans restate the request's own verb+path; strip that noise. The handler reads
+  // 'handle'; import/parse/validate drop the redundant path to just the op. A nested
+  // in-process call (a different url) keeps its full name — there it's new info.
+  const reqPath = (q.path || '').split('?')[0]
+  const handlerName = 'rpc ' + (q.method || '') + ' ' + reqPath
+  const shortName = (name) =>
+    name === handlerName
+      ? 'handle'
+      : reqPath && name.endsWith(' ' + reqPath)
+        ? name.slice(0, -(reqPath.length + 1))
+        : name
   const bars = '<div ' + pad + '>' +
-    spanBar(0, q.total, q.total, 'req', 'request') +
-    q.spans.map((s) => spanBar(s.start, s.dur, q.total, '', s.name)).join('') +
+    q.spans.map((s) => spanBar(base + s.start, s.dur, scale, '', shortName(s.name))).join('') +
     '</div>'
-  const kids = childrenOf(q.span).map((c) => requestHtml(c, childrenOf, depth + 1)).join('')
+  const kids = childrenOf(q.span).map((c) => requestHtml(c, childrenOf, depth + 1, tStart, tWindow)).join('')
   return header + bars + kids
 }
 
@@ -328,6 +419,12 @@ for (const btn of document.querySelectorAll('nav button')) {
     if (activeTab === 'cache') loadCache()
   }
 }
+const traceAxisBtn = document.getElementById('traceAxis')
+traceAxisBtn.onclick = () => {
+  traceAxis = traceAxis === 'normalized' ? 'clock' : 'normalized'
+  traceAxisBtn.textContent = 'axis: ' + traceAxis
+  renderTraces()
+}
 channelSel.onchange = () => { filters.channel = channelSel.value; renderLogs() }
 document.getElementById('fTrace').oninput = (e) => { filters.trace = e.target.value.trim(); renderLogs() }
 document.getElementById('fText').oninput = (e) => { filters.text = e.target.value.trim(); renderLogs() }
@@ -343,6 +440,15 @@ feedEl.addEventListener('click', (e) => {
   filters.trace = t.dataset.trace
   document.getElementById('fTrace').value = t.dataset.trace
   renderLogs()
+})
+// Click a trace header to collapse/expand its requests (open by default).
+tracesEl.addEventListener('click', (e) => {
+  const head = e.target.closest('.thead')
+  if (!head) return
+  const wrap = head.parentElement
+  const collapsed = wrap.classList.toggle('collapsed')
+  if (collapsed) collapsedTraces.add(wrap.dataset.trace)
+  else collapsedTraces.delete(wrap.dataset.trace)
 })
 
 // ---- surface ----
@@ -385,17 +491,20 @@ async function loadSurface() {
   const surfaceEl = document.getElementById('surface')
   try {
     const { verbs, sockets } = await (await fetch(root + '/surface')).json()
+    // Registration order is arbitrary; sort by path (then method) so the catalog is scannable.
+    const sortedVerbs = [...verbs].sort((a, b) => a.url.localeCompare(b.url) || a.method.localeCompare(b.method))
+    const sortedSockets = [...sockets].sort((a, b) => a.name.localeCompare(b.name))
     const verbTable =
       '<table class="surface"><thead><tr>' +
       '<th>method</th><th>path</th><th class="c">schema</th><th class="c">browser</th>' +
       '<th class="c">mcp</th><th class="c">cli</th><th class="c">xorigin</th><th class="c">files</th>' +
       '<th class="num">timeout</th><th class="num">body</th>' +
-      '</tr></thead><tbody>' + verbs.map(verbRow).join('') + '</tbody></table>'
+      '</tr></thead><tbody>' + sortedVerbs.map(verbRow).join('') + '</tbody></table>'
     const socketTable = sockets.length
-      ? '<table class="surface"><thead><tr><th>socket</th><th>operations</th><th>rest</th></tr></thead><tbody>' +
-        sockets.map((s) =>
+      ? '<table class="surface"><thead><tr><th>socket</th><th>operations</th><th>http</th></tr></thead><tbody>' +
+        sortedSockets.map((s) =>
           '<tr><td class="url">' + esc(s.name) + '</td><td>' + esc(s.operations.map((o) => o.kind).join(' ')) + '</td>' +
-          '<td><pre class="schema">' + esc(s.operations.map((o) => o.method + ' ' + o.restUrl).join('\\n')) + '</pre></td></tr>').join('') +
+          '<td><pre class="schema">' + esc(s.operations.map((o) => o.method + ' ' + o.httpUrl).join('\\n')) + '</pre></td></tr>').join('') +
         '</tbody></table>'
       : '<div class="empty">none</div>'
     surfaceEl.className = ''
