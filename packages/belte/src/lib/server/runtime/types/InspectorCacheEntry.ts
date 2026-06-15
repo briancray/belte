@@ -7,6 +7,9 @@ at the held value.
 export type InspectorCacheEntry = {
     /* The cache key (remote: method+url+args; producer: reference+args). */
     key: string
+    /* Human-readable label to render: a producer's function name + args, falling
+       back to the key for remotes (already readable) and anonymous producers. */
+    label: string
     /* Lifecycle: 'settled' | 'in-flight' | 'refreshing'. */
     status: string
     /* True when the entry stores a wire Response (a remote verb), false for a plain producer value. */

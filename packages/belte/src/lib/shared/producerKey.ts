@@ -30,3 +30,19 @@ producerKey.existing = function existing(producer: object, args?: unknown): stri
     }
     return `${id} ${canonicalJson(args)}`
 }
+
+/*
+The human label for traces and the inspector: `key` with the minted id swapped
+for the producer's function name (`searchLdap {args}` in place of
+`@producer:2 {args}`). The id stays the key — names aren't unique, so they can't
+key — this only re-skins it for display. Undefined for an anonymous producer
+(no name to show); callers fall back to the key, which is its only identity.
+*/
+producerKey.label = function label(producer: object, key: string): string | undefined {
+    const name = (producer as { name?: string }).name
+    const id = producerIds.get(producer)
+    if (!name || id === undefined) {
+        return undefined
+    }
+    return name + key.slice(id.length)
+}

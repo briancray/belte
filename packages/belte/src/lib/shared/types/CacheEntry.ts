@@ -56,6 +56,12 @@ coexists with ttl: 0 and never sits on a non-replayable remote method.
 */
 export type CacheEntry = {
     key: string
+    /* Human display label for a producer entry (its function name + args, set at
+       registration where the producer reference is in hand); undefined for a
+       remote, whose key already reads as method+url+args. Backs the trace span
+       name and the inspector — neither can re-derive it later (the key keeps the
+       opaque @producer:N id; the producer reference isn't retained). */
+    label?: string
     promise: Promise<unknown>
     request?: Request
     ttl: number | undefined

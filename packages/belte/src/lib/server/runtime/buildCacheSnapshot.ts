@@ -36,6 +36,7 @@ function policyLabel(entry: CacheEntry): string | undefined {
 function projectEntry(entry: CacheEntry, now: number): InspectorCacheEntry {
     return {
         key: entry.key,
+        label: entry.label ?? entry.key,
         status: entry.refreshing ? 'refreshing' : entry.settled ? 'settled' : 'in-flight',
         remote: entry.request !== undefined,
         ttl: entry.ttl,

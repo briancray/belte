@@ -298,6 +298,11 @@ function invokeProducer<Args, Return>(
     options: CacheOptions | undefined,
 ): Promise<Return> {
     const key = producerKey(producer, args)
+    /* The opaque @producer:N key is uninspectable — span and inspector show the
+       producer's name instead (`cache searchLdap {args}`), keying unchanged. An
+       anonymous producer has no name, so it keeps the key as its only label. */
+    const label = producerKey.label(producer, key)
+    const spanLabel = label ?? key
     store.subscribe(key)
     const existing = store.entries.get(key)
     recordRead(options?.global ? activeCacheStore() : store, key, existing)
@@ -309,13 +314,13 @@ function invokeProducer<Args, Return>(
            waterfall shows it; a settled hit returns immediately, so no span. */
         return existing.settled === true
             ? shared
-            : cacheLog.trace<Return>(`cache wait ${key}`, () => shared)
+            : cacheLog.trace<Return>(`cache wait ${spanLabel}`, () => shared)
     }
     /* Miss: time the producer run — where a request's time actually goes (an
        external fetch, a computation). Producer path only; the remote path must
        keep its own promise so getRemoteMeta can read the recorded Request. */
-    const promise = cacheLog.trace<Return>(`cache ${key}`, () => producer(args))
-    registerEntry(store, key, promise, options, undefined, () => producer(args))
+    const promise = cacheLog.trace<Return>(`cache ${spanLabel}`, () => producer(args))
+    registerEntry(store, key, promise, options, undefined, () => producer(args), label)
     return promise
 }
 
@@ -353,6 +358,7 @@ function registerEntry(
     options: CacheOptions | undefined,
     request: Request | undefined,
     refetch: () => Promise<unknown>,
+    label?: string,
 ): CacheEntry {
     const ttl = options?.ttl
     /* Capture the refetch thunk + policy only when an invalidate window was asked for. */
@@ -369,6 +375,7 @@ function registerEntry(
     const refreshing = store.pendingRefresh.delete(key) || undefined
     const entry: CacheEntry = {
         key,
+        label,
         promise,
         request,
         ttl,

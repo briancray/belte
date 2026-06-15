@@ -70,6 +70,23 @@ describe('cache() producer', () => {
         expect(true).toBe(true)
     })
 
+    test('a named producer entry carries a name-based label (span + inspector), key keeps the id', async () => {
+        function searchLdap(args?: { filter: string }) {
+            return Promise.resolve(args?.filter ?? 'all')
+        }
+        await cache(searchLdap)({ filter: 'cn=*' })
+        const entry = Array.from(cacheStoreSlot.fallback!.entries.values())[0]
+        // Key stays the opaque keying id; label re-skins it with the function name.
+        expect(entry.key).toMatch(/^@producer:\d+ /)
+        expect(entry.label).toBe('searchLdap {"filter":"cn=*"}')
+    })
+
+    test('an anonymous producer has no label — the inspector falls back to the key', async () => {
+        await cache(counter())()
+        const entry = Array.from(cacheStoreSlot.fallback!.entries.values())[0]
+        expect(entry.label).toBeUndefined()
+    })
+
     test('a producer with an incidental url prop stays a producer (brand, not shape, decides)', async () => {
         const fetchValue = Object.assign(counter(), { url: '/looks/remote', method: 'GET' })
         const first = await cache(fetchValue)()
