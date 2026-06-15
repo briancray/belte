@@ -29,10 +29,12 @@ describe('internal framework spans', () => {
 
         await resolverWithRoute('/x').view('/x')
 
-        const span = records.find((record) => record.name === 'view /x')
+        const span = records.find((record) => record.name === 'resolve /x')
         expect(span).toBeDefined()
         expect(span!.channel).toBe('belte:view')
         expect(typeof span!.durationMs).toBe('number')
+        // The module import is its own child span, so a cold load reads apart from the selection logic.
+        expect(records.some((record) => record.name === 'import /x')).toBe(true)
     })
 
     test('no span emitted when the channel is off — gated, zero-cost by default', async () => {
@@ -42,6 +44,6 @@ describe('internal framework spans', () => {
 
         await resolverWithRoute('/y').view('/y')
 
-        expect(records.some((record) => record.name === 'view /y')).toBe(false)
+        expect(records.some((record) => record.name === 'resolve /y')).toBe(false)
     })
 })

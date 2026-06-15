@@ -166,7 +166,11 @@ export function defineVerb<Args, Return>(
         buildRequest,
         invoke,
         parseArgsForFetch: async (request) => {
-            const args = await parseArgs(method, request, opts?.maxBodySize)
+            /* Body read + decode (json/form/multipart, maxBodySize buffering) — the
+               request lifecycle's lead-in cost, otherwise unspanned before `validate`. */
+            const args = await rpcLog.trace(`parse ${url}`, () =>
+                parseArgs(method, request, opts?.maxBodySize),
+            )
             /*
             Compose this verb's deadline into request().signal so a handler's
             fetch(ext, { signal: request().signal }) is cancelled when the

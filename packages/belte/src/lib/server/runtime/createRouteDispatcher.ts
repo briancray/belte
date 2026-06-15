@@ -1,4 +1,5 @@
 import type { Pages } from '../../browser/types/Pages.ts'
+import { belteLog } from '../../shared/belteLog.ts'
 import { NO_STORE } from '../../shared/CACHE_CONTROL_VALUES.ts'
 import { memoizeByKey } from '../../shared/memoizeByKey.ts'
 import { REMOTE_FUNCTION } from '../../shared/REMOTE_FUNCTION.ts'
@@ -9,6 +10,10 @@ import { crossOriginGate } from './crossOriginGate.ts'
 import type { RequestStore } from './types/RequestStore.ts'
 
 type AnyRemoteFunction = RemoteFunction<unknown, unknown>
+
+/* Cold rpc-module load span, opt-in via DEBUG=belte:rpc — same channel as the
+   verb's parse/validate/dispatch spans so a request's rpc work groups together. */
+const rpcLog = belteLog.channel('belte:rpc')
 
 /* Resolves a matched route to a Response, given the request and its scope. */
 type RouteHandler = (
@@ -66,14 +71,18 @@ export function createRouteDispatcher({
         incidental re-export carrying method/url props can't be mistaken
         for the verb.
         */
-        return loader().then((mod) => {
-            for (const value of Object.values(mod)) {
-                if (typeof value === 'function' && REMOTE_FUNCTION in value) {
-                    return value as AnyRemoteFunction
+        /* The import() is the cold-load cost (transpile + evaluate the module on
+           first hit); memoized, so the span fires once — mirrors the page-side `import`. */
+        return rpcLog.trace(`import ${url}`, () =>
+            loader().then((mod) => {
+                for (const value of Object.values(mod)) {
+                    if (typeof value === 'function' && REMOTE_FUNCTION in value) {
+                        return value as AnyRemoteFunction
+                    }
                 }
-            }
-            return undefined
-        })
+                return undefined
+            }),
+        )
     })
 
     return function buildRouteHandler(routeUrl: string): RouteHandler {

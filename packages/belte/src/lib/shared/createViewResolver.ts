@@ -6,7 +6,9 @@ import { nearestLayoutPrefix, normalizeLayoutPrefixes } from './nearestLayoutPre
 import type { ResolvedView } from './types/ResolvedView.ts'
 import type { ViewResolver } from './types/ViewResolver.ts'
 
-/* View-resolution spans (module load + nearest layout), opt-in via DEBUG=belte:view. */
+/* View-resolution spans, opt-in via DEBUG=belte:view: a `resolve` parent over
+   the selection logic, with the page/layout `import` (the cold-load cost) as
+   its own child so a slow first hit reads as the module load it is. */
 const viewLog = belteLog.channel('belte:view')
 
 /*
@@ -40,9 +42,13 @@ export function createViewResolver({
         /* bind the loader first so the index access stays defined under a
            consumer's noUncheckedIndexedAccess */
         const loadLayout = layoutPrefix && layouts ? layouts[layoutPrefix] : undefined
+        /* The import() is the cold-load cost (transpile + evaluate the module
+           graph on first hit); span it apart from the cheap selection logic. */
         const [viewModule, layoutModule] = await Promise.all([
-            loadViewModule(),
-            loadLayout ? loadLayout() : Promise.resolve(undefined),
+            viewLog.trace(`import ${route}`, loadViewModule),
+            loadLayout
+                ? viewLog.trace(`import layout ${layoutPrefix}`, loadLayout)
+                : Promise.resolve(undefined),
         ])
         return { Page: viewModule.default, Layout: layoutModule?.default }
     }
@@ -56,7 +62,7 @@ export function createViewResolver({
             if (!loadPage) {
                 throw new Error(`[belte] unknown route: ${route}`)
             }
-            return viewLog.trace(`view ${route}`, () => loadWithLayout(route, loadPage))
+            return viewLog.trace(`resolve ${route}`, () => loadWithLayout(route, loadPage))
         },
 
         error: async (pathname) => {
@@ -65,7 +71,7 @@ export function createViewResolver({
             if (!loadError) {
                 return undefined
             }
-            return viewLog.trace(`view-error ${pathname}`, () =>
+            return viewLog.trace(`resolve-error ${pathname}`, () =>
                 loadWithLayout(pathname, loadError),
             )
         },
