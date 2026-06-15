@@ -16,11 +16,17 @@ const SHELL =
 
 const pages: Pages = {
     '/': () => import('./support/fixtures/pages/home.belte'),
+    '/where': () => import('./support/fixtures/pages/location.belte'),
 }
 
 function ssrState(html: string): Record<string, unknown> {
     const match = html.match(/window\.__SSR__ = (.+?);<\/script>/)
     return JSON.parse(match?.[1] ?? '{}')
+}
+
+/* The location fixture renders page.url.pathname inside <p data-page="location">. */
+function renderedPathname(html: string): string | undefined {
+    return html.match(/data-page="location"[^>]*>(.*?)<\/p>/s)?.[1]
 }
 
 const previousAppUrl = process.env.APP_URL
@@ -43,6 +49,28 @@ describe('APP_URL mount base', () => {
             expect(html).toContain('href="/v2/_app/client.css"')
             expect(html).not.toContain('"/_app/client.js"')
             expect(ssrState(html).base).toBe('/v2')
+        } finally {
+            stop()
+        }
+    })
+
+    test('SSR page.url carries the mount base', async () => {
+        process.env.APP_URL = 'https://foo.com/v2'
+        const { origin, stop } = await bootTestServer({ pages, shell: SHELL })
+        try {
+            const html = await (await fetch(`${origin}/where`)).text()
+            expect(renderedPathname(html)).toBe('/v2/where')
+        } finally {
+            stop()
+        }
+    })
+
+    test('SSR page.url is the request pathname at root mount', async () => {
+        delete process.env.APP_URL
+        const { origin, stop } = await bootTestServer({ pages, shell: SHELL })
+        try {
+            const html = await (await fetch(`${origin}/where`)).text()
+            expect(renderedPathname(html)).toBe('/where')
         } finally {
             stop()
         }

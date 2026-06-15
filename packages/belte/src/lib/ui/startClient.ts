@@ -3,8 +3,10 @@ import { createCacheStore } from '../shared/createCacheStore.ts'
 import { setBaseResolver } from '../shared/setBaseResolver.ts'
 import { setCacheStoreResolver } from '../shared/setCacheStoreResolver.ts'
 import { setGlobalCacheStoreResolver } from '../shared/setGlobalCacheStoreResolver.ts'
+import { setPageResolver } from '../shared/setPageResolver.ts'
 import type { CacheSnapshotEntry } from '../shared/types/CacheSnapshotEntry.ts'
 import { router } from './router.ts'
+import { clientPage } from './runtime/clientPage.ts'
 import type { Route } from './runtime/types/Route.ts'
 
 /* The server's __SSR__ payload this entry consumes. */
@@ -30,6 +32,8 @@ export function startClient(
     }
     const ssr = (globalThis as { __SSR__?: SsrPayload }).__SSR__ ?? {}
     setBaseResolver(() => ssr.base ?? '')
+    /* The `page` proxy reads route/params/url off the router-updated snapshot. */
+    setPageResolver(() => clientPage.value)
 
     const store = createCacheStore()
     setCacheStoreResolver(() => store)

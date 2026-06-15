@@ -65,6 +65,7 @@
         "./shared/health": "./src/lib/shared/health.ts",
         "./shared/log": "./src/lib/shared/log.ts",
         "./shared/online": "./src/lib/shared/online.ts",
+        "./shared/page": "./src/lib/shared/page.ts",
         "./shared/trace": "./src/lib/shared/trace.ts",
         "./shared/url": "./src/lib/shared/url.ts",
         "./ui/state": "./src/lib/ui/state.ts",
