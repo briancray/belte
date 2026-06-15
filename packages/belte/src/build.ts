@@ -6,8 +6,8 @@ const CLIENT_ENTRY = new URL('./clientEntry.ts', import.meta.url).pathname
 
 /*
 Builds the client-side bundle into `${cwd}/dist/_app`. Runs Bun.build with
-the svelte-dedupe plugin, the svelte loader, the virtual-module resolver,
-and (optionally) Tailwind. When `compress`, each emitted file is also
+the belte-ui `.belte` loader, the virtual-module resolver, and (optionally)
+Tailwind. When `compress`, each emitted file is also
 written as a zstd-compressed `.zst` sibling (level 22 — paid once at build
 time) so the server can stream the precompressed bytes directly when the
 client supports it, and decompress on the fly for older clients. Dev skips

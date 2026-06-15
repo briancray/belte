@@ -76,7 +76,7 @@ const OPENAPI_PATH = '/openapi.json'
 
 /*
 Starts a Bun HTTP server that ties together the framework conventions:
-page.svelte + layout.svelte under src/browser/pages/ for views, one named export
+page.belte under src/browser/pages/ for views (layouts are userland), one named export
 per file under src/server/rpc/ for verb-bound remote functions, one named export
 per file under src/server/sockets/ for broadcast sockets, and an optional
 app.ts for boot-time setup, request middleware, and error fallback. Page

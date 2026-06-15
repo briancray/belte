@@ -3,11 +3,9 @@ import { compileModule } from './compileModule.ts'
 
 /*
 Bun plugin that loads `.belte` single-file components: compiles each to the ES
-module `compileModule` emits, so they import and mount like any other module.
-Registered in the dev/build pipeline alongside the existing svelte loader; the
-emitted module's `belte/ui/*` imports resolve through the package exports (the
-wiring step that lets examples consume `.belte` files). Mirrors the shape of
-sveltePlugin's `.svelte.ts` branch.
+module `compileModule` emits, so they import and mount like any other module. The
+only UI loader in the dev/build/preload pipeline; the emitted module's
+`@belte/belte/ui/*` imports resolve through the package exports.
 */
 // @readme plumbing
 export const belteUiPlugin: BunPlugin = {

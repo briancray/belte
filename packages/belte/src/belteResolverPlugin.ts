@@ -84,8 +84,7 @@ function once<T>(produce: () => Promise<T>): () => Promise<T> {
 Bun plugin that wires every virtual import belte produces at build time:
 - `belte:rpc`     — { rpcUrl: () => import(rpc-module) } HTTP-verb manifest
 - `belte:sockets` — { socketName: () => import(socket-module) } socket manifest
-- `belte:pages`   — { pageUrl: () => import(page.svelte) } manifest
-- `belte:layouts` — { dirPrefix: () => import(layout.svelte) } manifest
+- `belte:pages`   — { pageUrl: () => import(page.belte) } manifest
 - `belte:prompts` — { promptName: () => import(prompt-module) } manifest
 - `belte:app`     — { init?, handle?, handleError? } from src/app.ts
 - `belte:assets`  — zstd-compressed chunk bytes embedded for standalone compile
