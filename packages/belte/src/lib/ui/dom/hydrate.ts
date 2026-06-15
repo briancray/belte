@@ -8,9 +8,10 @@ take the existing nodes rather than creating new ones — attaching event listen
 and reactive effects to the server's markup in place (no re-render, preserved
 focus/scroll). Returns a disposer.
 
-Adopts static structure (elements + text + bindings) and `if`/`else` blocks in
-place. `each`/`switch`/`await` blocks and child components aren't adopted yet —
-components using those should `mount` for now (block adoption is incremental).
+Adopts static structure (elements + text + bindings), `if`/`else`, and keyed
+`each` lists in place. `switch`/`await` blocks and child components aren't adopted
+yet (their anchors mis-place, and await interacts with streaming) — components
+using those should `mount` for now.
 */
 // @readme plumbing
 export function hydrate(host: Element, build: (host: Element) => void): () => void {

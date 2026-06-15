@@ -5,6 +5,7 @@ import { derived } from '../src/lib/ui/derived.ts'
 import { doc } from '../src/lib/ui/doc.ts'
 import { appendStatic } from '../src/lib/ui/dom/appendStatic.ts'
 import { appendText } from '../src/lib/ui/dom/appendText.ts'
+import { each } from '../src/lib/ui/dom/each.ts'
 import { hydrate } from '../src/lib/ui/dom/hydrate.ts'
 import { on } from '../src/lib/ui/dom/on.ts'
 import { openChild } from '../src/lib/ui/dom/openChild.ts'
@@ -133,5 +134,64 @@ describe('hydrate — adopt server DOM', () => {
         expect(host.textContent).toBe('off')
         model.replace('on', true)
         expect(host.textContent).toBe('yo')
+    })
+
+    test('adopts a keyed each list in place, then stays reactive', () => {
+        const model = doc({ order: ['a', 'b'], byId: { a: { n: 1 }, b: { n: 2 }, c: { n: 3 } } })
+        const source = `
+            <main>
+                <ul>
+                    <template each={model.order} as="k" key="k"><li>{model.byId[k].n}</li></template>
+                </ul>
+            </main>
+        `
+        const runtime = {
+            doc,
+            state,
+            derived,
+            effect,
+            openChild,
+            openRoot,
+            appendText,
+            appendStatic,
+            on,
+            when,
+            each,
+            model,
+        }
+        const names = Object.keys(runtime)
+        const values = names.map((n) => runtime[n as keyof typeof runtime])
+
+        const server = new Function(
+            'doc',
+            'state',
+            'derived',
+            'effect',
+            'model',
+            compileSSR(source),
+        )(doc, state, derived, effect, model) as SsrRender
+        expect(server.html).toBe('<main><ul><li>1</li><li>2</li></ul></main>')
+
+        const host = document.createElement('div')
+        host.innerHTML = server.html
+        const ul = (host.childNodes[0] as unknown as { childNodes: unknown[] })
+            .childNodes[0] as unknown as {
+            childNodes: { textContent: string }[]
+        }
+        const firstRow = ul.childNodes[0]
+        const body = compileComponent(source)
+        hydrate(host, (target) => {
+            new Function('host', ...names, body)(target, ...values)
+        })
+
+        // rows adopted in place, not recreated
+        expect(ul.childNodes[0]).toBe(firstRow)
+        expect(ul.childNodes.map((c) => c.textContent)).toEqual(['1', '2'])
+
+        // a row field updates in place; appending a row works post-hydration
+        model.replace('byId/a/n', 9)
+        expect(ul.childNodes[0].textContent).toBe('9')
+        model.add('order/-', 'c')
+        expect(ul.childNodes.map((c) => c.textContent)).toEqual(['9', '2', '3'])
     })
 })
