@@ -14,4 +14,11 @@ export type CacheSelector<Args, Return> =
     | RemoteFunction<Args, Return>
     | RawRemoteFunction<Args>
     | ((args?: Args) => Promise<Return>)
+    /* Required-arg producer — its own arm because a required param isn't
+       assignable to the optional one above under strictFunctionTypes. Selectors
+       only read the producer's reference identity, never invoke it, so arity is
+       immaterial to matching; this mirrors cache()'s required-arg overload so a
+       producer keyable by cache() is equally selectable by pending()/refreshing()
+       /invalidate(). Order-free: a union member can't hijack like an overload. */
+    | ((args: Args) => Promise<Return>)
     | Pick<CacheOptions, 'scope'>

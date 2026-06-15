@@ -3,6 +3,8 @@ import { cache } from '../src/lib/shared/cache.ts'
 import { cacheStoreSlot } from '../src/lib/shared/cacheStoreSlot.ts'
 import { createCacheStore } from '../src/lib/shared/createCacheStore.ts'
 import { globalCacheStoreSlot } from '../src/lib/shared/globalCacheStoreSlot.ts'
+import { pending } from '../src/lib/shared/pending.ts'
+import { refreshing } from '../src/lib/shared/refreshing.ts'
 import { settle } from './support/settle.ts'
 
 /* A producer reporting its own invocation count, so a dedupe holds the count
@@ -67,6 +69,20 @@ describe('cache() producer', () => {
         })
         const optional = cache((n?: number) => Promise.resolve((n ?? 0) * 2))
         void (() => optional())
+        expect(true).toBe(true)
+    })
+
+    test('type: a required-arg producer is selectable by pending/refreshing (CacheSelector parity)', () => {
+        // Never invoked — type-level only. The selector union must accept the same
+        // required-arg producer cache() accepts; a regression that drops the
+        // required-arg arm from CacheSelector fails to compile here (the call
+        // falls through to the { scope } arm and rejects the function).
+        const retrieveSimilar = (file: File) => Promise.resolve(file.name)
+        void (() => {
+            cache(retrieveSimilar)(new File([], 'a'))
+            pending(retrieveSimilar)
+            refreshing(retrieveSimilar)
+        })
         expect(true).toBe(true)
     })
 
