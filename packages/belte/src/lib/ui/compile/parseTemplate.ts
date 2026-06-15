@@ -239,6 +239,25 @@ function toControlFlow(attrs: TemplateAttr[], children: TemplateNode[]): Templat
     if (catchAttr !== undefined) {
         return { kind: 'branch', branch: 'catch', as: attrText(catchAttr) || undefined, children }
     }
+    const subject = find('switch')
+    if (subject !== undefined) {
+        const subjectCode = attrText(subject)
+        if (subjectCode === undefined) {
+            throw new Error('[belte] <template switch> requires a subject expression')
+        }
+        return { kind: 'switch', subject: subjectCode, children }
+    }
+    const caseAttr = find('case')
+    if (caseAttr !== undefined) {
+        const matchCode = attrText(caseAttr)
+        if (matchCode === undefined) {
+            throw new Error('[belte] <template case> requires a value expression')
+        }
+        return { kind: 'case', match: matchCode, children }
+    }
+    if (find('default') !== undefined || find('else') !== undefined) {
+        return { kind: 'case', match: undefined, children } // default (switch) / else (if)
+    }
     const condition = find('if')
     if (condition !== undefined) {
         const conditionCode = attrText(condition)

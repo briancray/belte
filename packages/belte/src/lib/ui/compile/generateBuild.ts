@@ -92,7 +92,38 @@ export function generateBuild(
         if (node.kind === 'component') {
             return generateComponent(node, parentVar)
         }
+        if (node.kind === 'switch') {
+            return generateSwitch(node, parentVar)
+        }
+        if (node.kind === 'case') {
+            return '' // cases are consumed by their switch/if, never standalone
+        }
         return generateEach(node, parentVar)
+    }
+
+    /* A switch: each `case` is `{ match: () => value, render }`, the default is
+       `{ match: undefined, render }`. */
+    function generateSwitch(
+        node: Extract<TemplateNode, { kind: 'switch' }>,
+        parentVar: string,
+    ): string {
+        const cases = node.children
+            .filter(
+                (child): child is Extract<TemplateNode, { kind: 'case' }> => child.kind === 'case',
+            )
+            .map((branch) => {
+                const root = singleElementRoot(
+                    branch.children,
+                    '<template case> must contain a single element',
+                )
+                const match =
+                    branch.match === undefined
+                        ? 'undefined'
+                        : `() => (${lowerExpression(branch.match)})`
+                return `{ match: ${match}, render: () => {\n${root.code}return ${root.varName};\n} }`
+            })
+            .join(', ')
+        return `switchBlock(${parentVar}, () => (${lowerExpression(node.subject)}), [${cases}]);\n`
     }
 
     /* Mounts a child component into a wrapper element, passing each prop as a
@@ -157,13 +188,27 @@ export function generateBuild(
         return `(${param}) => {\n${built.code}return ${built.varName};\n}`
     }
 
-    /* A conditional. The branch must have a single element root. */
+    /* A conditional with an optional nested `<template else>` (a `case` child).
+       Both branches are single-element roots. */
     function generateIf(node: Extract<TemplateNode, { kind: 'if' }>, parentVar: string): string {
-        const branch = singleElementRoot(
-            node.children,
+        const elseBranch = node.children.find(
+            (child): child is Extract<TemplateNode, { kind: 'case' }> => child.kind === 'case',
+        )
+        const thenChildren = node.children.filter((child) => child.kind !== 'case')
+        const thenRoot = singleElementRoot(
+            thenChildren,
             '<template if> must contain a single element',
         )
-        return `when(${parentVar}, () => (${lowerExpression(node.condition)}), () => {\n${branch.code}return ${branch.varName};\n});\n`
+        const thenThunk = `() => {\n${thenRoot.code}return ${thenRoot.varName};\n}`
+        if (elseBranch === undefined) {
+            return `when(${parentVar}, () => (${lowerExpression(node.condition)}), ${thenThunk});\n`
+        }
+        const elseRoot = singleElementRoot(
+            elseBranch.children,
+            '<template else> must contain a single element',
+        )
+        const elseThunk = `() => {\n${elseRoot.code}return ${elseRoot.varName};\n}`
+        return `when(${parentVar}, () => (${lowerExpression(node.condition)}), ${thenThunk}, ${elseThunk});\n`
     }
 
     /* A keyed each. The row must have a single element root (it returns one node). */

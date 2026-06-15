@@ -48,7 +48,34 @@ export function generateSSR(
                 .join('')
         }
         if (node.kind === 'if') {
-            return `if (${lowerExpression(node.condition)}) {\n${generateInto(node.children, target)}}\n`
+            const elseBranch = node.children.find((child) => child.kind === 'case')
+            const thenChildren = node.children.filter((child) => child.kind !== 'case')
+            let code = `if (${lowerExpression(node.condition)}) {\n${generateInto(thenChildren, target)}}`
+            if (elseBranch !== undefined && elseBranch.kind === 'case') {
+                code += ` else {\n${generateInto(elseBranch.children, target)}}`
+            }
+            return `${code}\n`
+        }
+        if (node.kind === 'switch') {
+            const cases = node.children.filter(
+                (child): child is Extract<TemplateNode, { kind: 'case' }> => child.kind === 'case',
+            )
+            let code = `{ const $s = (${lowerExpression(node.subject)});\n`
+            let started = false
+            for (const branch of cases) {
+                if (branch.match !== undefined) {
+                    code += `${started ? 'else ' : ''}if ($s === (${lowerExpression(branch.match)})) {\n${generateInto(branch.children, target)}}\n`
+                    started = true
+                }
+            }
+            const fallback = cases.find((branch) => branch.match === undefined)
+            if (fallback !== undefined) {
+                code += `${started ? 'else ' : ''}{\n${generateInto(fallback.children, target)}}\n`
+            }
+            return `${code}}\n`
+        }
+        if (node.kind === 'case') {
+            return ''
         }
         if (node.kind === 'each') {
             return `for (const ${node.as} of (${lowerExpression(node.items)})) {\n${generateInto(node.children, target)}}\n`

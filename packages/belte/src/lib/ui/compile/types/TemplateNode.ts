@@ -14,3 +14,5 @@ export type TemplateNode =
     | { kind: 'await'; promise: string; children: TemplateNode[] }
     | { kind: 'branch'; branch: 'then' | 'catch'; as: string | undefined; children: TemplateNode[] }
     | { kind: 'component'; name: string; props: { name: string; code: string }[] }
+    | { kind: 'switch'; subject: string; children: TemplateNode[] }
+    | { kind: 'case'; match: string | undefined; children: TemplateNode[] }
