@@ -1,4 +1,6 @@
 <script>
+  import Layout from './Layout.belte'
+
   let draft = state('')
   let todos = state([])
 
@@ -10,16 +12,13 @@
   }
 </script>
 
-<main>
-  <h1>form</h1>
-  <p>Two-way <code>bind:value</code> + a keyed list.</p>
-
-  <input bind:value={draft} placeholder="new todo">
-  <button onclick={add}>add</button>
-
-  <ul>
-    <template each={todos} as="todo" key="todo"><li>{todo}</li></template>
-  </ul>
-
-  <nav><a href="/">← home</a></nav>
-</main>
+<Layout title="form">
+  <section>
+    <p>Two-way <code>bind:value</code> + a keyed list.</p>
+    <input bind:value={draft} placeholder="new todo">
+    <button onclick={add}>add</button>
+    <ul>
+      <template each={todos} as="todo" key="todo"><li>{todo}</li></template>
+    </ul>
+  </section>
+</Layout>

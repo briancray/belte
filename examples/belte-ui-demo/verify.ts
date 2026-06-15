@@ -1,9 +1,8 @@
-import { buildClient, renderShell, serve } from './server.ts'
+import { buildClient, serve } from './server.ts'
 
 /*
-Verifies the multi-page example through the real pipeline without a long-lived
-server: builds the client bundle, server-renders each route, and checks the
-streamed /data route delivers a pending shell then the resolved fragment.
+Verifies the multi-page example through the real pipeline (client bundle + a real
+server bundle for SSR + streaming) without leaving a server running.
 Run: bun examples/belte-ui-demo/verify.ts
 */
 
@@ -14,44 +13,47 @@ function assert(condition: boolean, message: string): void {
     console.log(`ok: ${message}`)
 }
 
-/* 1) all pages + the router bundle through the real loader + resolver */
+/* 1) the client bundle builds through the real loader + resolver */
 const clientJs = await buildClient()
-assert(clientJs.includes('mount('), 'bundle wires the mount runtime')
-assert(clientJs.includes('.cell('), 'bundle uses hoisted cells')
-assert(clientJs.includes('popstate'), 'bundle includes the router')
+assert(clientJs.includes('mount('), 'client bundle wires the mount runtime')
+assert(clientJs.includes('.cell('), 'client bundle uses hoisted cells')
+assert(clientJs.includes('popstate'), 'client bundle includes the router')
 
-/* 2) each route server-renders */
-const homeShell = await renderShell('/')
-assert(homeShell.includes('count: 0'), 'home SSR ok')
-assert(
-    homeShell.includes('<style>') && homeShell.includes('h1[data-b-'),
-    'home SSR includes scoped styles',
-)
-assert((await renderShell('/about')).includes('<h1>about</h1>'), 'about SSR ok')
-assert((await renderShell('/form')).includes('placeholder="new todo"'), 'form SSR ok (input)')
-
-/* 3) HTTP: regular route + streamed /data route */
+/* 2) the server (real SSR build) serves every route over HTTP */
 const server = await serve(0)
 try {
     const home = await (await fetch(`${server.url}`)).text()
+    assert(home.includes('count: 0'), 'home rendered the counter')
     assert(
-        home.includes('count: 0') && home.includes('<script type="module">'),
-        'GET / served page + bundle',
+        home.includes('>home<') && home.includes('>about<'),
+        'shared Layout nav rendered (slots)',
+    )
+    assert(home.includes('<style>') && home.includes('[data-b-'), 'scoped styles emitted')
+    assert(home.includes('<h1 data-b-'), 'Layout title (prop) rendered with scope attr')
+    assert(home.includes('<script type="module">'), 'client bundle embedded')
+
+    assert(
+        (await (await fetch(`${server.url}about`)).text()).includes('client-side by the belte-ui'),
+        'about rendered with its derived/prop',
+    )
+    assert(
+        (await (await fetch(`${server.url}form`)).text()).includes('placeholder="new todo"'),
+        'form rendered the input',
     )
 
     const api = await (await fetch(`${server.url}api/users`)).json()
-    assert(Array.isArray(api) && api.includes('ada'), 'GET /api/users returns real JSON data')
+    assert(Array.isArray(api) && api.includes('ada'), 'GET /api/users returns real JSON')
 
     const data = await (await fetch(`${server.url}data`)).text()
-    assert(data.includes('loading users…'), '/data streamed the pending shell')
+    assert(data.includes('loading users…'), '/data streamed the pending shell (inside Layout slot)')
     assert(data.includes('<belte-resolve'), '/data streamed a resolved fragment')
     assert(
         data.includes('<li>ada</li>') && data.includes('<li>margaret</li>'),
-        '/data streamed the fetched data (SSR fetched its own API)',
+        '/data streamed the fetched data',
     )
     assert(data.includes('__belteSwap()'), '/data includes the inline swap script')
 } finally {
     server.stop()
 }
 
-console.log('\nbelte-ui demo: streaming data + form + routing verified ✓')
+console.log('\nbelte-ui demo: layout (slots) + routing + forms + streamed real data verified ✓')

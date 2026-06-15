@@ -8,6 +8,9 @@ The shared front-end result for a component, consumed by both the client
 */
 export type AnalyzedComponent = {
     script: string
+    /* Top-level import statements hoisted out of the script (e.g. child
+       components), placed at module scope by the module wrapper. */
+    imports: string
     stateNames: Set<string>
     derivedNames: Set<string>
     nodes: TemplateNode[]

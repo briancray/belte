@@ -1,4 +1,6 @@
 <script>
+  import Layout from './Layout.belte'
+
   /* Real fetch — isomorphic: relative on the client, absolute during SSR (the
      server sets globalThis.BELTE_ORIGIN per request). The server streams the
      pending shell first, then the resolved list when the fetch settles. */
@@ -9,16 +11,16 @@
   }
 </script>
 
-<main>
-  <h1>data (streamed from /api/users)</h1>
-  <template await={loadUsers()}>
-    <p class="loading">loading users…</p>
-    <template then="users">
-      <ul>
-        <template each={users} as="name" key="name"><li>{name}</li></template>
-      </ul>
+<Layout title="data (streamed from /api/users)">
+  <section>
+    <template await={loadUsers()}>
+      <p class="loading">loading users…</p>
+      <template then="users">
+        <ul>
+          <template each={users} as="name" key="name"><li>{name}</li></template>
+        </ul>
+      </template>
+      <template catch="error"><p class="error">failed: {error}</p></template>
     </template>
-    <template catch="error"><p class="error">failed: {error}</p></template>
-  </template>
-  <nav><a href="/">← home</a></nav>
-</main>
+  </section>
+</Layout>

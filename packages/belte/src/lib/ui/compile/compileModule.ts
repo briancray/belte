@@ -1,3 +1,4 @@
+import { analyzeComponent } from './analyzeComponent.ts'
 import { compileComponent } from './compileComponent.ts'
 import { compileSSR } from './compileSSR.ts'
 
@@ -15,6 +16,8 @@ always agree. The `belte/ui/*` imports resolve through the package exports. This
 what the `.belte` bundler loader emits.
 */
 export function compileModule(source: string): string {
+    /* Component-authored imports (e.g. child components) hoisted to module scope. */
+    const userImports = analyzeComponent(source).imports
     return `import { doc } from 'belte/ui/doc'
 import { state } from 'belte/ui/state'
 import { derived } from 'belte/ui/derived'
@@ -28,6 +31,7 @@ import { when } from 'belte/ui/dom/when'
 import { awaitBlock } from 'belte/ui/dom/awaitBlock'
 import { switchBlock } from 'belte/ui/dom/switchBlock'
 import { injectStyle } from 'belte/ui/dom/injectStyle'
+${userImports}
 
 export default function component(host, $props) {
     return mount(host, (host) => {

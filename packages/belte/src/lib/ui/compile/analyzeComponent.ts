@@ -24,7 +24,18 @@ export function analyzeComponent(source: string): AnalyzedComponent {
         .trim()
 
     const { code: desugared, stateNames, derivedNames } = desugarSignals(scriptBody)
-    const script = desugared.trim() === '' ? '' : lowerDocAccess(desugared, 'model')
+    const lowered = desugared.trim() === '' ? '' : lowerDocAccess(desugared, 'model')
+    /* Hoist top-level import statements (e.g. child components) out of the script
+       so the module wrapper can place them at module scope — they can't live
+       inside the mount callback / render function. */
+    const imports: string[] = []
+    const script = lowered
+        .replace(/^[ \t]*import\s[^\n]*$/gm, (line) => {
+            imports.push(line.trim())
+            return ''
+        })
+        .replace(/\n{2,}/g, '\n')
+        .trim()
     const style =
         styleBody === ''
             ? undefined
@@ -32,7 +43,14 @@ export function analyzeComponent(source: string): AnalyzedComponent {
                   const attribute = `data-b-${hashString(styleBody)}`
                   return { attribute, css: scopeCss(styleBody, attribute) }
               })()
-    return { script, stateNames, derivedNames, nodes: parseTemplate(template), style }
+    return {
+        script,
+        imports: imports.join('\n'),
+        stateNames,
+        derivedNames,
+        nodes: parseTemplate(template),
+        style,
+    }
 }
 
 /* Small stable hash (djb2 → base36) for a per-component scope attribute. */
