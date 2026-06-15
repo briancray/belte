@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
+import { afterEach, beforeAll, describe, expect, test } from 'bun:test'
 import { cache } from '../src/lib/shared/cache.ts'
 import { cacheStoreSlot } from '../src/lib/shared/cacheStoreSlot.ts'
 import { createCacheStore } from '../src/lib/shared/createCacheStore.ts'
@@ -13,18 +13,11 @@ import { on } from '../src/lib/ui/dom/on.ts'
 import { openChild } from '../src/lib/ui/dom/openChild.ts'
 import { openRoot } from '../src/lib/ui/dom/openRoot.ts'
 import { effect } from '../src/lib/ui/effect.ts'
-import { installCacheReactivity } from '../src/lib/ui/installCacheReactivity.ts'
-import { REACTIVE_BRIDGE } from '../src/lib/ui/runtime/REACTIVE_BRIDGE.ts'
 import { state } from '../src/lib/ui/state.ts'
 import { installMiniDom } from './support/installMiniDom.ts'
 
 beforeAll(() => {
     installMiniDom()
-    installCacheReactivity()
-})
-afterAll(() => {
-    /* The bridge hook is process-global; unwire it so other test files run plain. */
-    REACTIVE_BRIDGE.trackRead = undefined
 })
 afterEach(() => {
     cacheStoreSlot.resolver = undefined
@@ -35,11 +28,10 @@ afterEach(() => {
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 /*
-With installCacheReactivity() wired, a `cache()` read inside a `<template await>`
-becomes a tracked belte-ui dependency: cache.invalidate() of its key re-runs the
-block, re-fetching and swapping the resolved branch in place — the belte-ui-native
-equivalent of the createSubscriber/$effect path, with no change to the shared
-cache contract.
+A `cache()` read inside a `<template await>` is a tracked belte-ui dependency: the
+cache store's createSubscriber (now belte-ui-native) subscribes the key to the
+await block's effect, so cache.invalidate() of that key re-runs the block — re-
+fetching and swapping the resolved branch in place. No bridge, no Svelte.
 */
 describe('cache.invalidate() re-runs an await block', () => {
     test('re-fetches and swaps when the read’s key is invalidated', async () => {

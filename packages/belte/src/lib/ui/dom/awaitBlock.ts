@@ -1,6 +1,5 @@
 import { effect } from '../effect.ts'
 import { claimChild } from '../runtime/claimChild.ts'
-import { REACTIVE_BRIDGE } from '../runtime/REACTIVE_BRIDGE.ts'
 import { RENDER } from '../runtime/RENDER.ts'
 import { RESUME } from '../runtime/RESUME.ts'
 import { scope } from '../runtime/scope.ts'
@@ -10,10 +9,10 @@ import type { EachRow } from './types/EachRow.ts'
 Async binding — the runtime for `<template await>`. Renders the pending branch,
 then swaps to the resolved branch (with the value) or the error branch on settle.
 
-The read runs inside a belte-ui `effect`, through the optional `REACTIVE_BRIDGE`:
-with `installCacheReactivity()` wired, a `cache()` read registers its key, so a
-`cache.invalidate()` of that key re-runs the block — pending, then the fresh value
-swaps in. Without the bridge the effect captures nothing and runs exactly once.
+The read runs inside a belte-ui `effect`, so it's reactive: `belte/shared/cache`'s
+store subscribes the key it reads to this effect (createSubscriber is belte-ui-
+native), so `cache.invalidate()` of that key re-runs the block — pending, then the
+fresh value swaps in. A read that touches no reactive source runs exactly once.
 
 Hydration adopts in place, by precedence:
   1. a streamed resume value (`RESUME[id]`) → adopt the resolved branch the stream
@@ -39,12 +38,6 @@ export function awaitBlock(
     let first = true
     /* Bumped each run so a prior run's in-flight promise can't clobber a newer one. */
     let generation = 0
-
-    /* Run the read through the bridge (tracked) when installed, else plain. */
-    const read = (): unknown =>
-        REACTIVE_BRIDGE.trackRead !== undefined
-            ? REACTIVE_BRIDGE.trackRead(promiseThunk)
-            : promiseThunk()
 
     /* Replace the current content with a freshly-built node, before the anchor. */
     const place = (build: (parent: Node) => Node): void => {
@@ -121,7 +114,7 @@ export function awaitBlock(
             )
             return
         }
-        const result = read()
+        const result = promiseThunk()
         if (!isThenable(result)) {
             adopt(open, (host) => renderThen(host, result))
             return
@@ -148,7 +141,7 @@ export function awaitBlock(
             anchor = document.createTextNode('')
             parent.appendChild(anchor)
         }
-        render(read())
+        render(promiseThunk())
     })
 }
 
