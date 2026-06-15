@@ -16,7 +16,7 @@ export type SocketOperation = {
     // Raw socket name, for the HTTP path and human-facing descriptions.
     socketName: string
     // HTTP face of the operation: `/__belte/sockets/<name>`.
-    restUrl: string
+    httpUrl: string
     // GET for tail, POST for publish.
     method: HttpVerb
 }

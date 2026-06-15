@@ -20,7 +20,7 @@ type SocketDispatcher = {
     open(ws: ServerWebSocket<unknown>): void
     message(ws: ServerWebSocket<unknown>, data: string | Buffer): void
     close(ws: ServerWebSocket<unknown>): void
-    rest(req: Request, name: string): Promise<Response>
+    http(req: Request, name: string): Promise<Response>
 }
 
 /*
@@ -68,7 +68,7 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
     one statement of the load/lookup failure semantics (a throwing module is
     logged here and stays cached as failed by ensureLoaded). Each face maps
     the failure kind to its own rendering: sub emits err+end frames, pub
-    drops silently, rest answers with HTTP errors.
+    drops silently, http answers with HTTP errors.
     */
     async function resolveEntry(
         name: string,
@@ -238,11 +238,11 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
     Loads the socket module on first hit (same cache the ws path uses) so
     its defineSocket call populates the registry.
     */
-    async function rest(req: Request, name: string): Promise<Response> {
-        return socketsLog.trace(`socket-rest ${name}`, () => restImpl(req, name))
+    async function http(req: Request, name: string): Promise<Response> {
+        return socketsLog.trace(`socket-http ${name}`, () => httpImpl(req, name))
     }
 
-    async function restImpl(req: Request, name: string): Promise<Response> {
+    async function httpImpl(req: Request, name: string): Promise<Response> {
         const resolution = await resolveEntry(name)
         if ('failure' in resolution) {
             return resolution.failure === 'load-failed'
@@ -283,7 +283,7 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
     }
 
     return {
-        rest,
+        http,
 
         open(ws) {
             connections.set(ws, { subToSocket: new Map(), socketSubs: new Map() })

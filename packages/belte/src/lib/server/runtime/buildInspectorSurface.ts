@@ -30,7 +30,7 @@ export function buildInspectorSurface(): InspectorSurface {
             kind: operation.kind,
             name: operation.name,
             method: operation.method,
-            restUrl: operation.restUrl,
+            httpUrl: operation.httpUrl,
         })),
     }))
     return { verbs, sockets }

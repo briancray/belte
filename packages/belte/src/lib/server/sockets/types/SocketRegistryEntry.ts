@@ -14,6 +14,6 @@ export type SocketRegistryEntry = {
     schema: StandardSchemaV1 | undefined
     clients: ClientFlags
     /* last `count` retained frames (whole tail when omitted) — the read-only
-       face shared by the ws sub replay, the HTTP rest() face, and MCP tail */
+       face shared by the ws sub replay, the http() face, and MCP tail */
     snapshotTail(count?: number): unknown[]
 }

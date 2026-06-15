@@ -49,7 +49,7 @@ for (const entry of socketRegistry.values()) {
         if (operation.kind === 'tail') {
             manifest[operation.name] = {
                 method: operation.method,
-                url: operation.restUrl,
+                url: operation.httpUrl,
                 accept: 'text/event-stream',
                 jsonSchema: {
                     type: 'object',
@@ -67,7 +67,7 @@ for (const entry of socketRegistry.values()) {
         const payloadSchema = jsonSchemaForSchema(entry.schema)
         manifest[operation.name] = {
             method: operation.method,
-            url: operation.restUrl,
+            url: operation.httpUrl,
             jsonSchema: {
                 ...payloadSchema,
                 description:

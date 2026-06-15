@@ -13,13 +13,13 @@ disagree about which operations a socket has or what they're called.
 */
 export function socketOperations(entry: SocketRegistryEntry): SocketOperation[] {
     const base = commandNameForUrl(entry.socket.name)
-    const restUrl = `${SOCKETS_PATH}/${entry.socket.name}`
+    const httpUrl = `${SOCKETS_PATH}/${entry.socket.name}`
     const operations: SocketOperation[] = [
         {
             kind: 'tail',
             name: `${base}-tail`,
             socketName: entry.socket.name,
-            restUrl,
+            httpUrl,
             method: 'GET',
         },
     ]
@@ -28,7 +28,7 @@ export function socketOperations(entry: SocketRegistryEntry): SocketOperation[] 
             kind: 'publish',
             name: `${base}-publish`,
             socketName: entry.socket.name,
-            restUrl,
+            httpUrl,
             method: 'POST',
         })
     }

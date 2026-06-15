@@ -12,6 +12,6 @@ export type InspectorSocket = {
         kind: string
         name: string
         method: string
-        restUrl: string
+        httpUrl: string
     }>
 }

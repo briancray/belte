@@ -62,7 +62,7 @@ import type { Assets } from './types/Assets.ts'
 import type { RequestStore } from './types/RequestStore.ts'
 import { warnUnguardedMcp } from './warnUnguardedMcp.ts'
 
-const SOCKETS_REST_PREFIX = `${SOCKETS_PATH}/`
+const SOCKETS_HTTP_PREFIX = `${SOCKETS_PATH}/`
 const MCP_PATH = '/__belte/mcp'
 const CLI_DOWNLOAD_PREFIX = `${CLI_PATH}/`
 // Dev-only manual rebuild trigger; POSTing signals the orchestrator to rebuild + restart.
@@ -456,7 +456,7 @@ export async function createServer({
                 The socket name may contain `/` (nested files), so it's the
                 whole remaining pathname, percent-decoded.
                 */
-                if (url.pathname.startsWith(SOCKETS_REST_PREFIX)) {
+                if (url.pathname.startsWith(SOCKETS_HTTP_PREFIX)) {
                     /*
                     Gate cross-origin browser publishes (CSRF, see crossOriginGate).
                     GET tail reads stay open cross-origin like rpc reads; only
@@ -466,11 +466,11 @@ export async function createServer({
                     if (publishForbidden) {
                         return publishForbidden
                     }
-                    const name = decodeURIComponent(url.pathname.slice(SOCKETS_REST_PREFIX.length))
+                    const name = decodeURIComponent(url.pathname.slice(SOCKETS_HTTP_PREFIX.length))
                     return dispatchRequest(
                         req,
                         {},
-                        async () => socketDispatcher.rest(req, name),
+                        async () => socketDispatcher.http(req, name),
                         url,
                     )
                 }

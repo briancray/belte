@@ -105,7 +105,7 @@ describe('socket ws multiplex happy path', () => {
 
         // Observe the published message through the socket's own retained tail.
         const history = await dispatcher
-            .rest(new Request('http://x/__belte/sockets/ws-pub'), 'ws-pub')
+            .http(new Request('http://x/__belte/sockets/ws-pub'), 'ws-pub')
             .then((response) => response.json())
         expect(history).toEqual([{ text: 'hi' }])
     })
@@ -120,7 +120,7 @@ describe('socket ws multiplex happy path', () => {
         await settle()
 
         const history = await dispatcher
-            .rest(new Request('http://x/__belte/sockets/ws-readonly'), 'ws-readonly')
+            .http(new Request('http://x/__belte/sockets/ws-readonly'), 'ws-readonly')
             .then((response) => response.json())
         expect(history).toEqual([])
     })

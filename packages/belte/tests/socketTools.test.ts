@@ -19,7 +19,7 @@ describe('socket REST happy path', () => {
     })
 
     test('GET returns the retained tail snapshot as JSON', async () => {
-        const response = await dispatcher.rest(
+        const response = await dispatcher.http(
             new Request('http://x/__belte/sockets/rest-chat'),
             'rest-chat',
         )
@@ -28,7 +28,7 @@ describe('socket REST happy path', () => {
     })
 
     test('GET ?tail=N caps the snapshot to the last N', async () => {
-        const response = await dispatcher.rest(
+        const response = await dispatcher.http(
             new Request('http://x/__belte/sockets/rest-chat?tail=1'),
             'rest-chat',
         )
@@ -36,7 +36,7 @@ describe('socket REST happy path', () => {
     })
 
     test('GET with text/event-stream upgrades to an SSE stream', async () => {
-        const response = await dispatcher.rest(
+        const response = await dispatcher.http(
             new Request('http://x/__belte/sockets/rest-chat', {
                 headers: { accept: 'text/event-stream' },
             }),
@@ -47,7 +47,7 @@ describe('socket REST happy path', () => {
     })
 
     test('POST publishes the JSON body', async () => {
-        const response = await dispatcher.rest(
+        const response = await dispatcher.http(
             new Request('http://x/__belte/sockets/rest-chat', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -62,7 +62,7 @@ describe('socket REST happy path', () => {
     test('POST to a non-clientPublish socket is rejected with 403', async () => {
         defineSocket('rest-readonly', { schema: testSchema(), tail: 5 })
         const readonly = createSocketDispatcher(routesFor('rest-readonly'))
-        const response = await readonly.rest(
+        const response = await readonly.http(
             new Request('http://x/__belte/sockets/rest-readonly', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
