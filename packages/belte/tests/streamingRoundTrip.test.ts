@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { applyStreamedResolution } from '../src/lib/browser/applyStreamedResolution.ts'
-import { cacheEntryFromSnapshot } from '../src/lib/browser/cacheEntryFromSnapshot.ts'
+import { cacheEntryFromSnapshot } from '../src/lib/shared/cacheEntryFromSnapshot.ts'
 import { installStreamingPlaceholders } from '../src/lib/browser/installStreamingPlaceholders.ts'
 import { json } from '../src/lib/server/json.ts'
 import { defineVerb } from '../src/lib/server/rpc/defineVerb.ts'

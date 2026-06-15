@@ -1,5 +1,5 @@
-import type { CacheEntry } from '../shared/types/CacheEntry.ts'
-import type { CacheSnapshotEntry } from '../shared/types/CacheSnapshotEntry.ts'
+import type { CacheEntry } from './types/CacheEntry.ts'
+import type { CacheSnapshotEntry } from './types/CacheSnapshotEntry.ts'
 
 /*
 Rebuilds a warm cache entry from a wire snapshot: an already-resolved Response

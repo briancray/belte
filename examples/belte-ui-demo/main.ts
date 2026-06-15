@@ -1,14 +1,11 @@
-import { router } from 'belte/ui/router'
+import { startClient } from 'belte/ui/startClient'
 import About from './About.belte'
 import Data from './Data.belte'
 import Form from './Form.belte'
 import Home from './Home.belte'
 
-/* Client entry: the router adopts the server-rendered #app in place (hydration)
-   for the initial route, then drives SPA navigation — no clearing, no re-render
-   on load. Even the `/data` route resumes: its streamed `await` value is read from
-   the resume manifest, so the resolved list is adopted without re-fetching. */
-const app = document.getElementById('app')
-if (app !== null) {
-    router(app, { '/': Home, '/about': About, '/form': Form, '/data': Data })
-}
+/* Client entry: belte-ui's startClient seeds the tab cache store from the server's
+   __SSR__ snapshot, installs the mount base, and starts the router — which adopts
+   the server-rendered #app for the initial route, then drives SPA navigation. No
+   clearing, no re-render on load; even `/data` resumes from the stream's value. */
+startClient({ '/': Home, '/about': About, '/form': Form, '/data': Data })

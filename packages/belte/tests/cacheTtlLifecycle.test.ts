@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { cacheEntryFromSnapshot } from '../src/lib/browser/cacheEntryFromSnapshot.ts'
+import { cacheEntryFromSnapshot } from '../src/lib/shared/cacheEntryFromSnapshot.ts'
 import { json } from '../src/lib/server/json.ts'
 import { defineVerb } from '../src/lib/server/rpc/defineVerb.ts'
 import { requestContext } from '../src/lib/server/runtime/requestContext.ts'

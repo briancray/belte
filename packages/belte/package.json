@@ -90,6 +90,7 @@
         "./ui/dom/applyResolved": "./src/lib/ui/dom/applyResolved.ts",
         "./ui/dom/injectStyle": "./src/lib/ui/dom/injectStyle.ts",
         "./ui/router": "./src/lib/ui/router.ts",
+        "./ui/startClient": "./src/lib/ui/startClient.ts",
         "./ui/navigate": "./src/lib/ui/navigate.ts",
         "./ui/renderToStream": "./src/lib/ui/renderToStream.ts",
         "./ui-plugin": "./src/lib/ui/compile/belteUiPlugin.ts",
