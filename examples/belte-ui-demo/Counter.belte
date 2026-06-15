@@ -1,0 +1,25 @@
+<script>
+  let count = state(0)
+  let items = state([])
+  let total = derived(() => items.length)
+
+  function inc() { count += 1 }
+  function add() { items.push('item ' + (total + 1)) }
+</script>
+
+<main>
+  <h1>belte-ui demo</h1>
+  <p>A single-file <code>.belte</code> component: signals, events, derived, keyed each — rendered on the server and made interactive on the client.</p>
+
+  <button onclick={inc}>count: {count}</button>
+  <button onclick={add}>add item (have {total})</button>
+
+  <template if={total}>
+    <ul>
+      <template each={items} as="it" key="it">
+        <li>{it}</li>
+      </template>
+    </ul>
+    <template else><p class="empty">no items yet</p></template>
+  </template>
+</main>
