@@ -27,6 +27,15 @@ import type { Subscribable } from './types/Subscribable.ts'
 
 type AnyRemote<Args, Return> = RemoteFunction<Args, Return> | RawRemoteFunction<Args>
 type Producer<Args, Return> = (args?: Args) => Promise<Return>
+/*
+A producer whose arg is required (no default) — the stable-key server-cache
+pattern. Its own overload so the returned invoker keeps the arg required: a
+required-arg producer is not assignable to the optional `Producer` above (it
+can't be called with zero args), so it would otherwise fail to typecheck. The
+required invoker also makes the optional widening in the impl signature sound —
+callers must pass the arg, so the producer never receives `undefined`.
+*/
+type RequiredProducer<Args, Return> = (args: Args) => Promise<Return>
 
 /* Per-read lifecycle diagnostics, opt-in via DEBUG=belte:cache (browser: the belte-debug localStorage key). */
 const cacheLog = belteLog.channel('belte:cache')
@@ -129,8 +138,15 @@ export function cache<Args, Return>(
     fn: Producer<Args, Return>,
     options?: CacheOptions,
 ): (args?: Args) => Promise<Return>
+/* Required-arg producer overload — keep AFTER the optional `Producer` one: an
+   optional producer is assignable to a required param, so placing this first
+   would hijack no-input producers and force a required arg on them. */
 export function cache<Args, Return>(
-    fn: AnyRemote<Args, Return> | Producer<Args, Return>,
+    fn: RequiredProducer<Args, Return>,
+    options?: CacheOptions,
+): (args: Args) => Promise<Return>
+export function cache<Args, Return>(
+    fn: AnyRemote<Args, Return> | Producer<Args, Return> | RequiredProducer<Args, Return>,
     options?: CacheOptions,
 ): (args?: Args) => Promise<Return | Response> | Return {
     /*

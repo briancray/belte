@@ -45,6 +45,31 @@ describe('cache() producer', () => {
         expect(cacheStoreSlot.fallback!.entries.size).toBe(2)
     })
 
+    test('a required-arg producer caches by reference + args like any other', async () => {
+        // No default → required arg; the dedicated overload keeps this typechecking.
+        const square = (n: number) => Promise.resolve(n * n)
+        expect(await cache(square)(3)).toBe(9)
+        expect(await cache(square)(3)).toBe(9) // same ref + arg → coalesces
+        expect(await cache(square)(4)).toBe(16) // new arg → own entry
+        expect(cacheStoreSlot.fallback!.entries.size).toBe(2)
+    })
+
+    test('type: arg-arity flows through to the invoker (overload ordering guard)', () => {
+        // Never invoked — type-level only, mirroring defineVerb.test's idiom. A
+        // regression in the overload order/presence fails to compile here: drop the
+        // required overload and invoke() stops erroring (unused @ts-expect-error);
+        // put it first and optional() below stops typechecking.
+        const invoke = cache((n: number) => Promise.resolve(n * n))
+        void (() => {
+            // @ts-expect-error — a required-arg producer must keep the invoker arg required
+            invoke()
+            return invoke(3)
+        })
+        const optional = cache((n?: number) => Promise.resolve((n ?? 0) * 2))
+        void (() => optional())
+        expect(true).toBe(true)
+    })
+
     test('a producer with an incidental url prop stays a producer (brand, not shape, decides)', async () => {
         const fetchValue = Object.assign(counter(), { url: '/looks/remote', method: 'GET' })
         const first = await cache(fetchValue)()
