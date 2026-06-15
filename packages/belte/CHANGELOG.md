@@ -1,5 +1,11 @@
 # @belte/belte
 
+## 0.29.1
+
+### Patch Changes
+
+- [`bb5393c`](https://github.com/briancray/belte/commit/bb5393cac9685cc09ecf979bab3836436b9d1722) - accept required-arg producers via a dedicated overload ([`77d4d49`](https://github.com/briancray/belte/commit/77d4d49420472c3a3ce4a4a33585e0b1c00e5d68))
+
 ## 0.29.0
 
 ### Minor Changes
