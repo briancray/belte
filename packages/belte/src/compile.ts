@@ -3,7 +3,6 @@ import { belteLog } from './lib/shared/belteLog.ts'
 import { detectTarget } from './lib/shared/detectTarget.ts'
 import { exeSuffix } from './lib/shared/exeSuffix.ts'
 import { exitOnBuildFailure } from './lib/shared/exitOnBuildFailure.ts'
-import { loadSvelteConfig } from './lib/shared/loadSvelteConfig.ts'
 import type { CompileTarget } from './lib/shared/types/CompileTarget.ts'
 import { serverBuildPlugins } from './serverBuildPlugins.ts'
 
@@ -35,9 +34,8 @@ export async function compile({
     */
     buildClient?: boolean
 } = {}): Promise<string> {
-    const svelteConfig = await loadSvelteConfig(cwd)
     if (buildClient) {
-        await build({ cwd, svelteConfig })
+        await build({ cwd })
     }
 
     const outPath = outfile ?? `${cwd}/dist/app${exeSuffix(target)}`
@@ -55,7 +53,7 @@ export async function compile({
         */
         bytecode: true,
         compile: { target, outfile: outPath },
-        plugins: serverBuildPlugins({ cwd, svelteConfig, embedAssets: true }),
+        plugins: serverBuildPlugins({ cwd, embedAssets: true }),
     })
 
     exitOnBuildFailure(result)

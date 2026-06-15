@@ -5,7 +5,6 @@ import { belteLog } from './lib/shared/belteLog.ts'
 import { detectTarget } from './lib/shared/detectTarget.ts'
 import { exeSuffix } from './lib/shared/exeSuffix.ts'
 import { exitOnBuildFailure } from './lib/shared/exitOnBuildFailure.ts'
-import { loadSvelteConfig } from './lib/shared/loadSvelteConfig.ts'
 import { programNameForPackage } from './lib/shared/programNameForPackage.ts'
 import { readPackageJson } from './lib/shared/readPackageJson.ts'
 import type { CompileTarget } from './lib/shared/types/CompileTarget.ts'
@@ -46,12 +45,11 @@ export async function buildCli({
     const manifestPath = `${distDir}/cli-manifest.json`
     const discoveryOut = `${distDir}/_discovery.js`
 
-    const svelteConfig = await loadSvelteConfig(cwd)
-    const plugins = serverBuildPlugins({ cwd, svelteConfig })
+    const plugins = serverBuildPlugins({ cwd })
 
     // Step 1 — client build once (clears dist, writes _app). Every server binary
     // embeds it, so it must precede discovery and the per-target compiles.
-    await build({ cwd, svelteConfig })
+    await build({ cwd })
 
     /*
     Step 2 — discovery. Build a runnable bundle, execute it under bun, capture

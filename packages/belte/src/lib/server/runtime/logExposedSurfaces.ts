@@ -1,6 +1,5 @@
 import type { Pages } from '../../browser/types/Pages.ts'
 import { belteLog } from '../../shared/belteLog.ts'
-import type { ViewResolver } from '../../shared/types/ViewResolver.ts'
 import { verbRegistry } from '../rpc/verbRegistry.ts'
 import { socketRegistry } from '../sockets/socketRegistry.ts'
 import { ensureRegistriesLoaded } from './registryManifests.ts'
@@ -101,10 +100,7 @@ at boot and only under `belte` debug logging (DEBUG=belte) to avoid forcing
 eager imports in production. Best-effort: enumeration failures are swallowed,
 this is diagnostic only.
 */
-export async function logExposedSurfaces(routing: {
-    pages: Pages
-    resolver: ViewResolver
-}): Promise<void> {
+export async function logExposedSurfaces(routing: { pages: Pages }): Promise<void> {
     try {
         await ensureRegistriesLoaded()
     } catch {
@@ -112,10 +108,7 @@ export async function logExposedSurfaces(routing: {
     }
 
     const pageRows = Object.keys(routing.pages)
-        .map((route) => {
-            const { layout, error } = routing.resolver.prefixes(route)
-            return [route, layout ?? ABSENT, error ?? ABSENT]
-        })
+        .map((route) => [route])
         .sort()
 
     const socketRows = Array.from(socketRegistry.values(), (entry) => [
@@ -148,7 +141,7 @@ export async function logExposedSurfaces(routing: {
     ]).sort()
 
     logTables([
-        { title: 'pages', header: ['page', 'layout', 'error'], rows: pageRows },
+        { title: 'pages', header: ['page'], rows: pageRows },
         {
             title: 'sockets',
             header: ['socket', 'schema', 'browser', 'mcp', 'cli', 'publish'],

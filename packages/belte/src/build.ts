@@ -1,8 +1,6 @@
 import { clientBuildPlugins } from './clientBuildPlugins.ts'
 import { belteLog } from './lib/shared/belteLog.ts'
 import { exitOnBuildFailure } from './lib/shared/exitOnBuildFailure.ts'
-import { loadSvelteConfig } from './lib/shared/loadSvelteConfig.ts'
-import type { SvelteConfig } from './lib/shared/types/SvelteConfig.ts'
 
 const CLIENT_ENTRY = new URL('./clientEntry.ts', import.meta.url).pathname
 
@@ -37,14 +35,12 @@ the dev orchestrator passes `exitOnFailure: false`.
 // @readme plumbing
 export async function build({
     cwd = process.cwd(),
-    svelteConfig,
     minify = true,
     compress = true,
     clean = true,
     exitOnFailure = true,
 }: {
     cwd?: string
-    svelteConfig?: SvelteConfig
     minify?: boolean
     compress?: boolean
     clean?: boolean
@@ -70,10 +66,8 @@ export async function build({
             await Bun.$`rm -rf ${distDir}`.quiet()
         }
 
-        const config = svelteConfig ?? (await loadSvelteConfig(cwd))
         const plugins = await clientBuildPlugins({
             cwd,
-            svelteConfig: config,
             tailwindWarning: 'bun-plugin-tailwind not installed; building without Tailwind',
         })
 

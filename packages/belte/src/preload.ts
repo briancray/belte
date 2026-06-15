@@ -1,13 +1,11 @@
 // @readme plumbing
 import { plugin } from 'bun'
 import { belteResolverPlugin } from './belteResolverPlugin.ts'
-import { loadSvelteConfig } from './lib/shared/loadSvelteConfig.ts'
-import { sveltePlugin } from './sveltePlugin.ts'
+import { belteUiPlugin } from './lib/ui/compile/belteUiPlugin.ts'
 
-const mode = (process.env.BELTE_SVELTE_MODE ?? 'server') as 'server' | 'client'
-const svelteConfig = await loadSvelteConfig()
+const mode = (process.env.BELTE_TARGET ?? 'server') as 'server' | 'client'
 
-await plugin(sveltePlugin({ generate: mode, svelteConfig }))
+await plugin(belteUiPlugin)
 await plugin(belteResolverPlugin({ target: mode }))
 
 await plugin({

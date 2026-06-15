@@ -1,7 +1,6 @@
 import { clientBuildPlugins } from './clientBuildPlugins.ts'
 import { belteLog } from './lib/shared/belteLog.ts'
 import { exitOnBuildFailure } from './lib/shared/exitOnBuildFailure.ts'
-import type { SvelteConfig } from './lib/shared/types/SvelteConfig.ts'
 
 const ENTRY = new URL('./bundleDisconnectedEntry.ts', import.meta.url).pathname
 const CSS_ENTRY = new URL('./lib/bundle/disconnected.css', import.meta.url).pathname
@@ -34,14 +33,11 @@ beyond the one file it writes.
 */
 export async function buildDisconnected({
     cwd = process.cwd(),
-    svelteConfig,
 }: {
     cwd?: string
-    svelteConfig?: SvelteConfig
 } = {}): Promise<string> {
     const plugins = await clientBuildPlugins({
         cwd,
-        svelteConfig,
         tailwindWarning:
             'bun-plugin-tailwind not installed; building connect screen without Tailwind',
     })

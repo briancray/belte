@@ -11,7 +11,6 @@ import { belteLog } from './lib/shared/belteLog.ts'
 import { bundleLayout } from './lib/shared/bundleLayout.ts'
 import { detectTarget } from './lib/shared/detectTarget.ts'
 import { exitOnBuildFailure } from './lib/shared/exitOnBuildFailure.ts'
-import { loadSvelteConfig } from './lib/shared/loadSvelteConfig.ts'
 import { programNameForPackage } from './lib/shared/programNameForPackage.ts'
 import { readPackageJson } from './lib/shared/readPackageJson.ts'
 import { serverBuildPlugins } from './serverBuildPlugins.ts'
@@ -38,7 +37,6 @@ export async function bundleApp({ cwd = process.cwd() }: { cwd?: string } = {}):
     const target = detectTarget()
     const { name, version } = await readPackage(cwd)
     const programName = programNameForPackage(name)
-    const svelteConfig = await loadSvelteConfig(cwd)
 
     /*
     Layout differs by OS: a macOS .app nests binaries under Contents/MacOS, the
@@ -79,7 +77,7 @@ export async function bundleApp({ cwd = process.cwd() }: { cwd?: string } = {}):
 
     // 2. Connect screen — bake dist/bundle-disconnected.html before the launcher
     // build, which inlines it via the belte:bundle-disconnected virtual.
-    await buildDisconnected({ cwd, svelteConfig })
+    await buildDisconnected({ cwd })
 
     // 3. Launcher binary — named after the program so CFBundleExecutable matches.
     const launcherSuffix = target.includes('windows') ? '.exe' : ''
@@ -88,7 +86,7 @@ export async function bundleApp({ cwd = process.cwd() }: { cwd?: string } = {}):
         entrypoints: [APP_ENTRY],
         target: 'bun',
         compile: { target, outfile: launcherPath },
-        plugins: serverBuildPlugins({ cwd, svelteConfig }),
+        plugins: serverBuildPlugins({ cwd }),
         /*
         Inject the worker's absolute path as a static literal. `new Worker()` is
         embedded into the standalone binary only when its specifier is a build-time

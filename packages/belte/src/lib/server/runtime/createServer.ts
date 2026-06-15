@@ -1,6 +1,4 @@
 import type { BunRequest, Server } from 'bun'
-import type { Errors } from '../../browser/types/Errors.ts'
-import type { Layouts } from '../../browser/types/Layouts.ts'
 import type { Pages } from '../../browser/types/Pages.ts'
 import { createMcpResourceServer } from '../../mcp/createMcpResourceServer.ts'
 import { setMcpResourceServer } from '../../mcp/mcpResourceServerSlot.ts'
@@ -9,7 +7,6 @@ import { basePathFromAppUrl } from '../../shared/basePathFromAppUrl.ts'
 import { belteLog } from '../../shared/belteLog.ts'
 import { NO_STORE } from '../../shared/CACHE_CONTROL_VALUES.ts'
 import { CLI_PATH } from '../../shared/CLI_PATH.ts'
-import { createViewResolver } from '../../shared/createViewResolver.ts'
 import { DEV_RELOAD_PATH } from '../../shared/DEV_RELOAD_PATH.ts'
 import { extraForwardHeaders } from '../../shared/extraForwardHeaders.ts'
 import { HEALTH_PATH } from '../../shared/HEALTH_PATH.ts'
@@ -36,7 +33,7 @@ import type { SocketRoutes } from '../sockets/types/SocketRoutes.ts'
 import { buildHealthPayload } from './buildHealthPayload.ts'
 import { buildOpenApiSpec } from './buildOpenApiSpec.ts'
 import { createAppAssetServer } from './createAppAssetServer.ts'
-import { createPageRenderer } from './createPageRenderer.ts'
+import { createUiPageRenderer } from './createUiPageRenderer.ts'
 import { createPublicAssetServer } from './createPublicAssetServer.ts'
 import { createRouteDispatcher } from './createRouteDispatcher.ts'
 import { crossOriginGate } from './crossOriginGate.ts'
@@ -93,8 +90,6 @@ export async function createServer({
     rpc,
     sockets,
     prompts,
-    layouts,
-    errors,
     shell,
     app,
     assets,
@@ -134,8 +129,6 @@ export async function createServer({
     rpc: RemoteRoutes
     sockets: SocketRoutes
     prompts: PromptRoutes
-    layouts?: Layouts
-    errors?: Errors
     shell: string
     app?: AppModule
     assets?: Assets
@@ -228,8 +221,6 @@ export async function createServer({
     /* Built on first request, then reused — the verb registry is frozen after load. */
     let openApiSpec: ReturnType<typeof buildOpenApiSpec> | undefined
     const cliCwd = process.cwd()
-    /* Route → components: layout/error prefix matching + module loading live behind this seam. */
-    const viewResolver = createViewResolver({ pages, layouts, errors })
 
     /* Request closing records are on by default — DEBUG=-belte is the off switch (negation, like the belte channel itself). */
     const logRequests = !isDebugNegated('belte')
@@ -238,15 +229,16 @@ export async function createServer({
     extraForwardHeaders.set(app?.forwardHeaders ?? [])
 
     /*
-    SSR document assembly — view render, cache snapshot partition, `__SSR__`
-    state tag, shell splicing — lives behind createPageRenderer. renderError
-    also serves the 404 fallthrough below.
+    SSR document assembly — belte-ui page render, cache snapshot, `__SSR__` state
+    tag, shell splicing (buffered, or streamed for pages with await blocks) — lives
+    behind createUiPageRenderer. Layouts are userland, so there is no framework
+    layout/error view; renderError returns undefined and the 404 path serves plain.
     */
-    const { renderPage, renderError } = createPageRenderer({
+    const { renderPage, renderError } = createUiPageRenderer({
         shell: activeShell,
         base,
         clientTimeout: parseBoundedEnvInt(process.env.BELTE_CLIENT_TIMEOUT, 1, 600_000),
-        viewResolver,
+        pages,
         /* The wire payload, rebuilt per marked render — the __SSR__ health seed must match what /__belte/health serves. */
         healthPayload: (request) => buildHealthPayload(request, { app, appName, appVersion }),
     })
@@ -643,7 +635,7 @@ export async function createServer({
     startup output rather than interleaving with it.
     */
     if (logRequests) {
-        await logExposedSurfaces({ pages, resolver: viewResolver })
+        await logExposedSurfaces({ pages })
     }
     // Unguarded machine surface check — app.handle is the blessed auth seam.
     if (mcp && !app?.handle) {

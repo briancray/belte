@@ -7,10 +7,6 @@ import { assets } from './_virtual/assets.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
 import cliProgramName from './_virtual/cli-name.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
-import { errors } from './_virtual/errors.ts'
-// @ts-expect-error virtual module resolved by belteResolverPlugin
-import { layouts } from './_virtual/layouts.ts'
-// @ts-expect-error virtual module resolved by belteResolverPlugin
 import mcp from './_virtual/mcp.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
 import { mcpResources } from './_virtual/mcp-resources.ts'
@@ -83,8 +79,6 @@ await createServer({
     rpc,
     sockets,
     prompts,
-    layouts,
-    errors,
     shell,
     app: appMod,
     assets,
