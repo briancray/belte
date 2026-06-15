@@ -1,5 +1,11 @@
 # @belte/inspector
 
+## 0.3.0
+
+### Minor Changes
+
+- [`af5c342`](https://github.com/briancray/belte/commit/af5c3422c1231600e9eef09cebe37e5537c381b3) - overhaul the Traces waterfall and sort the Surface ([`145b251`](https://github.com/briancray/belte/commit/145b251381fdb660d9bb6e3847563acb884f06b9))
+
 ## 0.2.0
 
 ### Minor Changes

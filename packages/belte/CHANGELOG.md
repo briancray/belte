@@ -1,5 +1,17 @@
 # @belte/belte
 
+## 0.29.0
+
+### Minor Changes
+
+- [`af5c342`](https://github.com/briancray/belte/commit/af5c3422c1231600e9eef09cebe37e5537c381b3) - span the request lifecycle gaps ([`200c7f9`](https://github.com/briancray/belte/commit/200c7f90f500d9eaf37200261ab92683ece2ddc5))
+
+### Patch Changes
+
+- [`af5c342`](https://github.com/briancray/belte/commit/af5c3422c1231600e9eef09cebe37e5537c381b3) - rename the socket REST face to http ([`36c799c`](https://github.com/briancray/belte/commit/36c799cfb4b89391ab840cb883bef51b39001102))
+
+- [`47505a8`](https://github.com/briancray/belte/commit/47505a8e5c88d3cfaa0b4dbf691607fa72b6fb48) - fix(ssr): set `navigating: false` on the server-rendered page state. 0.28.0's client-side `navigate` made `navigating` a required field of the page snapshot, but `createPageRenderer`'s two SSR literals (normal render + error render) were never updated, so a strict consumer `bun check` (belte ships raw TS) failed with `Property 'navigating' is missing`. SSR has no client transition, so it's always settled — mirrors `resolvePageSnapshot`.
+
 ## 0.28.0
 
 ### Minor Changes
