@@ -1,7 +1,9 @@
 import { rawHtmlString } from '../../shared/html.ts'
+import { snippetPayload } from '../../shared/snippet.ts'
 import { effect } from '../effect.ts'
 import { claimChild } from '../runtime/claimChild.ts'
 import { RENDER } from '../runtime/RENDER.ts'
+import { appendSnippet } from './appendSnippet.ts'
 
 const CLOSE = '/belte:html'
 
@@ -20,6 +22,12 @@ its first value), so plain text — the common case — stays a cheap single nod
 */
 // @readme plumbing
 export function appendText(parent: Node, read: () => unknown): void {
+    /* A snippet call (`{row(args)}`) mounts its builder; a `html\`\`` value inserts
+       raw markup; everything else is escaped text — decided by the first value. */
+    if (typeof snippetPayload(read()) === 'function') {
+        appendSnippet(parent, read)
+        return
+    }
     if (rawHtmlString(read()) !== undefined) {
         appendRawHtml(parent, read)
         return

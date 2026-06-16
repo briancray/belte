@@ -23,6 +23,7 @@ export function compileModule(source: string): string {
     const body = indent(compileComponent(source))
     const ui = `${BELTE_PACKAGE_NAME}/ui`
     return `import { html } from '${BELTE_PACKAGE_NAME}/shared/html'
+import { snippet } from '${BELTE_PACKAGE_NAME}/shared/snippet'
 import { doc } from '${ui}/doc'
 import { state } from '${ui}/state'
 import { derived } from '${ui}/derived'
@@ -31,15 +32,20 @@ import { mount } from '${ui}/dom/mount'
 import { openChild } from '${ui}/dom/openChild'
 import { openRoot } from '${ui}/dom/openRoot'
 import { appendText } from '${ui}/dom/appendText'
+import { appendSnippet } from '${ui}/dom/appendSnippet'
 import { appendStatic } from '${ui}/dom/appendStatic'
 import { attr } from '${ui}/dom/attr'
 import { on } from '${ui}/dom/on'
 import { each } from '${ui}/dom/each'
 import { when } from '${ui}/dom/when'
 import { awaitBlock } from '${ui}/dom/awaitBlock'
+import { tryBlock } from '${ui}/dom/tryBlock'
 import { switchBlock } from '${ui}/dom/switchBlock'
 import { injectStyle } from '${ui}/dom/injectStyle'
 import { hydrate } from '${ui}/dom/hydrate'
+import { nextBlockId } from '${ui}/runtime/nextBlockId'
+import { enterRenderPass } from '${ui}/runtime/enterRenderPass'
+import { exitRenderPass } from '${ui}/runtime/exitRenderPass'
 ${userImports}
 
 export default function component(host, $props) {

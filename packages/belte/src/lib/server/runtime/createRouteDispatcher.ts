@@ -1,7 +1,9 @@
 import type { Pages } from '../../browser/types/Pages.ts'
 import { NO_STORE } from '../../shared/CACHE_CONTROL_VALUES.ts'
 import { memoizeByKey } from '../../shared/memoizeByKey.ts'
+import { NAV_HEADER } from '../../shared/NAV_HEADER.ts'
 import { REMOTE_FUNCTION } from '../../shared/REMOTE_FUNCTION.ts'
+import { TEXT_PLAIN } from '../../shared/TEXT_PLAIN.ts'
 import type { HttpVerb } from '../../shared/types/HttpVerb.ts'
 import type { RemoteFunction } from '../../shared/types/RemoteFunction.ts'
 import type { RemoteRoutes } from '../rpc/types/RemoteRoutes.ts'
@@ -28,7 +30,7 @@ type RenderPage = (
 function methodNotAllowed(allow: string): Response {
     return new Response('Method Not Allowed', {
         status: 405,
-        headers: { Allow: allow, 'Cache-Control': NO_STORE },
+        headers: { Allow: allow, 'Content-Type': TEXT_PLAIN, 'Cache-Control': NO_STORE },
     })
 }
 
@@ -100,11 +102,25 @@ export function createRouteDispatcher({
                 if (method !== 'GET' && method !== 'HEAD') {
                     return methodNotAllowed('GET, HEAD')
                 }
+                /*
+                SPA navigation probe: the client router fetches the destination
+                with NAV_HEADER purely so app.handle runs (auth/redirect gating)
+                before it mounts the page itself. Reaching here means handle()
+                already passed — it called next — so a bare 204 says "cleared,
+                mount it client-side" without paying for a render. A redirect or
+                block from handle() short-circuits before next and never arrives.
+                */
+                if (req.headers.has(NAV_HEADER)) {
+                    return new Response(null, {
+                        status: 204,
+                        headers: { 'Cache-Control': NO_STORE },
+                    })
+                }
                 return renderPage(routeUrl, pathParams, store)
             }
             return new Response('Not Found', {
                 status: 404,
-                headers: { 'Cache-Control': NO_STORE },
+                headers: { 'Content-Type': TEXT_PLAIN, 'Cache-Control': NO_STORE },
             })
         }
     }

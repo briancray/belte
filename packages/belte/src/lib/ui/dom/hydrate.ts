@@ -1,3 +1,5 @@
+import { enterRenderPass } from '../runtime/enterRenderPass.ts'
+import { exitRenderPass } from '../runtime/exitRenderPass.ts'
 import { RENDER } from '../runtime/RENDER.ts'
 import { scope } from '../runtime/scope.ts'
 
@@ -18,8 +20,15 @@ interacts with the streamed stream-swap); a component using `await` should `moun
 export function hydrate(host: Element, build: (host: Element) => void): () => void {
     const previous = RENDER.hydration
     RENDER.hydration = { next: new Map() }
+    enterRenderPass()
     try {
-        return scope(() => build(host))
+        return scope(() => {
+            try {
+                build(host)
+            } finally {
+                exitRenderPass()
+            }
+        })
     } finally {
         RENDER.hydration = previous
     }

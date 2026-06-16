@@ -1,4 +1,5 @@
 import { NO_STORE } from '../../shared/CACHE_CONTROL_VALUES.ts'
+import { TEXT_PLAIN } from '../../shared/TEXT_PLAIN.ts'
 
 /*
 The framework's CSRF refusal, shared by every same-origin gate — the socket
@@ -11,6 +12,6 @@ export function crossOriginForbidden(hint?: string): Response {
     const detail = hint ? ` ${hint}` : ''
     return new Response(
         `Forbidden: cross-origin browser request refused (CSRF protection).${detail}`,
-        { status: 403, headers: { 'Cache-Control': NO_STORE } },
+        { status: 403, headers: { 'Content-Type': TEXT_PLAIN, 'Cache-Control': NO_STORE } },
     )
 }

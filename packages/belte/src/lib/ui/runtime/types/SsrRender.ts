@@ -1,7 +1,10 @@
 /* One pending await block captured during SSR: its boundary id, the promise to
-   await, and the string-renderers for the resolved value / error. */
+   await, and the string-renderers for the resolved value / error. `blocking` (a
+   `then` on the `await` tag) makes `renderToStream` settle it BEFORE the first flush,
+   splicing the resolved branch into its empty boundary; absent → streamed after. */
 export type SsrAwait = {
     id: number
+    blocking?: boolean
     promise: () => unknown
     then: (value: unknown) => string
     catch: (error: unknown) => string

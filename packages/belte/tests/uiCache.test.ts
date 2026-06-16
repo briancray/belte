@@ -142,6 +142,63 @@ describe('cache() + UI await-block hydration', () => {
 
         expect(fetched).toBe(false) // adopted from the manifest — cache never dispatched
         expect(ul.childNodes[0]).toBe(firstRowBefore) // SSR rows adopted in place, no flash
-        expect(ul.childNodes.map((row) => row.textContent)).toEqual(['ada', 'margaret'])
+        expect(ul.childNodes.map((row) => row.textContent).filter(Boolean)).toEqual([
+            'ada',
+            'margaret',
+        ])
+    })
+
+    test('a resume-hydrated await re-subscribes — cache.invalidate re-runs it', async () => {
+        /* Regression: a resume-adopted await read the manifest value, not cache, so it
+           subscribed to nothing and a later invalidate was a no-op. The fix reads the
+           promise on the first hydrate pass to subscribe (warm for a cache-remote). A
+           producer is used here so the cold re-run is observable without verb metadata. */
+        const store = createCacheStore()
+        cacheStoreSlot.resolver = () => store
+        let runs = 0
+        function loadData(): Promise<string> {
+            runs += 1
+            return Promise.resolve(`v${runs}`)
+        }
+        RESUME[0] = { ok: true, value: 'resumed' }
+
+        const host = document.createElement('div')
+        host.innerHTML =
+            '<main><!--belte:await:0--><span>resumed</span><!--/belte:await:0--></main>'
+        const source = `
+            <script>let read = cache(loadData)</script>
+            <main><template await={read()}><template then="v"><span>{v}</span></template></template></main>
+        `
+        const runtime = {
+            doc,
+            state,
+            derived,
+            effect,
+            openChild,
+            openRoot,
+            appendText,
+            appendStatic,
+            on,
+            awaitBlock,
+            cache,
+            loadData,
+        }
+        const names = Object.keys(runtime)
+        const values = names.map((n) => runtime[n as keyof typeof runtime])
+        const body = compileComponent(source)
+        hydrate(host, (target) => {
+            new Function('host', ...names, body)(target, ...values)
+        })
+        await Promise.resolve()
+        await Promise.resolve()
+
+        const adopted = (host.childNodes[0] as unknown as { childNodes: { textContent: string }[] })
+            .childNodes
+        expect(adopted.map((n) => n.textContent).filter(Boolean)).toContain('resumed') // adopted, no flash
+        const before = runs
+        cache.invalidate(loadData)
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(runs).toBeGreaterThan(before) // re-ran after invalidate — it WAS subscribed
     })
 })

@@ -29,6 +29,10 @@ export function branchElements(
         if (child.kind === 'text' && isWhitespaceOnly(child)) {
             continue
         }
+        /* A scoped `<script>` is emitted as code by the back-end, not a root. */
+        if (child.kind === 'script') {
+            continue
+        }
         throw new Error(
             `[belte] ${context} content must be element(s); wrap text / components / nested <template> in an element`,
         )

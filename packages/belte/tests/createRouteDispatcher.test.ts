@@ -73,6 +73,20 @@ describe('createRouteDispatcher', () => {
         expect(recorder.calls).toEqual([{ routeUrl: '/post/[id]', params: { id: '1' } }])
     })
 
+    test('answers a NAV_HEADER probe 204 without rendering the page', async () => {
+        const pages: Pages = { '/about': async () => ({ default: (() => {}) as never }) }
+        const recorder = recordingRenderPage()
+        const build = createRouteDispatcher({ pages, rpc: noRpc, renderPage: recorder.renderPage })
+        const res = await build('/about')(
+            new Request('https://t/about', { headers: { 'belte-nav': '1' } }),
+            {},
+            store,
+        )
+        // handle() ran upstream; the dispatcher clears the SPA mount without an SSR render.
+        expect(res.status).toBe(204)
+        expect(recorder.calls).toHaveLength(0)
+    })
+
     test('rejects a non-GET/HEAD page request with 405', async () => {
         const pages: Pages = { '/about': async () => ({ default: (() => {}) as never }) }
         const recorder = recordingRenderPage()

@@ -141,6 +141,16 @@ export function parseTemplate(source: string): TemplateNode[] {
             cursor += 1
         }
         cursor += 1 // past '>'
+        /* A nested `<script>` is a scoped reactive block: its body is raw JS read
+           verbatim to its `</script>` (not parsed as markup), scoped by the
+           containing branch when compiled. */
+        if (tag === 'script' && !selfClosing) {
+            const close = source.indexOf('</script>', cursor)
+            const end = close === -1 ? source.length : close
+            const code = source.slice(cursor, end)
+            cursor = close === -1 ? source.length : end + '</script>'.length
+            return { kind: 'script', code }
+        }
         /* A capitalised tag is a child component; its attributes become props and
            its children become slot content (rendered where the child puts <slot>). */
         if (/^[A-Z]/.test(tag)) {
@@ -221,13 +231,44 @@ function attrName(attr: TemplateAttr): string {
 /* Turns a `<template>` directive into a control node (if/each/await + then/catch). */
 function toControlFlow(attrs: TemplateAttr[], children: TemplateNode[]): TemplateNode {
     const find = (name: string) => attrs.find((attr) => attrName(attr) === name)
+    /* `<template name="row" args={item}>` declares a snippet — a named builder, not
+       a control branch. `args` (its parameter list) rides the `{…}` expression slot. */
+    const snippet = find('name')
+    if (snippet !== undefined) {
+        const name = attrText(snippet)
+        if (name === undefined || name === '') {
+            throw new Error('[belte] <template name> requires a snippet name')
+        }
+        const params = find('args')
+        return {
+            kind: 'snippet',
+            name,
+            params: params === undefined ? undefined : attrText(params),
+            children,
+        }
+    }
+    /* `<template try>` is a synchronous error boundary: its children are the guarded
+       subtree; `catch`/`finally` branches handle a throw while building them. */
+    if (find('try') !== undefined) {
+        return { kind: 'try', children }
+    }
     const promise = find('await')
     if (promise !== undefined) {
         const promiseCode = attrText(promise)
         if (promiseCode === undefined) {
             throw new Error('[belte] <template await> requires a promise expression')
         }
-        return { kind: 'await', promise: promiseCode, children }
+        /* A `then` attribute ON the await tag is the blocking switch: children become
+           the resolved content bound to its value (a `then` *child* is a streaming
+           branch, handled separately below when its own tag is parsed). */
+        const boundThen = find('then')
+        return {
+            kind: 'await',
+            promise: promiseCode,
+            blocking: boundThen !== undefined,
+            as: boundThen === undefined ? undefined : attrText(boundThen) || undefined,
+            children,
+        }
     }
     const thenAttr = find('then')
     if (thenAttr !== undefined) {
@@ -236,6 +277,11 @@ function toControlFlow(attrs: TemplateAttr[], children: TemplateNode[]): Templat
     const catchAttr = find('catch')
     if (catchAttr !== undefined) {
         return { kind: 'branch', branch: 'catch', as: attrText(catchAttr) || undefined, children }
+    }
+    /* `<template finally>` renders after settle on BOTH outcomes — outcome-agnostic,
+       so it binds no value. */
+    if (find('finally') !== undefined) {
+        return { kind: 'branch', branch: 'finally', as: undefined, children }
     }
     const subject = find('switch')
     if (subject !== undefined) {

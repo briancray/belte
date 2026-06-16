@@ -5,9 +5,10 @@ import { setCacheStoreResolver } from '../shared/setCacheStoreResolver.ts'
 import { setGlobalCacheStoreResolver } from '../shared/setGlobalCacheStoreResolver.ts'
 import { setPageResolver } from '../shared/setPageResolver.ts'
 import type { CacheSnapshotEntry } from '../shared/types/CacheSnapshotEntry.ts'
+import { probeNavigation } from './probeNavigation.ts'
 import { router } from './router.ts'
 import { clientPage } from './runtime/clientPage.ts'
-import type { Route } from './runtime/types/Route.ts'
+import type { RouteLoader } from './runtime/types/RouteLoader.ts'
 
 /* The server's __SSR__ payload this entry consumes. */
 type SsrPayload = { cache?: CacheSnapshotEntry[]; base?: string }
@@ -16,13 +17,15 @@ type SsrPayload = { cache?: CacheSnapshotEntry[]; base?: string }
 The official belte-ui client entry. Reads the server's `window.__SSR__` payload,
 seeds a tab-scoped cache store from the inline snapshot (so a warm `cache()` read
 resolves synchronously and the matching `<template await>` adopts the SSR DOM with
-no re-fetch), installs the mount base, and starts the router — which adopts the
-server-rendered `#app` for the initial route, then drives SPA navigation. Returns a
-disposer. `target` defaults to `#app`; pass one explicitly in tests.
+no re-fetch), installs the mount base, and starts the router — which imports the
+current route's chunk, adopts the server-rendered `#app`, then drives SPA
+navigation — importing each further page's chunk on first visit and probing the
+destination through the server's app.handle so auth/redirect gating still applies.
+Returns a disposer. `target` defaults to `#app`; pass one explicitly in tests.
 */
 // @readme plumbing
 export function startClient(
-    routes: Record<string, Route>,
+    routes: Record<string, RouteLoader>,
     target: Element | null = typeof document !== 'undefined'
         ? document.getElementById('app')
         : null,
@@ -43,5 +46,5 @@ export function startClient(
         store.entries.set(entry.key, cacheEntryFromSnapshot(entry))
     }
 
-    return router(target, routes)
+    return router(target, routes, probeNavigation)
 }

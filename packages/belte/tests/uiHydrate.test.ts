@@ -192,13 +192,13 @@ describe('hydrate — adopt server DOM', () => {
 
         // rows adopted in place, not recreated
         expect(ul.childNodes[0]).toBe(firstRow)
-        expect(ul.childNodes.map((c) => c.textContent)).toEqual(['1', '2'])
+        expect(ul.childNodes.map((c) => c.textContent).filter(Boolean)).toEqual(['1', '2'])
 
         // a row field updates in place; appending a row works post-hydration
         model.replace('byId/a/n', 9)
         expect(ul.childNodes[0].textContent).toBe('9')
         model.add('order/-', 'c')
-        expect(ul.childNodes.map((c) => c.textContent)).toEqual(['9', '2', '3'])
+        expect(ul.childNodes.map((c) => c.textContent).filter(Boolean)).toEqual(['9', '2', '3'])
     })
 
     test('adopts the matching switch case in place, then switches', () => {
@@ -323,8 +323,10 @@ describe('hydrate — adopt server DOM', () => {
         expect(host.textContent).toBe('Hi world')
     })
 
-    test('resumes a streamed await branch from the manifest (no re-fetch)', async () => {
-        // a call counter proves the promise runs once on the server, never on resume
+    test('resumes a streamed await branch from the manifest (adopts in place, re-subscribes)', async () => {
+        // a call counter: once on the server, then once on resume to re-subscribe so the
+        // block stays reactive (cache-invalidate driven). A cache-backed await reads warm
+        // on that resume pass — no network re-fetch (see uiCache); this raw promise re-runs.
         let calls = 0
         ;(globalThis as { __fetchUsers?: () => Promise<string[]> }).__fetchUsers = () => {
             calls += 1
@@ -366,7 +368,10 @@ describe('hydrate — adopt server DOM', () => {
         const ul = (host.childNodes[0] as unknown as { childNodes: unknown[] })
             .childNodes[1] as unknown as { childNodes: { textContent: string }[] }
         const firstRowBefore = ul.childNodes[0]
-        expect(ul.childNodes.map((row) => row.textContent)).toEqual(['ada', 'margaret'])
+        expect(ul.childNodes.map((row) => row.textContent).filter(Boolean)).toEqual([
+            'ada',
+            'margaret',
+        ])
 
         // 3) hydrate — adopts the resolved branch from the manifest, no re-fetch
         const runtime = {
@@ -390,9 +395,12 @@ describe('hydrate — adopt server DOM', () => {
             new Function('host', ...names, body)(target, ...values)
         })
 
-        expect(calls).toBe(1) // resumed from the manifest — the promise never re-ran
-        expect(ul.childNodes[0]).toBe(firstRowBefore) // rows adopted, not recreated
-        expect(ul.childNodes.map((row) => row.textContent)).toEqual(['ada', 'margaret'])
+        expect(calls).toBe(2) // re-read once on resume to re-subscribe (raw promise re-runs; cache reads warm)
+        expect(ul.childNodes[0]).toBe(firstRowBefore) // rows adopted from the manifest, not recreated
+        expect(ul.childNodes.map((row) => row.textContent).filter(Boolean)).toEqual([
+            'ada',
+            'margaret',
+        ])
 
         delete RESUME[0] // the manifest is process-global; don't leak into other tests
     })

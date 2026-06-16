@@ -120,9 +120,12 @@ export function createUiPageRenderer({
             })
         }
 
-        /* Await blocks → stream the shell, then resolved fragments as they settle. */
+        /* Await blocks → stream the shell, then resolved fragments as they settle.
+           Fill head/state but LEAVE the body marker intact — it's the split point for
+           streaming the page body into `#app`; consuming it here would append the body
+           after the whole shell (outside `#app`), breaking hydration. */
         const head = `<script>${SSR_SWAP_SCRIPT}</script>${await stateTag(routeUrl, params, store)}`
-        const filled = shell.replace(SSR_MARKER, (_match, key: string) =>
+        const filled = shell.replace(/<!--ssr:(head|state)-->/g, (_match, key: string) =>
             key === 'head' ? head : '',
         )
         const [before, after] = filled.split(BODY_MARKER)

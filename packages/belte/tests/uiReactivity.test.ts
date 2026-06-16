@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { createSubscriber } from '../src/lib/shared/createSubscriber.ts'
 import { derived } from '../src/lib/ui/derived.ts'
 import { doc } from '../src/lib/ui/doc.ts'
 import { effect } from '../src/lib/ui/effect.ts'
@@ -166,5 +167,39 @@ describe('reactive document', () => {
         expect(runs).toBe(1)
         d.replace('x', 2)
         expect(runs).toBe(2)
+    })
+
+    /*
+    Regression: a derived over a createSubscriber resource (e.g. tail()), read by
+    an effect, must wake the effect exactly once per update. A single update used
+    to loop forever — trigger walked the live observer Set while the flush it
+    fired re-ran the derived, whose runNode deletes-then-re-adds itself to that
+    same Set, re-yielding it to the in-progress for…of without end.
+    */
+    test('a derived over a createSubscriber wakes its effect once per update, no loop', () => {
+        let value: unknown = undefined
+        let fire: () => void = () => {}
+        const tap = createSubscriber((update) => {
+            fire = update
+            return () => {}
+        })
+        const latest = derived(() => {
+            tap()
+            return value
+        })
+        let runs = 0
+        const dispose = effect(() => {
+            latest.value
+            runs += 1
+        })
+        expect(runs).toBe(1)
+        value = { msg: 1 }
+        fire()
+        expect(runs).toBe(2)
+        expect(latest.value).toEqual({ msg: 1 })
+        value = { msg: 2 }
+        fire()
+        expect(runs).toBe(3)
+        dispose()
     })
 })

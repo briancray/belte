@@ -1,4 +1,5 @@
 import { NO_STORE } from '../shared/CACHE_CONTROL_VALUES.ts'
+import { TEXT_PLAIN } from '../shared/TEXT_PLAIN.ts'
 import type { TypedResponse } from './rpc/types/TypedResponse.ts'
 import { withResponseDefaults } from './runtime/withResponseDefaults.ts'
 
@@ -63,7 +64,7 @@ export function error(status: number, message?: string, init?: ResponseInit): Ty
         withResponseDefaults(
             init,
             {
-                'Content-Type': 'text/plain; charset=utf-8',
+                'Content-Type': TEXT_PLAIN,
                 'Cache-Control': NO_STORE,
             },
             status,

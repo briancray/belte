@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+/* CodeBlock: shiki output is injected as raw markup (global, unscoped). */
+.codeblock pre.shiki {
+    padding: 1rem;
+    margin: 0;
+}

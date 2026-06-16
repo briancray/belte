@@ -1,4 +1,5 @@
 import { NO_STORE } from '../shared/CACHE_CONTROL_VALUES.ts'
+import { TEXT_PLAIN } from '../shared/TEXT_PLAIN.ts'
 import { dispatchMcpRequest } from './dispatchMcpRequest.ts'
 import type { McpServer } from './types/McpServer.ts'
 import type { McpServerOptions } from './types/McpServerOptions.ts'
@@ -33,7 +34,11 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
             if (request.method !== 'POST') {
                 return new Response('Method Not Allowed', {
                     status: 405,
-                    headers: { Allow: 'POST', 'Cache-Control': NO_STORE },
+                    headers: {
+                        Allow: 'POST',
+                        'Content-Type': TEXT_PLAIN,
+                        'Cache-Control': NO_STORE,
+                    },
                 })
             }
             const envelope = await dispatchMcpRequest(request, opts, serverInfo)

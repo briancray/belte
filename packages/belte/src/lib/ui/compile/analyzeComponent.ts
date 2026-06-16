@@ -13,12 +13,14 @@ attribute to its elements and emits the scoped CSS. Both client and SSR back-end
 run from this one analysis, so the targets always agree.
 */
 export function analyzeComponent(source: string): AnalyzedComponent {
-    const scriptMatch = source.match(/<script[^>]*>([\s\S]*?)<\/script>/)
+    /* Only the LEADING `<script>` is the component script; scripts nested in the
+       template (scoped reactive blocks) survive into the parsed nodes. */
+    const scriptMatch = source.match(/^\s*<script[^>]*>([\s\S]*?)<\/script>/)
     const styleMatch = source.match(/<style[^>]*>([\s\S]*?)<\/style>/)
     const scriptBody = (scriptMatch?.[1] ?? '').trim()
     const styleBody = (styleMatch?.[1] ?? '').trim()
     const template = source
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/, '')
+        .replace(/^\s*<script[^>]*>[\s\S]*?<\/script>/, '')
         .replace(/<style[^>]*>[\s\S]*?<\/style>/, '')
         .replace(/<\/?belte[^>]*>/g, '')
         .trim()

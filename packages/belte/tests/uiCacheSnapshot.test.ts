@@ -145,7 +145,10 @@ describe('cache() snapshot → UI hydration (full server→client loop)', () => 
 
             expect(handlerCalls).toBe(1) // warm cache on the client — the verb never re-ran
             expect(ul.childNodes[0]).toBe(firstRowBefore) // SSR rows adopted, not recreated
-            expect(ul.childNodes.map((row) => row.textContent)).toEqual(['ada', 'margaret'])
+            expect(ul.childNodes.map((row) => row.textContent).filter(Boolean)).toEqual([
+                'ada',
+                'margaret',
+            ])
         } finally {
             cacheStoreSlot.resolver = () => requestContext.getStore()?.cache
         }

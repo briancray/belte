@@ -14,14 +14,33 @@ This is the await-block-streams half of the cache rule: a top-level `await` in t
 script would have blocked the shell (inlined), but an await *block* flushes its
 shell now and streams the value when ready. Driven by a plain `render()` result,
 so it composes with any transport (HTTP chunked, a socket frame, a test).
+
+A `then` on the `await` tag makes the block BLOCKING: it settles before the first
+flush, its resolved branch spliced into its (empty) boundary and its value seeded
+into the resume manifest inline — so the value is in the first paint, no pending
+shell, no swap. The first yield therefore awaits all blocking blocks; only the
+remaining streaming blocks flush out of order after it.
 */
 // @readme plumbing
 export async function* renderToStream(render: () => SsrRender): AsyncGenerator<string> {
     const { html, awaits } = render()
-    yield html
+    /* Blocking awaits (a `then` on the `await` tag) settle BEFORE the first flush:
+       their resolved branch is spliced into its empty boundary and its value registered
+       inline, so the first paint already has the value — no pending, no swap. */
+    const blocking = awaits.filter((block) => block.blocking === true)
+    let shell = html
+    const resumed: Record<number, ResumeEntry> = {}
+    for (const settled of await Promise.all(blocking.map(settle))) {
+        shell = spliceResolved(shell, settled.id, settled.html)
+        resumed[settled.id] = settled.resume
+    }
+    yield shell + resumeScript(resumed)
+    /* Streaming awaits flush their resolved fragment out of order as each settles. */
     const inflight = new Map<number, Promise<Settled>>()
     for (const block of awaits) {
-        inflight.set(block.id, settle(block))
+        if (block.blocking !== true) {
+            inflight.set(block.id, settle(block))
+        }
     }
     while (inflight.size > 0) {
         const resolved = await Promise.race(inflight.values())
@@ -29,6 +48,26 @@ export async function* renderToStream(render: () => SsrRender): AsyncGenerator<s
         const resume = encodeResume(resolved.resume)
         yield `<belte-resolve data-id="${resolved.id}" data-resume="${resume}">${resolved.html}</belte-resolve>`
     }
+}
+
+/* Inserts a blocking await's resolved markup into its (empty) boundary in the shell,
+   between the open and close markers. */
+function spliceResolved(shell: string, id: number, resolved: string): string {
+    return shell.replace(
+        `<!--belte:await:${id}--><!--/belte:await:${id}-->`,
+        `<!--belte:await:${id}-->${resolved}<!--/belte:await:${id}-->`,
+    )
+}
+
+/* A self-contained script seeding the resume manifest with the blocking values, so
+   client hydration adopts each resolved branch instead of re-running the promise.
+   Empty when no blocking awaits settled. */
+function resumeScript(resumed: Record<number, ResumeEntry>): string {
+    if (Object.keys(resumed).length === 0) {
+        return ''
+    }
+    const payload = JSON.stringify(resumed).replace(/</g, '\\u003c')
+    return `<script>Object.assign(window.__belteResume=window.__belteResume||{},${payload})</script>`
 }
 
 type Settled = { id: number; html: string; resume: ResumeEntry }

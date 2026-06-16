@@ -22,6 +22,7 @@ import { SOCKETS_PATH } from '../../shared/SOCKETS_PATH.ts'
 import { setAppName } from '../../shared/setAppName.ts'
 import { setBaseResolver } from '../../shared/setBaseResolver.ts'
 import { setRequestScopeResolver } from '../../shared/setRequestScopeResolver.ts'
+import { TEXT_PLAIN } from '../../shared/TEXT_PLAIN.ts'
 import { toBunRoutePattern } from '../../shared/toBunRoutePattern.ts'
 import type { AppModule } from '../AppModule.ts'
 import { handleCliDownload } from '../cli/handleCliDownload.ts'
@@ -428,7 +429,9 @@ export async function createServer({
                 */
                 if (dev && req.method === 'POST' && url.pathname === DEV_REBUILD_PATH) {
                     process.send?.(DEV_REBUILD_MESSAGE)
-                    return new Response('rebuilding\n')
+                    return new Response('rebuilding\n', {
+                        headers: { 'Content-Type': TEXT_PLAIN },
+                    })
                 }
                 if (url.pathname === SOCKETS_PATH) {
                     // Reject cross-origin upgrades (CSWSH) before handing off to Bun.
@@ -439,7 +442,10 @@ export async function createServer({
                     if (bunServer.upgrade(req, { data: {} })) {
                         return undefined as unknown as Response
                     }
-                    return new Response('Upgrade failed', { status: 400 })
+                    return new Response('Upgrade failed', {
+                        status: 400,
+                        headers: { 'Content-Type': TEXT_PLAIN },
+                    })
                 }
                 /*
                 HTTP face of a socket (`/__belte/sockets/<name>`) — tail over
@@ -571,7 +577,7 @@ export async function createServer({
                             (await renderError(404, 'Not Found', store)) ??
                             new Response('Not Found', {
                                 status: 404,
-                                headers: { 'Cache-Control': NO_STORE },
+                                headers: { 'Content-Type': TEXT_PLAIN, 'Cache-Control': NO_STORE },
                             })
                         )
                     },

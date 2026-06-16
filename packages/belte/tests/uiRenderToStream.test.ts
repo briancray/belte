@@ -86,4 +86,59 @@ describe('renderToStream — out-of-order SSR streaming', () => {
         `)
         expect(chunks).toEqual(['<p>ada</p>'])
     })
+
+    /* A `then` on the `await` tag → blocking: the resolved branch is spliced into its
+       boundary in the first (and only) chunk, with the value seeded inline; no pending
+       shell, no `<belte-resolve>` frame. */
+    test('a blocking await (then on the tag) inlines its resolved branch in the first flush', async () => {
+        const chunks = await collect(`
+            <script>let load = () => Promise.resolve('VAL')</script>
+            <div>
+                <template await={load()} then="v"><span>{v}</span></template>
+            </div>
+        `)
+        expect(chunks).toHaveLength(1)
+        expect(chunks[0]).toBe(
+            '<div><!--belte:await:0--><span>VAL</span><!--/belte:await:0--></div>' +
+                '<script>Object.assign(window.__belteResume=window.__belteResume||{},' +
+                '{"0":{"ok":true,"value":"VAL"}})</script>',
+        )
+    })
+
+    test('a blocking await renders its catch branch on rejection, still pre-flush', async () => {
+        const chunks = await collect(`
+            <script>let boom = () => Promise.reject('nope')</script>
+            <template await={boom()} then="v">
+                <span>{v}</span>
+                <template catch="e"><i>{e}</i></template>
+            </template>
+        `)
+        expect(chunks).toHaveLength(1)
+        expect(chunks[0]).toContain('<!--belte:await:0--><i>nope</i><!--/belte:await:0-->')
+        expect(chunks[0]).toContain('{"0":{"ok":false,"error":"nope"}}')
+    })
+
+    /* Blocking + streaming side by side: the blocking value is in the first chunk, the
+       streaming one flushes its pending shell there and resolves out of order after. */
+    test('blocking and streaming awaits coexist', async () => {
+        const chunks = await collect(`
+            <script>
+                let blockingLoad = () => Promise.resolve('NOW')
+                let streamingLoad = () => Promise.resolve('LATER')
+            </script>
+            <div>
+                <template await={blockingLoad()} then="v"><b>{v}</b></template>
+                <template await={streamingLoad()}>
+                    <p>loading</p>
+                    <template then="v"><span>{v}</span></template>
+                </template>
+            </div>
+        `)
+        expect(chunks[0]).toContain('<!--belte:await:0--><b>NOW</b><!--/belte:await:0-->')
+        expect(chunks[0]).toContain('<!--belte:await:1--><p>loading</p><!--/belte:await:1-->')
+        expect(chunks[0]).toContain('{"0":{"ok":true,"value":"NOW"}}')
+        expect(chunks[1]).toBe(
+            '<belte-resolve data-id="1" data-resume="{&quot;ok&quot;:true,&quot;value&quot;:&quot;LATER&quot;}"><span>LATER</span></belte-resolve>',
+        )
+    })
 })

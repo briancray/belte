@@ -19,8 +19,12 @@ afterEach(() => {
 The official belte-ui client entry: it seeds the tab cache store from the SSR
 snapshot (so warm reads resolve without a fetch) and starts the router into #app.
 */
+/* The router imports route chunks on demand, so the mount lands a microtask after
+   startClient returns — drain the queue before asserting. */
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
 describe('startClient', () => {
-    test('seeds the cache from __SSR__ and mounts the matching route', () => {
+    test('seeds the cache from __SSR__ and mounts the matching route', async () => {
         const url = 'https://x.test/api/users'
         const key = keyForRemoteCall('GET', url, undefined)
         ;(globalThis as { __SSR__?: unknown }).__SSR__ = {
@@ -43,9 +47,11 @@ describe('startClient', () => {
             target.appendChild(document.createTextNode('home'))
             return () => undefined
         }
-        const dispose = startClient({ '/': home, '*': home }, host)
+        const load = (): Promise<{ default: Route }> => Promise.resolve({ default: home })
+        const dispose = startClient({ '/': load, '*': load }, host)
 
-        // the router mounted the matching page into the target
+        // the router imported and mounted the matching page into the target
+        await flush()
         expect(host.textContent).toBe('home')
         // the snapshot seeded the tab store, so the key reads warm (no fetch)
         const entry = activeCacheStore().entries.get(key)

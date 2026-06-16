@@ -1,6 +1,8 @@
 import { branchElements } from './branchElements.ts'
+import { groupBindParts } from './groupBindParts.ts'
 import { lowerDocAccess } from './lowerDocAccess.ts'
 import { partitionSlots } from './partitionSlots.ts'
+import { nestedBindingNames } from './prepareNestedScript.ts'
 import { renameSignalRefs } from './renameSignalRefs.ts'
 import { staticAttrValue } from './staticAttrValue.ts'
 import type { TemplateNode } from './types/TemplateNode.ts'
@@ -22,20 +24,24 @@ export function generateBuild(
     scopeAttribute: string | undefined,
 ): string {
     let counter = 0
-    /* Await ids count in document order, matching the SSR back-end's counter, so a
-       client `await` block and its SSR boundary/resume value share one id. */
-    let awaitId = 0
     const nextVar = (prefix: string): string => `${prefix}${counter++}`
+
+    /* Branch-scoped signal bindings (from nested `<script>`s) — they deref to
+       `.value` like a `derived`. Pushed while a branch's script + markup compile,
+       popped after, so they shadow only within that subtree. */
+    const localDerived = new Set<string>()
+    const derefScope = (): ReadonlySet<string> =>
+        localDerived.size === 0 ? derivedNames : new Set([...derivedNames, ...localDerived])
 
     /* Rewrites signal refs, then lowers a single expression (no trailing `;`). */
     function lowerExpression(code: string): string {
-        const renamed = renameSignalRefs(code, stateNames, derivedNames)
+        const renamed = renameSignalRefs(code, stateNames, derefScope())
         return lowerDocAccess(renamed, 'model').trim().replace(/;$/, '')
     }
 
     /* As above but keeps the trailing `;` for a handler body. */
     function lowerStatement(code: string): string {
-        const renamed = renameSignalRefs(code, stateNames, derivedNames)
+        const renamed = renameSignalRefs(code, stateNames, derefScope())
         return lowerDocAccess(renamed, 'model').trim()
     }
 
@@ -59,6 +65,22 @@ export function generateBuild(
                 code += `attr(${varName}, ${JSON.stringify(attr.name)}, () => (${lowerExpression(attr.code)}));\n`
             } else if (attr.kind === 'event') {
                 code += `on(${varName}, ${JSON.stringify(attr.event)}, (${lowerExpression(attr.code)}));\n`
+            } else if (attr.kind === 'bind' && attr.property === 'group') {
+                /* Grouped two-way: radio binds the path to the single checked
+                   `value`; checkbox treats the path as an array, adding/removing
+                   `value` on toggle. Membership reads the array via the lowered
+                   path and calls native `.includes`/`.indexOf` (the doc API has no
+                   array search); mutations go through `push`/`delete`, which lower
+                   to `add`/`remove` patches that the doc reindexes. */
+                const { valueCode, isRadio } = groupBindParts(node)
+                const value = lowerExpression(valueCode)
+                if (isRadio) {
+                    code += `effect(() => { ${varName}.checked = (${lowerExpression(attr.code)}) === (${value}); });\n`
+                    code += `on(${varName}, "change", () => { if (${varName}.checked) { ${lowerStatement(`${attr.code} = ${valueCode}`)} } });\n`
+                } else {
+                    code += `effect(() => { ${varName}.checked = (${lowerExpression(attr.code)}).includes(${value}); });\n`
+                    code += `on(${varName}, "change", () => { const $groupValue = ${value}; if (${varName}.checked) { if (!(${lowerExpression(attr.code)}).includes($groupValue)) { ${lowerStatement(`${attr.code}.push($groupValue)`)} } } else { const $groupIndex = (${lowerExpression(attr.code)}).indexOf($groupValue); if ($groupIndex !== -1) { ${lowerStatement(`delete ${attr.code}[$groupIndex]`)} } } });\n`
+                }
             } else {
                 /* Two-way: drive the property from the path, and write the path
                    back on input. The path is an lvalue, so the write is lowered
@@ -67,14 +89,40 @@ export function generateBuild(
                 code += `on(${varName}, "input", () => { ${lowerStatement(`${attr.code} = ${varName}.${attr.property}`)} });\n`
             }
         }
+        /* A `<script>` among the children scopes its bindings to this element's
+           subtree (its later siblings auto-deref them); pop after. */
+        const added = scopeNestedScripts(node.children)
         for (const child of node.children) {
             code += generateChild(child, varName)
+        }
+        for (const name of added) {
+            localDerived.delete(name)
         }
         return { code, varName }
     }
 
+    /* Adds the binding names of any `<script>` children to the deref scope, returning
+       the names it added (for the caller to pop). */
+    function scopeNestedScripts(children: TemplateNode[]): string[] {
+        const added: string[] = []
+        for (const child of children) {
+            if (child.kind === 'script') {
+                for (const name of nestedBindingNames(child.code)) {
+                    if (!localDerived.has(name)) {
+                        localDerived.add(name)
+                        added.push(name)
+                    }
+                }
+            }
+        }
+        return added
+    }
+
     /* Emits code appending `node` to `parentVar`. */
     function generateChild(node: TemplateNode, parentVar: string): string {
+        if (node.kind === 'script') {
+            return `${lowerStatement(node.code)}\n`
+        }
         if (node.kind === 'text') {
             let code = ''
             for (const part of node.parts) {
@@ -103,6 +151,9 @@ export function generateBuild(
         if (node.kind === 'await') {
             return generateAwait(node, parentVar)
         }
+        if (node.kind === 'try') {
+            return generateTry(node, parentVar)
+        }
         if (node.kind === 'branch') {
             return '' // branches are consumed by their await block, never standalone
         }
@@ -115,7 +166,19 @@ export function generateBuild(
         if (node.kind === 'case') {
             return '' // cases are consumed by their switch/if, never standalone
         }
+        if (node.kind === 'snippet') {
+            return generateSnippet(node)
+        }
         return generateEach(node, parentVar)
+    }
+
+    /* A snippet declaration: a hoisted function returning a `snippet`-branded builder
+       that appends its body into the host it is mounted on. The function closes over
+       the component scope (its `model`/cells); `args` are plain parameters bound by
+       the call. Appends nothing at the declaration site — `{name(args)}` mounts it. */
+    function generateSnippet(node: Extract<TemplateNode, { kind: 'snippet' }>): string {
+        const body = node.children.map((child) => generateChild(child, '$host')).join('')
+        return `function ${node.name}(${node.params ?? ''}) {\nreturn snippet(($host) => {\n${body}});\n}\n`
     }
 
     /* A switch: each `case` is `{ match: () => value, render }`, the default is
@@ -206,17 +269,33 @@ export function generateBuild(
         node: Extract<TemplateNode, { kind: 'await' }>,
         parentVar: string,
     ): string {
-        const isBranch = (which: 'then' | 'catch') => (child: TemplateNode) =>
+        const isBranch = (which: 'then' | 'catch' | 'finally') => (child: TemplateNode) =>
             child.kind === 'branch' && child.branch === which
-        const pending = node.children.filter((child) => child.kind !== 'branch')
-        const thenBranch = node.children.find(isBranch('then'))
         const catchBranch = node.children.find(isBranch('catch'))
-        const id = awaitId++
+        const finallyChildren = branchChildren(node.children.find(isBranch('finally')))
+        /* Blocking: no pending, the children are the resolved branch bound to `node.as`.
+           Streaming: pending is the non-branch children, resolved is the `then` child. */
+        const pending = node.blocking
+            ? []
+            : node.children.filter((child) => child.kind !== 'branch')
+        const thenThunk = node.blocking
+            ? renderRangeThunk(
+                  node.children.filter((child) => child.kind !== 'branch'),
+                  node.as ?? '_value',
+                  '<template await then>',
+                  finallyChildren,
+              )
+            : renderSettledThunk(
+                  node.children.find(isBranch('then')),
+                  '_value',
+                  '<template then>',
+                  finallyChildren,
+              )
         return (
-            `awaitBlock(${parentVar}, ${id}, () => (${lowerExpression(node.promise)}), ` +
+            `awaitBlock(${parentVar}, nextBlockId(), () => (${lowerExpression(node.promise)}), ` +
             `${renderThunk(pending, undefined, '<template await> pending')}, ` +
-            `${renderThunk(branchChildren(thenBranch), branchVar(thenBranch), '<template then>', '_value')}, ` +
-            `${renderThunk(branchChildren(catchBranch), branchVar(catchBranch), '<template catch>', '_error')});\n`
+            `${thenThunk}, ` +
+            `${renderSettledThunk(catchBranch, '_error', '<template catch>', finallyChildren)});\n`
         )
     }
 
@@ -237,12 +316,39 @@ export function generateBuild(
         children: TemplateNode[],
         context: string,
         parentVar: string,
+        allowEmpty = false,
     ): { code: string; expr: string } {
-        const built = branchElements(children, context).map((element) =>
+        /* Nested `<script>`s: add their bindings to the deref scope (so the script
+           body + this branch's markup auto-deref them), emit the lowered script
+           bodies first, then build the element roots — all within the scope, which
+           we pop afterward. The scripts run when the branch mounts, owned by its
+           scope. */
+        const added: string[] = []
+        for (const child of children) {
+            if (child.kind === 'script') {
+                for (const name of nestedBindingNames(child.code)) {
+                    if (!localDerived.has(name)) {
+                        localDerived.add(name)
+                        added.push(name)
+                    }
+                }
+            }
+        }
+        const scriptCode = children
+            .filter(
+                (child): child is Extract<TemplateNode, { kind: 'script' }> =>
+                    child.kind === 'script',
+            )
+            .map((child) => `${lowerStatement(child.code)}\n`)
+            .join('')
+        const built = branchElements(children, context, allowEmpty).map((element) =>
             generateElement(element, `openRoot(${parentVar}, ${JSON.stringify(element.tag)})`),
         )
+        for (const name of added) {
+            localDerived.delete(name)
+        }
         return {
-            code: built.map((part) => part.code).join(''),
+            code: scriptCode + built.map((part) => part.code).join(''),
             expr: `[${built.map((part) => part.varName).join(', ')}]`,
         }
     }
@@ -265,6 +371,68 @@ export function generateBuild(
         const roots = elementRoots(children, context, parentParam)
         const value = fallback === undefined ? '' : `, ${paramName ?? fallback}`
         return `(${parentParam}${value}) => {\n${roots.code}return ${roots.expr};\n}`
+    }
+
+    /* A thunk over a node range: `children`'s roots concatenated with the `finally`
+       roots, both possibly empty. `param` names a bound value (the resolved/error
+       value, or the caught error); undefined for a value-less branch (try/pending). */
+    function renderRangeThunk(
+        children: TemplateNode[],
+        param: string | undefined,
+        context: string,
+        finallyChildren: TemplateNode[],
+    ): string {
+        const parentParam = nextVar('p')
+        const head = param === undefined ? `(${parentParam})` : `(${parentParam}, ${param})`
+        const roots = elementRoots(children, context, parentParam, true)
+        const finallyRoots = elementRoots(finallyChildren, '<template finally>', parentParam, true)
+        return `${head} => {\n${roots.code}${finallyRoots.code}return [...${roots.expr}, ...${finallyRoots.expr}];\n}`
+    }
+
+    /* A settled (then/catch) thunk: the outcome branch's roots ++ `finally`. */
+    function renderSettledThunk(
+        branch: TemplateNode | undefined,
+        fallback: string,
+        context: string,
+        finallyChildren: TemplateNode[],
+    ): string {
+        return renderRangeThunk(
+            branchChildren(branch),
+            branchVar(branch) ?? fallback,
+            context,
+            finallyChildren,
+        )
+    }
+
+    /* The branch child of a control block matching `which` (then/catch/finally). */
+    function findBranch(
+        children: TemplateNode[],
+        which: 'then' | 'catch' | 'finally',
+    ): Extract<TemplateNode, { kind: 'branch' }> | undefined {
+        return children.find(
+            (child): child is Extract<TemplateNode, { kind: 'branch' }> =>
+                child.kind === 'branch' && child.branch === which,
+        )
+    }
+
+    /* A sync error boundary: build the guarded subtree (++ finally); a throw while
+       building swaps to the catch branch (++ finally). No catch → `undefined`, which
+       makes the runtime re-throw to the nearest enclosing boundary. */
+    function generateTry(node: Extract<TemplateNode, { kind: 'try' }>, parentVar: string): string {
+        const catchBranch = findBranch(node.children, 'catch')
+        const finallyChildren = branchChildren(findBranch(node.children, 'finally'))
+        const guarded = node.children.filter((child) => child.kind !== 'branch')
+        const tryThunk = renderRangeThunk(guarded, undefined, '<template try>', finallyChildren)
+        const catchThunk =
+            catchBranch === undefined
+                ? 'undefined'
+                : renderRangeThunk(
+                      branchChildren(catchBranch),
+                      branchVar(catchBranch) ?? '_error',
+                      '<template catch>',
+                      finallyChildren,
+                  )
+        return `tryBlock(${parentVar}, nextBlockId(), ${tryThunk}, ${catchThunk});\n`
     }
 
     /* A conditional with an optional nested `<template else>` (a `case` child).
@@ -292,15 +460,28 @@ export function generateBuild(
         parentVar: string,
     ): string {
         const rowParam = nextVar('p')
+        /* A `<script>` in the row body declares per-row local signals (seeded from
+           the row item), scoped to this row's render thunk. */
+        const added = scopeNestedScripts(node.children)
+        const scriptCode = node.children
+            .filter(
+                (child): child is Extract<TemplateNode, { kind: 'script' }> =>
+                    child.kind === 'script',
+            )
+            .map((child) => `${lowerStatement(child.code)}\n`)
+            .join('')
         const row = singleElementRoot(
             node.children,
             '<template each> must contain a single element row',
             rowParam,
         )
+        for (const name of added) {
+            localDerived.delete(name)
+        }
         const keyExpression = node.key === undefined ? node.as : lowerExpression(node.key)
         return (
             `each(${parentVar}, () => (${lowerExpression(node.items)}), ` +
-            `(${node.as}) => (${keyExpression}), (${rowParam}, ${node.as}) => {\n${row.code}return ${row.varName};\n});\n`
+            `(${node.as}) => (${keyExpression}), (${rowParam}, ${node.as}) => {\n${scriptCode}${row.code}return ${row.varName};\n});\n`
         )
     }
 

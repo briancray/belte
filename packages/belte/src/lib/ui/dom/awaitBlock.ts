@@ -104,21 +104,52 @@ export function awaitBlock(
         active = { nodes, dispose }
     }
 
+    /* Discard the SSR boundary and (re)build the block from the live promise, fresh
+       (hydration off) — the recovery path when adoption can't use the server markup. */
+    const rebuildCold = (open: Node | null): void => {
+        detach()
+        discardBoundary(
+            parent,
+            open,
+            `/belte:await:${id}`,
+            hydration as NonNullable<typeof hydration>,
+        )
+        anchor = document.createTextNode('')
+        parent.appendChild(anchor)
+        const previous = RENDER.hydration
+        RENDER.hydration = undefined
+        try {
+            render(promiseThunk())
+        } finally {
+            RENDER.hydration = previous
+        }
+    }
+
     /* The first run when hydrating: adopt by precedence (resume / warm-sync), else
-       discard the boundary and mount fresh. */
-    const firstHydrate = (): void => {
+       discard the boundary and mount fresh. Adoption is guarded: a resume value that
+       didn't round-trip (e.g. a non-serializable Response) throws while building the
+       branch — fall back to the live promise, which reads the properly-reconstructed
+       warm cache (or re-fetches) instead of crashing hydration. */
+    const firstHydrate = (result: unknown): void => {
         const cursor = hydration as NonNullable<typeof hydration>
         const open = claimChild(cursor, parent)
         const entry = RESUME[id]
         if (entry !== undefined) {
-            adopt(open, (host) =>
-                entry.ok ? renderThen(host, entry.value) : renderCatch(host, entry.error),
-            )
+            try {
+                adopt(open, (host) =>
+                    entry.ok ? renderThen(host, entry.value) : renderCatch(host, entry.error),
+                )
+            } catch {
+                rebuildCold(open)
+            }
             return
         }
-        const result = promiseThunk()
         if (!isThenable(result)) {
-            adopt(open, (host) => renderThen(host, result))
+            try {
+                adopt(open, (host) => renderThen(host, result))
+            } catch {
+                rebuildCold(open)
+            }
             return
         }
         discardBoundary(parent, open, `/belte:await:${id}`, cursor)
@@ -129,16 +160,22 @@ export function awaitBlock(
 
     effect(() => {
         generation += 1
+        /* Read the promise EVERY run, including the first hydrate run, so the block
+           subscribes to its reactive source (a cache key). A cache-remote read is warm
+           on resume — it serves the snapshot without a network round-trip, so adoption
+           stays no-flash AND a later cache.invalidate re-runs the block. Without this
+           read a resume-adopted block has no deps and invalidate is a no-op. */
+        const result = promiseThunk()
         if (first) {
             first = false
             if (hydration !== undefined) {
-                firstHydrate()
+                firstHydrate(result)
                 return
             }
             anchor = document.createTextNode('')
             parent.appendChild(anchor)
         }
-        render(promiseThunk())
+        render(result)
     })
 }
 

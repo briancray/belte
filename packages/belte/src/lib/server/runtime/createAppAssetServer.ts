@@ -1,4 +1,5 @@
 import { NO_STORE } from '../../shared/CACHE_CONTROL_VALUES.ts'
+import { TEXT_PLAIN } from '../../shared/TEXT_PLAIN.ts'
 import { acceptsZstd } from './acceptsZstd.ts'
 import { cacheControlForAsset } from './cacheControlForAsset.ts'
 import { containsTraversal } from './containsTraversal.ts'
@@ -45,7 +46,7 @@ export async function createAppAssetServer({
         if (containsTraversal(req.url)) {
             return new Response('Not Found', {
                 status: 404,
-                headers: { 'Cache-Control': NO_STORE },
+                headers: { 'Content-Type': TEXT_PLAIN, 'Cache-Control': NO_STORE },
             })
         }
         if (assets) {
@@ -56,7 +57,7 @@ export async function createAppAssetServer({
             if (!compressed) {
                 return new Response('Not Found', {
                     status: 404,
-                    headers: { 'Cache-Control': NO_STORE },
+                    headers: { 'Content-Type': TEXT_PLAIN, 'Cache-Control': NO_STORE },
                 })
             }
             return respondWithEmbeddedAsset(
