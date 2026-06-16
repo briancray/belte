@@ -1,5 +1,11 @@
 # @belte/claude-code
 
+## 0.6.0
+
+### Minor Changes
+
+- [`073d988`](https://github.com/briancray/belte/commit/073d988b13fbf6a861f734e0f1ce91af63ac2203) - add appMcp opt-out to skip app MCP attach ([`71be59d`](https://github.com/briancray/belte/commit/71be59da86ed76ee3755e29798a9ebcf34c28cab))
+
 ## 0.5.3
 
 ### Patch Changes
