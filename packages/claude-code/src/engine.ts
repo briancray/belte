@@ -35,6 +35,10 @@ type ClaudeCodeConfig = {
     tools?: Options['tools']
     // Bearer for the app's /__belte/mcp endpoint, if it's gated by app.handle/authorize.
     mcpToken?: string
+    // Attach the app's MCP read tools (default true). Set false for single-shot turns
+    // that need no grounding (e.g. summarization) — skips the blocking MCP connect and
+    // keeps the app verbs out of the turn-1 prompt, so first token arrives sooner.
+    appMcp?: boolean
     // Cancels the run early; the engine also aborts when the consumer stops iterating.
     abortController?: AbortController
     // Escape hatch for any other SDK option; spread first so engine-owned keys win.
@@ -49,7 +53,9 @@ export function engine(config: ClaudeCodeConfig = {}): AgentEngine {
     return async function* ({ messages, origin }) {
         const prompt = promptFromMessages(messages)
         // The app's MCP server, keyed under its discovered `mcp__<name>__*` prefix.
-        const appServers = await appMcpServers(origin, config.mcpToken)
+        // Skipped entirely when appMcp is off, so the turn pays no MCP connect.
+        const appServers =
+            config.appMcp === false ? {} : await appMcpServers(origin, config.mcpToken)
         // Aborted in the finally so the SDK stops and kills its Claude process when
         // the consumer stops iterating; a caller controller can cancel from outside.
         const controller = config.abortController ?? new AbortController()
@@ -61,7 +67,9 @@ export function engine(config: ClaudeCodeConfig = {}): AgentEngine {
                 skills: [],
                 // Caller extras first; every engine-owned key below overrides them.
                 ...config.options,
-                mcpServers: { ...config.options?.mcpServers, ...appServers },
+                ...(Object.keys(appServers).length || config.options?.mcpServers
+                    ? { mcpServers: { ...config.options?.mcpServers, ...appServers } }
+                    : {}),
                 /* Isolate from the deploy host's ambient settings and MCP servers
                 (project .mcp.json, user settings, plugins, cloud connectors) — they'd
                 otherwise merge into and could widen this policy. */
