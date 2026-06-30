@@ -75,7 +75,7 @@ export function error(
         return new Response(
             JSON.stringify({ $belteError: descriptor.$belteError, data: descriptor.data }),
             withResponseDefaults(
-                { statusText: STATUS_TEXT[descriptor.status] },
+                { statusText: STATUS_TEXT[descriptor.status] ?? `HTTP ${descriptor.status}` },
                 {
                     'Content-Type': 'application/json',
                     'Cache-Control': NO_STORE,

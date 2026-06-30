@@ -421,7 +421,10 @@ async function patchEntries<Args, Return>(
                 (await decodeResponse(
                     await shareableResponse(entry.promise as Promise<Response>),
                 ))) as Return
-            entry.value = cloneWarmValue(updater(current))
+            /* structuredClone, not cloneWarmValue: the updater's output is arbitrary
+               user code, not a JSON-round-trippable snapshot body, so a Date/Map/Set/
+               BigInt it returns must survive into the stored value. */
+            entry.value = structuredClone(updater(current))
             entry.settled = true
             entry.refreshing = false
             store.markLifecycle(entry.key)
