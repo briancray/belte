@@ -96,7 +96,7 @@ Wire format, status, `statusText`, client `HttpError.kind`/`.data`, and
 
 - **`ErrorConstructors<Spec>`** — each constructor returns
   `TypedResponse<never>` instead of `ErrorDescriptor<Name, Data>`.
-- **New `ErrorSet<Spec>`** (`lib/shared/types/ErrorSet.ts`) =
+- **New `ErrorSet<Spec>`** (`lib/server/rpc/types/ErrorSet.ts`) =
   `ErrorConstructors<Spec>` branded with `Spec` at the type level:
   ```ts
   export type ErrorSet<Spec extends ErrorSpec> = ErrorConstructors<Spec> & {
@@ -106,8 +106,15 @@ Wire format, status, `statusText`, client `HttpError.kind`/`.data`, and
     readonly [ERROR_SPEC]?: Spec
   }
   ```
-  `ERROR_SPEC` is a `unique symbol` constant (file `ERROR_SPEC.ts`,
-  UPPERCASE per repo convention) used only as a type key.
+  `ERROR_SPEC` is a `unique symbol` constant
+  (`lib/server/rpc/types/ERROR_SPEC.ts`, UPPERCASE per repo convention) used
+  only as a type key.
+
+  `ErrorConstructors`, `ErrorSet`, and `ERROR_SPEC` live under `server/` (not
+  `shared/`): `ErrorConstructors` now references the server-only `TypedResponse`,
+  and after `ctx` is dropped no shared/client code references them. The client's
+  `rpc.isError` typing uses `ErrorSpec` + `DeclaredErrorData`, which stay in
+  `shared/`.
 - **`RemoteHandler<Args, Return>`** — drops the third `Errors` generic and the
   `ctx` param. Signature becomes
   `(args: Args) => TypedResponse<Return> | Promise<TypedResponse<Return>>`.
@@ -154,13 +161,14 @@ removed.
 
 **New**
 - `lib/server/errors.ts` — the `errors()` factory.
-- `lib/server/runtime/typedErrorResponse.ts` — JSON-error serializer + `STATUS_TEXT`.
-- `lib/shared/types/ErrorSet.ts` — `ErrorSet<Spec>`.
-- `lib/shared/ERROR_SPEC.ts` — `unique symbol` brand key.
+- `lib/server/runtime/typedErrorResponse.ts` — JSON-error serializer.
+- `lib/server/runtime/STATUS_TEXT.ts` — status reason-phrase map (moved out of `error.ts`).
+- `lib/server/rpc/types/ErrorSet.ts` — `ErrorSet<Spec>`.
+- `lib/server/rpc/types/ERROR_SPEC.ts` — `unique symbol` brand key.
 
 **Edit**
 - `lib/server/error.ts` — drop descriptor overload/branch; import `STATUS_TEXT`.
-- `lib/shared/types/ErrorConstructors.ts` — return `TypedResponse<never>`.
+- `lib/shared/types/ErrorConstructors.ts` → moves to `lib/server/rpc/types/ErrorConstructors.ts`; returns `TypedResponse<never>`.
 - `lib/server/rpc/types/RemoteHandler.ts` — drop `Errors` + `ctx`.
 - `lib/server/rpc/types/RpcHelper.ts` — `errors?: ErrorSet<Errors>`.
 - `lib/server/rpc/defineRpc.ts` — remove ctx construction.
