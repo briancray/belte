@@ -9,7 +9,7 @@ export class HttpError extends Error {
     readonly status: number
     readonly statusText: string
     readonly response: Response
-    /* Set when the handler returned a typed error (`error({ $belteError, status, data })`)
+    /* Set when the handler returned a typed error (a constructor from an `errors(spec)` set)
        or a validation 422: `kind` is the error name (or 'validation'), `data` the payload
        it carried — parsed off the `{ $belteError, data }` body by httpErrorFor. `data` is
        typed `unknown` (a throw can't carry the rpc's per-kind type to the catch); narrow it

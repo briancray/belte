@@ -47,15 +47,6 @@ describe('fieldErrorsFromIssues', () => {
     })
 })
 
-describe('error() descriptor form', () => {
-    test('serializes { $belteError, data } as a JSON body with the descriptor status', async () => {
-        const response = error({ $belteError: 'outOfStock', status: 409, data: { sku: 'A1' } })
-        expect(response.status).toBe(409)
-        expect((response.headers.get('content-type') ?? '').includes('json')).toBe(true)
-        expect(await response.json()).toEqual({ $belteError: 'outOfStock', data: { sku: 'A1' } })
-    })
-})
-
 describe('validationError', () => {
     test('returns a 422 carrying issues + fields under a validation descriptor', async () => {
         const issues: StandardSchemaV1.Issue[] = [{ message: 'Required', path: ['email'] }]
