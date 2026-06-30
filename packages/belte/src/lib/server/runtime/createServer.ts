@@ -1,4 +1,4 @@
-import type { BunRequest, Server } from 'bun'
+import type { Server } from 'bun'
 import type { Errors } from '../../browser/types/Errors.ts'
 import type { Layouts } from '../../browser/types/Layouts.ts'
 import type { Pages } from '../../browser/types/Pages.ts'
@@ -7,45 +7,33 @@ import { setMcpResourceServer } from '../../mcp/mcpResourceServerSlot.ts'
 import type { McpServer } from '../../mcp/types/McpServer.ts'
 import { basePathFromAppUrl } from '../../shared/basePathFromAppUrl.ts'
 import { belteLog } from '../../shared/belteLog.ts'
-import { NO_STORE } from '../../shared/CACHE_CONTROL_VALUES.ts'
-import { CLI_PATH } from '../../shared/CLI_PATH.ts'
 import { createViewResolver } from '../../shared/createViewResolver.ts'
-import { DEV_RELOAD_PATH } from '../../shared/DEV_RELOAD_PATH.ts'
 import { extraForwardHeaders } from '../../shared/extraForwardHeaders.ts'
-import { HEALTH_PATH } from '../../shared/HEALTH_PATH.ts'
 import { healthReadSlot } from '../../shared/healthReadSlot.ts'
-import { IDENTITY_PATH } from '../../shared/IDENTITY_PATH.ts'
-import { INSPECTOR_PATH } from '../../shared/INSPECTOR_PATH.ts'
 import { isDebugNegated } from '../../shared/isDebugNegated.ts'
-import { logClosingRecord } from '../../shared/logClosingRecord.ts'
 import { OFFLINE_HEADER } from '../../shared/OFFLINE_HEADER.ts'
 import { parseBoundedEnvInt } from '../../shared/parseBoundedEnvInt.ts'
-import { RESOLVE_STREAM_PATH } from '../../shared/RESOLVE_STREAM_PATH.ts'
-import { SOCKETS_PATH } from '../../shared/SOCKETS_PATH.ts'
 import { setAppName } from '../../shared/setAppName.ts'
 import { setBaseResolver } from '../../shared/setBaseResolver.ts'
 import { setRequestScopeResolver } from '../../shared/setRequestScopeResolver.ts'
-import { toBunRoutePattern } from '../../shared/toBunRoutePattern.ts'
 import type { AppModule } from '../AppModule.ts'
-import { handleCliDownload } from '../cli/handleCliDownload.ts'
-import { handleCliInstall } from '../cli/handleCliInstall.ts'
 import type { PromptRoutes } from '../prompts/types/PromptRoutes.ts'
 import type { RemoteRoutes } from '../rpc/types/RemoteRoutes.ts'
 import { createSocketDispatcher } from '../sockets/createSocketDispatcher.ts'
 import type { SocketRoutes } from '../sockets/types/SocketRoutes.ts'
 import { buildHealthPayload } from './buildHealthPayload.ts'
-import { buildOpenApiSpec } from './buildOpenApiSpec.ts'
 import { createAppAssetServer } from './createAppAssetServer.ts'
+import { createFetchHandler } from './createFetchHandler.ts'
 import { createPageRenderer } from './createPageRenderer.ts'
+import { createProbingEndpoints } from './createProbingEndpoints.ts'
 import { createPublicAssetServer } from './createPublicAssetServer.ts'
 import { createRouteDispatcher } from './createRouteDispatcher.ts'
-import { crossOriginGate } from './crossOriginGate.ts'
+import { createRouteRegistry } from './createRouteRegistry.ts'
+import { createWebsocketHandler } from './createWebsocketHandler.ts'
 import { DEFAULT_PORT } from './DEFAULT_PORT.ts'
 import { DEV_READY_MESSAGE } from './DEV_READY_MESSAGE.ts'
-import { DEV_REBUILD_MESSAGE } from './DEV_REBUILD_MESSAGE.ts'
 import { DEV_RELOAD_CLIENT_SCRIPT } from './DEV_RELOAD_CLIENT_SCRIPT.ts'
 import { devClientFingerprint } from './devClientFingerprint.ts'
-import { devReloadResponse } from './devReloadResponse.ts'
 import { disableIdleTimeoutForStream } from './disableIdleTimeoutForStream.ts'
 import { internalErrorResponse } from './internalErrorResponse.ts'
 import { listenOnOpenPort } from './listenOnOpenPort.ts'
@@ -53,29 +41,13 @@ import { logExposedSurfaces } from './logExposedSurfaces.ts'
 import { maybeMountInspector } from './maybeMountInspector.ts'
 import { parseIdleTimeout } from './parseIdleTimeout.ts'
 import { parsePort } from './parsePort.ts'
-import { ensureRegistriesLoaded, setRegistryManifests } from './registryManifests.ts'
+import { setRegistryManifests } from './registryManifests.ts'
 import { requestContext } from './requestContext.ts'
-import { resolveStreamResponse } from './resolveStreamResponse.ts'
 import { runWithRequestScope } from './runWithRequestScope.ts'
 import { setActiveServer } from './setActiveServer.ts'
 import type { Assets } from './types/Assets.ts'
-import type { RequestStore } from './types/RequestStore.ts'
+import type { DispatchRequest } from './types/DispatchRequest.ts'
 import { warnUnguardedMcp } from './warnUnguardedMcp.ts'
-
-const SOCKETS_HTTP_PREFIX = `${SOCKETS_PATH}/`
-const MCP_PATH = '/__belte/mcp'
-const CLI_DOWNLOAD_PREFIX = `${CLI_PATH}/`
-// Dev-only manual rebuild trigger; POSTing signals the orchestrator to rebuild + restart.
-const DEV_REBUILD_PATH = '/__belte/reload'
-/*
-Unlike the framework's own plumbing routes above (the socket multiplex, MCP
-endpoint, CLI download), the OpenAPI document describes the app's public HTTP
-surface — the /rpc/* rpcs — rather than belte internals, so it sits at the
-conventional root path where external tooling and scanners expect to find it
-(/openapi.json, alongside /swagger.json, /.well-known/*) rather than under the
-/__belte/ namespace.
-*/
-const OPENAPI_PATH = '/openapi.json'
 
 /*
 Starts a Bun HTTP server that ties together the framework conventions:
@@ -225,8 +197,6 @@ export async function createServer({
     isn't installed. Resolved at boot so the fetch route below can branch on it.
     */
     const inspectorHandler = await maybeMountInspector({ name: appName, version: appVersion })
-    /* Built on first request, then reused — the rpc registry is frozen after load. */
-    let openApiSpec: ReturnType<typeof buildOpenApiSpec> | undefined
     const cliCwd = process.cwd()
     /* Route → components: layout/error prefix matching + module loading live behind this seam. */
     const viewResolver = createViewResolver({ pages, layouts, errors })
@@ -258,80 +228,59 @@ export async function createServer({
     */
     const buildRouteHandler = createRouteDispatcher({ pages, rpc, renderPage })
 
-    /*
-    Page URLs (folder paths, e.g. `/media/[id]`) get translated to Bun's
-    pattern syntax (`/media/:id`) at registration. Bun's `*` wildcard
-    matches but does not capture into req.params, so for `[...rest]`
-    routes the catch-all value is reconstructed from the request URL by
-    slicing the pathname segments after the catch-all's pattern index.
-    The reconstructed value is set under the original name (e.g. `rest`)
-    so the page component's $props destructure stays consistent with the
-    file path. Page URLs and rpc URLs (always `/rpc/...`, flat) are
-    disjoint by construction, so a plain object needs no deduplication.
-    */
-    const routes: Record<string, (req: BunRequest) => Promise<Response>> = {}
-    for (const routeUrl of Object.keys(pages)) {
-        const handler = buildRouteHandler(routeUrl)
-        const { pattern, catchAllName } = toBunRoutePattern(routeUrl)
-        const catchAllIndex = catchAllName
-            ? routeUrl.split('/').findIndex((segment) => segment.startsWith('[...'))
-            : -1
-        /* Only catch-all routes copy req.params (to write the reconstructed
-           segment); plain routes pass it through — it's never mutated downstream. */
-        routes[pattern] =
-            catchAllName && catchAllIndex !== -1
-                ? (req) => {
-                      const pathParams = {
-                          ...((req.params as Record<string, string> | undefined) ?? {}),
-                      }
-                      const url = new URL(req.url)
-                      pathParams[catchAllName] = url.pathname
-                          .split('/')
-                          .slice(catchAllIndex)
-                          .join('/')
-                      return dispatchRequest(req, pathParams, handler, url)
-                  }
-                : (req) =>
-                      dispatchRequest(
-                          req,
-                          (req.params as Record<string, string> | undefined) ?? {},
-                          handler,
-                      )
-    }
-    for (const routeUrl of Object.keys(rpc)) {
-        const handler = buildRouteHandler(routeUrl)
-        routes[routeUrl] = (req) => dispatchRequest(req, {}, handler)
-    }
-
-    function dispatchRequest(
-        req: Request,
-        pathParams: Record<string, string>,
-        handler: (
-            req: Request,
-            pathParams: Record<string, string>,
-            store: RequestStore,
-        ) => Promise<Response>,
-        /* Pre-parsed by the fetch fallback; routes-table callers omit it. */
-        url?: URL,
-    ): Promise<Response> {
-        return runWithRequestScope(req, { app, logRequests, url }, async (store) => {
+    /* The per-request seam every dynamic route crosses: scope + app.handle +
+       idle-timeout opt-out. Closed over the live `server` (assigned below) for
+       disableIdleTimeoutForStream; called only at request time, after bind. */
+    const dispatchRequest: DispatchRequest = (req, pathParams, handler, url) =>
+        runWithRequestScope(req, { app, logRequests, url }, async (store) => {
             const response = app?.handle
                 ? await app.handle(req, (next) => handler(next, pathParams, store))
                 : await handler(req, pathParams, store)
             // Streaming bodies (sse/jsonl, socket tail) opt out of the idle timeout.
             return disableIdleTimeoutForStream(server, req, response)
         })
-    }
+
+    /* One Bun `routes` entry per page/rpc URL, bound through dispatchRequest. */
+    const routes = createRouteRegistry({ pages, rpc, buildRouteHandler, dispatchRequest })
 
     /*
     Belte's only native WebSocket surface is the sockets hub: every Socket
     declared under src/server/sockets/ multiplexes onto one framework-owned
     connection per client at /__belte/sockets. The dispatcher owns the
-    open/message/close handlers below; user code never sees the raw ws
-    lifecycle. Steady-state fan-out rides Bun's native server.publish so
-    a busy socket doesn't iterate JS per subscriber per message.
+    open/message/close lifecycle; user code never sees the raw ws. Steady-state
+    fan-out rides Bun's native server.publish so a busy socket doesn't iterate
+    JS per subscriber per message.
     */
     const socketDispatcher = createSocketDispatcher(sockets)
+
+    /* Framework probe/operator surface (health/identity, inspector, dev reload/rebuild). */
+    const probingEndpoints = createProbingEndpoints({
+        app,
+        appName,
+        appVersion,
+        inspectorHandler,
+        clientFingerprint,
+        dev,
+    })
+
+    /* Bun.serve's fetch for everything the routes table doesn't claim. */
+    const fetch = createFetchHandler({
+        probingEndpoints,
+        dispatchRequest,
+        socketDispatcher,
+        servePublicAsset,
+        serveAppAsset,
+        renderError,
+        mcp,
+        cliName,
+        cliCwd,
+        appName,
+        appVersion,
+        logRequests,
+    })
+
+    /* Bun's websocket handler block — delegates the ws lifecycle to the dispatcher. */
+    const websocket = createWebsocketHandler(socketDispatcher)
 
     /*
     Bind the real server on `boundPort`. Only the port varies between scan
@@ -353,239 +302,11 @@ export async function createServer({
             */
             reusePort: dev,
 
-            websocket: {
-                open(ws) {
-                    socketDispatcher.open(ws)
-                },
-                message(ws, data) {
-                    socketDispatcher.message(ws, data)
-                },
-                close(ws) {
-                    socketDispatcher.close(ws)
-                },
-            },
+            websocket,
 
             routes,
 
-            async fetch(req, bunServer) {
-                const url = new URL(req.url)
-                /*
-                Health/identity probe — answered directly, ahead of any app.handle
-                middleware, so the bundle's connect screen, the CLI, and the client
-                health() can confirm a URL really is a live belte server even when
-                the app guards everything behind auth (reporting
-                `authenticated: false` requires exactly that). The app's optional
-                health hook contributes fields; the framework's identity keys win
-                on collision, and a thrown hook is logged and skipped so an app
-                bug can't masquerade as an unreachable server. IDENTITY_PATH is
-                the compatibility alias for the same payload.
-                */
-                if (url.pathname === HEALTH_PATH || url.pathname === IDENTITY_PATH) {
-                    const payload = await buildHealthPayload(req, { app, appName, appVersion })
-                    return Response.json(
-                        /*
-                        The IDENTITY_PATH alias keeps the legacy `belte: true`
-                        shape: already-shipped probers check it with strict
-                        equality, and a version string would make them treat
-                        an upgraded healthy server as not-belte.
-                        */
-                        url.pathname === IDENTITY_PATH ? { ...payload, belte: true } : payload,
-                        { headers: { 'Cache-Control': NO_STORE } },
-                    )
-                }
-                /*
-                Inspector surface — answered directly, ahead of app.handle, since
-                it's privileged operator tooling gated by BELTE_ENABLE_INSPECTOR
-                (not the app's user auth). Undefined handler = flag off, so the
-                whole block compiles out of the hot path when the inspector's off.
-                */
-                if (
-                    inspectorHandler &&
-                    (url.pathname === INSPECTOR_PATH ||
-                        url.pathname.startsWith(`${INSPECTOR_PATH}/`))
-                ) {
-                    // The events feed is long-lived SSE: opt it out of the idle
-                    // timeout, else Bun reaps it and the reconnect replays the
-                    // whole buffer (duplicate boot logs every ~10s).
-                    return disableIdleTimeoutForStream(
-                        bunServer,
-                        req,
-                        await inspectorHandler(req, url),
-                    )
-                }
-                /*
-                Dev live-reload channel — answered directly, ahead of app.handle,
-                so a restart-driven reconnect always lands even when the app guards
-                everything behind auth. Only mounted under `belte dev`.
-                */
-                if (clientFingerprint !== undefined && url.pathname === DEV_RELOAD_PATH) {
-                    // Long-lived SSE: opt out of the idle timeout, else Bun reaps
-                    // it and the reconnect triggers a spurious reload loop.
-                    return disableIdleTimeoutForStream(
-                        bunServer,
-                        req,
-                        devReloadResponse(clientFingerprint),
-                    )
-                }
-                /*
-                Manual rebuild trigger: signal the orchestrator parent over IPC to
-                rebuild + restart. Same-origin sibling of the live-reload channel, so
-                a script refreshes on the app's own port. process.send exists only when
-                the dev orchestrator spawned us with ipc; the optional chain no-ops on a
-                bare server.
-                */
-                if (dev && req.method === 'POST' && url.pathname === DEV_REBUILD_PATH) {
-                    process.send?.(DEV_REBUILD_MESSAGE)
-                    return new Response('rebuilding\n')
-                }
-                if (url.pathname === SOCKETS_PATH) {
-                    // Reject cross-origin upgrades (CSWSH) before handing off to Bun.
-                    const upgradeForbidden = crossOriginGate(req, url)
-                    if (upgradeForbidden) {
-                        return upgradeForbidden
-                    }
-                    if (bunServer.upgrade(req, { data: {} })) {
-                        return undefined as unknown as Response
-                    }
-                    return new Response('Upgrade failed', { status: 400 })
-                }
-                /*
-                HTTP face of a socket (`/__belte/sockets/<name>`) — tail over
-                SSE / JSON and publish — for the CLI and MCP. Runs through
-                dispatchRequest so app.handle auth applies, like the rpc paths.
-                The socket name may contain `/` (nested files), so it's the
-                whole remaining pathname, percent-decoded.
-                */
-                if (url.pathname.startsWith(SOCKETS_HTTP_PREFIX)) {
-                    /*
-                    Gate cross-origin browser publishes (CSRF, see crossOriginGate).
-                    GET tail reads stay open cross-origin like rpc reads; only
-                    the mutating POST is gated.
-                    */
-                    const publishForbidden = crossOriginGate(req, url, { allowReadOnly: true })
-                    if (publishForbidden) {
-                        return publishForbidden
-                    }
-                    const name = decodeURIComponent(url.pathname.slice(SOCKETS_HTTP_PREFIX.length))
-                    return dispatchRequest(
-                        req,
-                        {},
-                        async () => socketDispatcher.http(req, name),
-                        url,
-                    )
-                }
-                /*
-                Out-of-band resolution stream for a streamed page's pending
-                {#await} reads. Answered directly (no app.handle / request scope):
-                it drains promises stashed during SSR, and the random single-use
-                token gates access. Returning here bypasses
-                disableIdleTimeoutForStream so it inherits the bounded idleTimeout
-                rather than the long-lived-stream disable.
-                */
-                if (url.pathname.startsWith(RESOLVE_STREAM_PATH)) {
-                    return resolveStreamResponse(url.pathname.slice(RESOLVE_STREAM_PATH.length))
-                }
-                if (url.pathname === MCP_PATH && mcp) {
-                    // Gate cross-site browser posts (CSRF, see crossOriginGate).
-                    const mcpForbidden = crossOriginGate(req, url)
-                    if (mcpForbidden) {
-                        return mcpForbidden
-                    }
-                    return dispatchRequest(req, {}, async () => mcp.handle(req), url)
-                }
-                if (url.pathname === CLI_PATH) {
-                    return dispatchRequest(req, {}, async () => handleCliInstall(req, cliName), url)
-                }
-                if (url.pathname.startsWith(CLI_DOWNLOAD_PREFIX)) {
-                    const platform = url.pathname.slice(CLI_DOWNLOAD_PREFIX.length)
-                    return dispatchRequest(
-                        req,
-                        {},
-                        async () => handleCliDownload(req, platform, cliName, cliCwd),
-                        url,
-                    )
-                }
-                if (url.pathname === OPENAPI_PATH) {
-                    return dispatchRequest(
-                        req,
-                        {},
-                        async () => {
-                            if (!openApiSpec) {
-                                await ensureRegistriesLoaded()
-                                openApiSpec = buildOpenApiSpec({
-                                    title: appName,
-                                    version: appVersion,
-                                })
-                            }
-                            return Response.json(openApiSpec, {
-                                headers: { 'Cache-Control': NO_STORE },
-                            })
-                        },
-                        url,
-                    )
-                }
-                /*
-                Static assets sidestep ALS + the per-request CacheStore + the
-                app.handle middleware: they have no need for cache() and the
-                allocation overhead matters on a cold page load that pulls
-                dozens of chunks. The global server.error() handler still
-                catches anything that goes wrong inside serveAppAsset.
-                */
-                if (url.pathname.startsWith('/_app/')) {
-                    if (!logRequests) {
-                        return serveAppAsset(req, url)
-                    }
-                    const start = Bun.nanoseconds()
-                    const response = await serveAppAsset(req, url)
-                    const ms = (Bun.nanoseconds() - start) / 1e6
-                    logClosingRecord(
-                        req.method,
-                        `${url.pathname}${url.search}`,
-                        response.status,
-                        ms,
-                    )
-                    return response
-                }
-                /*
-                Files under public/ are served at the site root, sidestepping
-                ALS + middleware like the /_app/ assets do. A miss returns
-                undefined so the request falls through to the 404 / middleware
-                path below.
-                */
-                const publicStart = Bun.nanoseconds()
-                const publicResponse = await servePublicAsset(req, url)
-                if (publicResponse) {
-                    if (logRequests) {
-                        logClosingRecord(
-                            req.method,
-                            `${url.pathname}${url.search}`,
-                            publicResponse.status,
-                            (Bun.nanoseconds() - publicStart) / 1e6,
-                        )
-                    }
-                    return publicResponse
-                }
-                /*
-                Unknown routes still run through dispatchRequest so user-defined
-                app.handle middleware can rewrite the request, serve a custom
-                404, or branch on the URL. The inner handler returns the
-                framework's default 404 when nothing intervenes.
-                */
-                return dispatchRequest(
-                    req,
-                    {},
-                    async (_req, _pathParams, store) => {
-                        return (
-                            (await renderError(404, 'Not Found', store)) ??
-                            new Response('Not Found', {
-                                status: 404,
-                                headers: { 'Cache-Control': NO_STORE },
-                            })
-                        )
-                    },
-                    url,
-                )
-            },
+            fetch,
 
             error(err) {
                 belteLog.error(err)
