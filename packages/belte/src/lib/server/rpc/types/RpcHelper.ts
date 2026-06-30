@@ -2,6 +2,7 @@ import type { ClientFlags } from '../../../shared/types/ClientFlags.ts'
 import type { ErrorSpec } from '../../../shared/types/ErrorSpec.ts'
 import type { RemoteFunction } from '../../../shared/types/RemoteFunction.ts'
 import type { StandardSchemaV1 } from '../../../shared/types/StandardSchemaV1.ts'
+import type { ErrorSet } from './ErrorSet.ts'
 import type { RemoteHandler } from './RemoteHandler.ts'
 
 /*
@@ -50,14 +51,13 @@ export type RpcHelper = {
     >(
         fn: RemoteHandler<
             StandardSchemaV1.InferOutput<InputSchema> & StandardSchemaV1.InferOutput<FilesSchema>,
-            Return,
-            Errors
+            Return
         >,
         opts: {
             inputSchema: InputSchema
             filesSchema: FilesSchema
             outputSchema?: StandardSchemaV1
-            errors?: Errors
+            errors?: ErrorSet<Errors>
             clients?: Partial<ClientFlags>
             crossOrigin?: boolean
             maxBodySize?: number
@@ -69,11 +69,11 @@ export type RpcHelper = {
         InputSchema extends StandardSchemaV1 = StandardSchemaV1,
         Errors extends ErrorSpec = Record<string, never>,
     >(
-        fn: RemoteHandler<StandardSchemaV1.InferOutput<InputSchema>, Return, Errors>,
+        fn: RemoteHandler<StandardSchemaV1.InferOutput<InputSchema>, Return>,
         opts: {
             inputSchema: InputSchema
             outputSchema?: StandardSchemaV1
-            errors?: Errors
+            errors?: ErrorSet<Errors>
             clients?: Partial<ClientFlags>
             crossOrigin?: boolean
             maxBodySize?: number
@@ -81,10 +81,10 @@ export type RpcHelper = {
         },
     ): RemoteFunction<StandardSchemaV1.InferInput<InputSchema>, Return, Errors>
     <Args = undefined, Return = unknown, Errors extends ErrorSpec = Record<never, never>>(
-        fn: RemoteHandler<Args, Return, Errors>,
+        fn: RemoteHandler<Args, Return>,
         opts: {
             outputSchema?: StandardSchemaV1
-            errors?: Errors
+            errors?: ErrorSet<Errors>
             clients?: Partial<ClientFlags>
             crossOrigin?: boolean
             maxBodySize?: number

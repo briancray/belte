@@ -2,8 +2,7 @@ import { HttpError } from './HttpError.ts'
 
 /*
 Builds the HttpError for a non-2xx response, parsing a typed-error body
-(`{ $belteError, data }`, emitted by `error({ $belteError, status, data })` and
-the validation 422) onto `.kind` / `.data`. Reads a clone so the original
+(`{ $belteError, data }`, emitted by the `errors(spec)` constructors (and the framework's validation 422)) onto `.kind` / `.data`. Reads a clone so the original
 `response.body` stays unread for callers that inspect it. A non-JSON or malformed
 body leaves `.kind` / `.data` undefined (a plain `error(status, text)`). Shared by
 the plain decode path (decodeResponse) and the streaming path (streamResponse) so

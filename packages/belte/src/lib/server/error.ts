@@ -1,6 +1,6 @@
 import { NO_STORE } from '../shared/CACHE_CONTROL_VALUES.ts'
-import type { ErrorDescriptor } from '../shared/types/ErrorDescriptor.ts'
 import type { TypedResponse } from './rpc/types/TypedResponse.ts'
+import { STATUS_TEXT } from './runtime/STATUS_TEXT.ts'
 import { withResponseDefaults } from './runtime/withResponseDefaults.ts'
 
 /*
@@ -25,30 +25,6 @@ expected pattern, with the same control flow as `return json(...)`.
 */
 
 /*
-Standard reason phrases for the statuses error() is realistically called
-with. Maintained explicitly because Bun's `Response` does not populate
-`statusText` from the status code, so there's no platform table to read.
-Unlisted codes fall back to `HTTP <status>`.
-*/
-const STATUS_TEXT: Record<number, string> = {
-    400: 'Bad Request',
-    401: 'Unauthorized',
-    403: 'Forbidden',
-    404: 'Not Found',
-    405: 'Method Not Allowed',
-    409: 'Conflict',
-    410: 'Gone',
-    413: 'Content Too Large',
-    422: 'Unprocessable Content',
-    429: 'Too Many Requests',
-    500: 'Internal Server Error',
-    501: 'Not Implemented',
-    502: 'Bad Gateway',
-    503: 'Service Unavailable',
-    504: 'Gateway Timeout',
-}
-
-/*
 Body type is `never` because `error()` only travels the non-2xx path on
 the wire — the caller's `await fn(args)` throws `HttpError` and never
 resolves to this response's body. Returning a TypedResponse<never> lets
@@ -57,34 +33,7 @@ branch carries (`TypedResponse<{user}> | TypedResponse<never>` → Return
 = {user}).
 */
 // @readme response
-export function error(status: number, message?: string, init?: ResponseInit): TypedResponse<never>
-export function error(descriptor: ErrorDescriptor): TypedResponse<never>
-export function error(
-    statusOrDescriptor: number | ErrorDescriptor,
-    message?: string,
-    init?: ResponseInit,
-): TypedResponse<never> {
-    /*
-    Descriptor form (`error({ $belteError, status, data })`): a typed error
-    serialized as a `{ $belteError, data }` JSON body. The reason phrase is set
-    as statusText so it reaches `HttpError.statusText` on the client; the client
-    parses the body back onto `HttpError.kind` / `.data` (httpErrorFor).
-    */
-    if (typeof statusOrDescriptor === 'object') {
-        const descriptor = statusOrDescriptor
-        return new Response(
-            JSON.stringify({ $belteError: descriptor.$belteError, data: descriptor.data }),
-            withResponseDefaults(
-                { statusText: STATUS_TEXT[descriptor.status] ?? `HTTP ${descriptor.status}` },
-                {
-                    'Content-Type': 'application/json',
-                    'Cache-Control': NO_STORE,
-                },
-                descriptor.status,
-            ),
-        ) as TypedResponse<never>
-    }
-    const status = statusOrDescriptor
+export function error(status: number, message?: string, init?: ResponseInit): TypedResponse<never> {
     const body = message ?? STATUS_TEXT[status] ?? `HTTP ${status}`
     return new Response(
         body,

@@ -91,6 +91,26 @@ Every rpc is callable three ways:
 Schemas whose library lacks a native `toJSONSchema()` (needed for OpenAPI / MCP /
 CLI) wrap once at declaration with `withJsonSchema(schema, toJsonSchema)`.
 
+### errors
+
+`errors(spec)` declares a reusable, typed set of failures at module scope: each
+`{ status, data? }` entry becomes a constructor that returns the serialized error
+response directly (with a `data` schema it requires that input, else it's nullary).
+Pass the same set to the rpc `errors:` option so the client's
+`rpc.isError(caught, 'name')` narrows `.kind` and typed `.data`.
+
+```ts
+import { POST } from 'belte/server/POST'
+import { errors } from 'belte/server/errors'
+
+const orderErrors = errors({ invalidCoupon: { status: 400, data: couponSchema } })
+
+export const buy = POST((args) => orderErrors.invalidCoupon({ code: 'EXPIRED' }), {
+    inputSchema,
+    errors: orderErrors,
+})
+```
+
 ### Response helpers
 
 | helper | response |
