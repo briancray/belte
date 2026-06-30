@@ -1,20 +1,25 @@
 import { activeCacheStore } from './activeCacheStore.ts'
+import { adoptTtl } from './adoptTtl.ts'
+import { applyTags } from './applyTags.ts'
+import { attachPolicy } from './attachPolicy.ts'
 import { belteLog } from './belteLog.ts'
 import { CACHE_WRAPPED } from './CACHE_WRAPPED.ts'
 import { cacheStores } from './cacheStores.ts'
+import { cloneWarmValue } from './cloneWarmValue.ts'
 import { decodeResponse } from './decodeResponse.ts'
+import { emitInvalidation } from './emitInvalidation.ts'
 import { getRemoteMeta } from './getRemoteMeta.ts'
 import { globalCacheStore } from './globalCacheStore.ts'
-import { HttpError } from './HttpError.ts'
-import { invalidateEvent } from './invalidateEvent.ts'
 import { invalidateTripwire } from './invalidateTripwire.ts'
 import { keyForRemoteCall } from './keyForRemoteCall.ts'
 import { producerKey } from './producerKey.ts'
 import { REMOTE_FUNCTION } from './REMOTE_FUNCTION.ts'
-import { REPLAYABLE_METHODS } from './REPLAYABLE_METHODS.ts'
+import { registerEntry } from './registerEntry.ts'
 import { SocketDisconnectedError } from './SocketDisconnectedError.ts'
+import { scheduleInvalidationRefetch } from './scheduleInvalidationRefetch.ts'
 import { selectorMatcher } from './selectorMatcher.ts'
 import { selectorPrefix } from './selectorPrefix.ts'
+import { shareableResponse } from './shareableResponse.ts'
 import { toTagSet } from './toTagSet.ts'
 import type { CacheEntry } from './types/CacheEntry.ts'
 import type { CacheOnContext } from './types/CacheOnContext.ts'
@@ -24,6 +29,7 @@ import type { CacheStore } from './types/CacheStore.ts'
 import type { RawRemoteFunction } from './types/RawRemoteFunction.ts'
 import type { RemoteFunction } from './types/RemoteFunction.ts'
 import type { Subscribable } from './types/Subscribable.ts'
+import { validatePolicy } from './validatePolicy.ts'
 
 type AnyRemote<Args, Return> = RemoteFunction<Args, Return> | RawRemoteFunction<Args>
 type Producer<Args, Return> = (args?: Args) => Promise<Return>
@@ -237,51 +243,6 @@ export function cache<Args, Return>(
 }
 
 /*
-Normalises the `swr` option to its coalescing window, or undefined when no
-policy is set. `true` is the immediate form — an empty window, so a refetch fires
-on the leading edge of every invalidate (scheduleInvalidationRefetch sees no
-throttle/debounce and fires at once); `false` reads as no policy, the hard-drop
-default. The object form carries its throttle/debounce through unchanged.
-*/
-function policyWindow(
-    swr: CacheOptions['swr'],
-): { throttle?: number; debounce?: number } | undefined {
-    if (swr === undefined || swr === false) {
-        return undefined
-    }
-    return swr === true ? {} : swr
-}
-
-/*
-Guards impossible option combinations at wrap time, where the call site is on
-the stack. `swr` declares "this call is safe to re-run unprompted", so a
-non-replayable remote method (a write) must never carry one — replaying a write
-through the invalidation grammar would be a state change disguised as a
-refresh. Producers are opaque (no method to check); the same contract is on
-the caller there. ttl: 0 retains nothing, so there is nothing for swr to
-revalidate; and the two coalescing strategies are exclusive by construction.
-*/
-function validatePolicy(options: CacheOptions | undefined, method: string | undefined): void {
-    const policy = policyWindow(options?.swr)
-    if (!policy) {
-        return
-    }
-    if (policy.throttle !== undefined && policy.debounce !== undefined) {
-        throw new Error('[belte] cache(): set swr.throttle or swr.debounce, not both')
-    }
-    if (options?.ttl === 0) {
-        throw new Error(
-            '[belte] cache(): swr requires retention — ttl: 0 keeps nothing to revalidate',
-        )
-    }
-    if (method !== undefined && !REPLAYABLE_METHODS.has(method.toUpperCase())) {
-        throw new Error(
-            `[belte] cache(): swr re-runs the call unprompted — ${method.toUpperCase()} is a write and must not be replayed`,
-        )
-    }
-}
-
-/*
 An anonymous producer mints a fresh identity per wrap, so it never coalesces
 and probes never match it — silently. Warn once per distinct source text (the
 function object itself is fresh each time, so reference identity can't dedupe
@@ -349,7 +310,7 @@ function invokeRemote<Args>(
     options: CacheOptions | undefined,
 ): Promise<Response> {
     if (existing) {
-        return shareable(existing.promise as Promise<Response>)
+        return shareableResponse(existing.promise as Promise<Response>)
     }
     const promise = rawFn(args as Args)
     const request = getRemoteMeta(promise)
@@ -359,169 +320,7 @@ function invokeRemote<Args>(
         )
     }
     registerEntry(store, key, promise, options, request, () => rawFn(args as Args))
-    return shareable(promise)
-}
-
-/*
-Stores a fresh entry and wires its settle / ttl / eviction lifecycle. Shared by
-the remote and producer paths; `request` is set for remote entries (drives the
-SSR snapshot) and undefined for producers.
-*/
-function registerEntry(
-    store: CacheStore,
-    key: string,
-    promise: Promise<unknown>,
-    options: CacheOptions | undefined,
-    request: Request | undefined,
-    refetch: () => Promise<unknown>,
-    label?: string,
-): CacheEntry {
-    const ttl = options?.ttl
-    /* Capture the refetch thunk + policy only when an swr policy was asked for. */
-    const policy = policyWindow(options?.swr)
-    const invalidation = policy
-        ? { refetch, throttle: policy.throttle, debounce: policy.debounce }
-        : undefined
-    /*
-    A prior entry for this key was dropped by invalidate() and is awaiting its
-    next read — consume the marker so this replacement read reports as a reload
-    (refreshing()) until it settles, not as a first-ever load.
-    */
-    const refreshing = store.pendingRefresh.delete(key) || undefined
-    const entry: CacheEntry = {
-        key,
-        label,
-        promise,
-        request,
-        ttl,
-        expiresAt: undefined,
-        tags: options?.tags === undefined ? undefined : toTagSet(options.tags),
-        refreshing,
-        invalidation,
-    }
-    store.entries.set(key, entry)
-    store.markLifecycle(key)
-    /*
-    A ttl=0 remote entry in the request-scoped server store is kept until the
-    store dies with the response. The request is the server's atomic unit, so
-    a ttl=0 entry retains nothing beyond it but coalesces everything within
-    it: identical calls during one render — any method — share one effect
-    deterministically, regardless of settle timing, and the post-render SSR
-    snapshot can still pick up replayable entries (the snapshot applies its
-    own method filter; writes never ship). The keep never applies on the
-    client (the tab store outlives any unit — a kept write would block every
-    future re-submit, so entries evict the moment they settle), to producer
-    entries (no request), or to the process-level `global` store (not
-    request-scoped — keeping it would leak forever).
-    */
-    const keepZeroTtlForRequest =
-        request !== undefined && !options?.global && typeof window === 'undefined'
-    function deleteIfCurrent() {
-        evictIfCurrent(store, entry)
-    }
-    promise.then(() => {
-        /*
-        Mark settled so SSR snapshot serialization can tell awaited entries
-        (resolved by the time render() returns → inline) from {#await} ones
-        (still pending → stream). Set before the ttl branches below since a
-        ttl=0 server entry stays in the store for the snapshot.
-        */
-        entry.settled = true
-        /* The reload finished — this entry now holds fresh data, no longer refreshing. */
-        entry.refreshing = false
-        store.markLifecycle(key)
-        if (ttl === 0) {
-            if (!keepZeroTtlForRequest) {
-                deleteIfCurrent()
-            }
-            return
-        }
-        if (ttl !== undefined) {
-            armTtlExpiry(store, entry, ttl)
-        }
-    }, deleteIfCurrent)
-    return entry
-}
-
-/*
-Evicts `entry` unless a newer entry already owns the key (a concurrent
-invalidate-and-reread must not lose its replacement). Disarms any policy timer
-first — an armed timer would otherwise refetch a key that no longer exists.
-*/
-function evictIfCurrent(store: CacheStore, entry: CacheEntry): void {
-    if (store.entries.get(entry.key) === entry) {
-        clearTimeout(entry.invalidation?.timer)
-        store.entries.delete(entry.key)
-        store.markLifecycle(entry.key)
-    }
-}
-
-/* Arms the ttl > 0 expiry sweep; `expiresAt` re-checks at fire time so a refreshed deadline survives. */
-function armTtlExpiry(store: CacheStore, entry: CacheEntry, ttl: number): void {
-    entry.expiresAt = Date.now() + ttl
-    setTimeout(() => {
-        if ((entry.expiresAt ?? 0) <= Date.now()) {
-            evictIfCurrent(store, entry)
-        }
-    }, ttl).unref?.()
-}
-
-/*
-Mirrors applyTags/attachPolicy for retention: a hydrated snapshot entry ships
-without its wrap options (they live at call sites, not on the wire), so the
-first read adopts its call site's ttl declaration. Omitted = forever, exactly
-as shipped; ttl > 0 = the expiry clock starts at this read; ttl = 0 = the warm
-value exists only to complete the hydration render — the SSR request's atomic
-unit ends here — so eviction is deferred one macrotask (every reader in the
-same hydration pass still gets the warm value, no invalidate event fires, and
-the already-painted DOM stays put) and the next read fetches live. The first
-reader consumes the flag, so its declaration wins; live entries never carry
-the flag and keep the ttl they registered with.
-*/
-function adoptTtl(store: CacheStore, entry: CacheEntry, options: CacheOptions | undefined): void {
-    if (entry.hydrated !== true) {
-        return
-    }
-    entry.hydrated = false
-    const ttl = options?.ttl
-    if (ttl === undefined) {
-        return
-    }
-    entry.ttl = ttl
-    if (ttl === 0) {
-        setTimeout(() => evictIfCurrent(store, entry), 0).unref?.()
-        return
-    }
-    armTtlExpiry(store, entry, ttl)
-}
-
-/*
-Deep-copies a warm value so each reader gets its own mutable object — the
-no-shared-mutation invariant the warm path turns on (a live fetch hands every
-reader a fresh object; a warm read must match). A warm value only ever comes
-from the snapshot's textual body kinds (warmValueFromSnapshot): json yields
-JSON.parse output, text yields a string — the whole population is
-JSON-round-trippable by construction (no Date/Map/Blob/cycle a structuredClone
-would be needed for). A primitive (a string or scalar-json body) is immutable,
-so it returns as-is with no copy; an object/array goes through a JSON round-trip,
-measurably faster than structuredClone for this shape while producing the same
-fresh, mutable copy. cache.on's patch writes the same decoded population, so it
-shares this clone.
-*/
-function cloneWarmValue<T>(value: T): T {
-    if (typeof value !== 'object' || value === null) {
-        return value
-    }
-    return JSON.parse(JSON.stringify(value)) as T
-}
-
-/*
-Returns a promise that resolves to a fresh clone of the underlying Response.
-Multiple readers can each consume the body independently — the stored
-promise's Response is never consumed directly, so clones always succeed.
-*/
-function shareable(promise: Promise<Response>): Promise<Response> {
-    return promise.then((response) => response.clone())
+    return shareableResponse(promise)
 }
 
 /*
@@ -561,7 +360,7 @@ function invalidate<Args, Return>(arg?: CacheSelector<Args, Return>, args?: Args
             }
             store.markLifecycle(entry.key)
         }
-        emit(store, affected)
+        emitInvalidation(store, affected)
         store.markLifecycle()
     }
 }
@@ -620,7 +419,7 @@ async function patchEntries<Args, Return>(
             }
             const current = (entry.value ??
                 (await decodeResponse(
-                    await shareable(entry.promise as Promise<Response>),
+                    await shareableResponse(entry.promise as Promise<Response>),
                 ))) as Return
             entry.value = cloneWarmValue(updater(current))
             entry.settled = true
@@ -628,7 +427,7 @@ async function patchEntries<Args, Return>(
             store.markLifecycle(entry.key)
             affected.push(entry.key)
         }
-        emit(store, affected)
+        emitInvalidation(store, affected)
         store.markLifecycle()
         touched.push(...affected)
     }
@@ -732,158 +531,3 @@ function on<T>(
 }
 
 cache.on = on
-
-/*
-Schedules a coalesced refetch per the entry's swr policy. debounce: (re)arm
-a timer that fires after N ms of quiet. throttle: fire on the leading edge when a
-full window has elapsed since the last fire, else arm a single trailing timer for
-the remainder — so a continuous invalidation stream refetches at most once per window.
-*/
-function scheduleInvalidationRefetch(store: CacheStore, entry: CacheEntry): void {
-    const policy = entry.invalidation
-    if (!policy) {
-        return
-    }
-    if (policy.debounce !== undefined) {
-        clearTimeout(policy.timer)
-        policy.timer = armTimer(store, entry, policy.debounce)
-        return
-    }
-    const throttleMs = policy.throttle ?? 0
-    const elapsed = Date.now() - (policy.lastFiredAt ?? Number.NEGATIVE_INFINITY)
-    if (elapsed >= throttleMs) {
-        fireRefetch(store, entry)
-        return
-    }
-    if (policy.timer === undefined) {
-        policy.timer = armTimer(store, entry, throttleMs - elapsed)
-    }
-}
-
-function armTimer(store: CacheStore, entry: CacheEntry, ms: number): ReturnType<typeof setTimeout> {
-    const timer = setTimeout(() => {
-        if (entry.invalidation) {
-            entry.invalidation.timer = undefined
-        }
-        fireRefetch(store, entry)
-    }, ms)
-    timer.unref?.()
-    return timer
-}
-
-/*
-Runs the captured refetch once, keeping the stale value visible until it
-resolves, then swaps the fresh result in and notifies readers. A refetch already
-in flight is left to finish — the key is stable, so it already fetches the latest
-state. Failure arrives on either settle path: a remote refetch resolves with the
-Response even on an error status (fetch rejects only on network loss), a producer
-rejects. Both route to settleRefetchFailure — stale kept, except a 404 evicts.
-*/
-function fireRefetch(store: CacheStore, entry: CacheEntry): void {
-    const policy = entry.invalidation
-    if (!policy || entry.refreshing) {
-        return
-    }
-    entry.refreshing = true
-    policy.lastFiredAt = Date.now()
-    /* Ping lifecycle so refreshing() re-derives when revalidation begins; the settle handlers ping again when it ends. */
-    store.markLifecycle(entry.key)
-    const inflight = policy.refetch()
-    inflight.then(
-        (result) => {
-            entry.refreshing = false
-            /* Dropped or replaced while in flight — discard this result. */
-            if (store.entries.get(entry.key) !== entry) {
-                return
-            }
-            if (result instanceof Response && !result.ok) {
-                settleRefetchFailure(store, entry, result.status)
-                return
-            }
-            entry.promise = inflight
-            entry.value = undefined
-            entry.settled = true
-            store.markLifecycle(entry.key)
-            emit(store, [entry.key])
-        },
-        (error) => {
-            entry.refreshing = false
-            if (store.entries.get(entry.key) !== entry) {
-                return
-            }
-            settleRefetchFailure(
-                store,
-                entry,
-                error instanceof HttpError ? error.status : undefined,
-            )
-        },
-    )
-}
-
-/*
-A failed revalidation keeps the stale entry — blanking data a reader is showing
-over a transient error would make every background refresh a risk. 404 is the
-exception: the resource is gone, so the retained value is a ghost an invalidation
-stream would refetch forever. Evict it exactly as invalidate() drops a policy-less
-entry (pendingRefresh marks the next read a reload; the notify re-runs readers),
-so a live read replaces it and surfaces the proper error once.
-*/
-function settleRefetchFailure(store: CacheStore, entry: CacheEntry, status?: number): void {
-    if (status === 404) {
-        evictIfCurrent(store, entry)
-        /* Mirror invalidate()'s gating: only flag a reload when a reader still holds
-           the value — a background refetch can 404 after the reader navigated away, and
-           an ungated add then lingers forever on the tab store (no teardown to prune it). */
-        if (store.hasReader(entry.key)) {
-            store.pendingRefresh.add(entry.key)
-        }
-        emit(store, [entry.key])
-        return
-    }
-    store.markLifecycle(entry.key)
-}
-
-/* Folds new tags into an entry's existing set without duplicating them. */
-function mergeTags(existing: Set<string> | undefined, incoming: string[]): Set<string> {
-    return new Set([...(existing ?? []), ...incoming])
-}
-
-/*
-Tags an existing entry with a read's tags so a later cache.invalidate({ tags })
-reaches entries hydrated from the SSR snapshot (which carry a value but no tags)
-without a refetch. Merges rather than replaces so a read tagging one group can't
-drop tags another read site already added; a no-op when the read passes no tags.
-*/
-function applyTags(entry: CacheEntry, tags: CacheOptions['tags']): void {
-    if (tags !== undefined) {
-        entry.tags = mergeTags(entry.tags, tags)
-    }
-}
-
-/*
-Mirrors applyTags for swr policies: a read declaring a policy arms an
-existing entry that lacks one. Hydrated snapshot entries carry a value but no
-refetch thunk — without this, the first invalidate after hydration would hard-
-drop the entry (a pending flash) instead of revalidating stale-in-place, and a
-policy-less first read would permanently win over a later read that declared
-one. An entry that already has a policy keeps it (first policy wins; the key
-is the same call, so the thunks are interchangeable).
-*/
-function attachPolicy(
-    entry: CacheEntry,
-    options: CacheOptions | undefined,
-    refetch: () => Promise<unknown>,
-): void {
-    const policy = policyWindow(options?.swr)
-    if (entry.invalidation || !policy) {
-        return
-    }
-    entry.invalidation = { refetch, throttle: policy.throttle, debounce: policy.debounce }
-}
-
-function emit(store: CacheStore, keys: string[]): void {
-    if (keys.length === 0) {
-        return
-    }
-    store.events.dispatchEvent(invalidateEvent(keys))
-}
