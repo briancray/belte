@@ -1,10 +1,10 @@
-import type { VerbHelper } from './rpc/types/VerbHelper.ts'
+import type { RpcHelper } from './rpc/types/RpcHelper.ts'
 import { unprocessed } from './rpc/unprocessed.ts'
 
 /*
-PATCH verb helper. The bundler rewrites every `export const x = PATCH(fn)` inside
-`src/server/rpc/<file>.ts` into a defineVerb call (server target) or a
+PATCH rpc helper. The bundler rewrites every `export const x = PATCH(fn)` inside
+`src/server/rpc/<file>.ts` into a defineRpc call (server target) or a
 remoteProxy stub (client target). Calling this directly throws.
 */
 // @readme rpc
-export const PATCH: VerbHelper = (_fn: any, _opts?: any) => unprocessed('PATCH')
+export const PATCH: RpcHelper = (_fn: any, _opts?: any) => unprocessed('PATCH')

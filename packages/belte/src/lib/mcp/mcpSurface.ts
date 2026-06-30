@@ -1,7 +1,7 @@
 import { promptRegistry } from '../server/prompts/promptRegistry.ts'
-import { dispatchVerbInProcess } from '../server/rpc/dispatchVerbInProcess.ts'
-import { findVerbByCommandName } from '../server/rpc/findVerbByCommandName.ts'
-import { verbRegistry } from '../server/rpc/verbRegistry.ts'
+import { dispatchRpcInProcess } from '../server/rpc/dispatchRpcInProcess.ts'
+import { findRpcByCommandName } from '../server/rpc/findRpcByCommandName.ts'
+import { rpcRegistry } from '../server/rpc/rpcRegistry.ts'
 import { socketOperations } from '../server/sockets/socketOperations.ts'
 import { socketRegistry } from '../server/sockets/socketRegistry.ts'
 import { belteLog } from '../shared/belteLog.ts'
@@ -57,12 +57,12 @@ export type McpSurface = {
 /*
 Builds the array of MCP tool descriptors.
 
-RPCs: every verb with clients.mcp=true becomes one tool named after the
-export's URL (folder segments joined with `-`). The HTTP verb feeds the
+RPCs: every rpc with clients.mcp=true becomes one tool named after the
+export's URL (folder segments joined with `-`). The HTTP method feeds the
 tool's annotations (readOnlyHint / destructiveHint / idempotentHint) so
 a model can tell a read from a write; reads auto-expose while mutating
-verbs require an explicit clients.mcp (see resolveClientFlags). When the
-verb declares an `outputSchema` it's advertised as the tool outputSchema.
+rpcs require an explicit clients.mcp (see resolveClientFlags). When the
+rpc declares an `outputSchema` it's advertised as the tool outputSchema.
 
 Sockets: every socket with clients.mcp=true contributes a `<base>-tail`
 read tool (recent buffered messages) and, when clientPublish is set, a
@@ -70,7 +70,7 @@ read tool (recent buffered messages) and, when clientPublish is set, a
 */
 export function buildTools(): ToolDescriptor[] {
     const tools: ToolDescriptor[] = []
-    for (const entry of verbRegistry.values()) {
+    for (const entry of rpcRegistry.values()) {
         if (!entry.clients.mcp) {
             continue
         }
@@ -153,7 +153,7 @@ export function buildPrompts(): PromptDescriptor[] {
 }
 
 /* MCP tool-dispatch spans, opt-in via DEBUG=belte:mcp — a model's tool call,
-   wrapping the underlying verb dispatch in the same trace. */
+   wrapping the underlying rpc dispatch in the same trace. */
 const mcpLog = belteLog.channel('belte:mcp')
 
 function textResult(text: string, isError = false): ToolResult {
@@ -202,7 +202,7 @@ function callSocketTool(
 
 /*
 Tool dispatch. RPC tools synthesize a Request (with forwarded auth
-headers from `inbound`) and pipe it through verb.fetch inside the request
+headers from `inbound`) and pipe it through rpc.fetch inside the request
 scope — the same seam the HTTP router crosses, so validation, the handler,
 and the request-scoped helpers (per-call cache(), cookies(), request())
 behave identically. A handler throw is caught by the scope and framed as
@@ -216,9 +216,9 @@ export async function callTool(
     args: Record<string, unknown> | undefined,
     inbound: Request,
 ): Promise<ToolResult> {
-    const entry = findVerbByCommandName(toolName)
+    const entry = findRpcByCommandName(toolName)
     if (entry?.clients.mcp) {
-        const response = await dispatchVerbInProcess({
+        const response = await dispatchRpcInProcess({
             remote: entry.remote,
             args,
             baseUrl: `${new URL(inbound.url).origin}/`,
@@ -258,7 +258,7 @@ export function renderPrompt(
 
 /*
 Projects the app's MCP surface for an in-process consumer bound to `request`
-— tool calls forward that request's auth headers into the verb handler, so
+— tool calls forward that request's auth headers into the rpc handler, so
 the model acts with the caller's identity. Used by `agent()`.
 */
 export function mcpSurface(request: Request): McpSurface {

@@ -371,7 +371,7 @@ function requestHtml(q, childrenOf, depth, tStart, tWindow) {
     '</span>' +
     barTrack(base, q.total, scale, 'req') +
     '</div>'
-  // Spans restate the request's own verb+path; strip that noise. The handler reads
+  // Spans restate the request's own method+path; strip that noise. The handler reads
   // 'handle'; import/parse/validate drop the redundant path to just the op. A nested
   // in-process call (a different url) keeps its full name — there it's new info.
   const reqPath = (q.path || '').split('?')[0]
@@ -462,10 +462,10 @@ const fmtBytes = (n) => {
 }
 const schemaBlock = (label, s) => s ? '<pre class="schema">' + esc(label + ': ' + JSON.stringify(s, null, 2)) + '</pre>' : ''
 
-// One expandable verb: the columnar row (surfaces line up) + a hidden detail row
+// One expandable rpc: the columnar row (surfaces line up) + a hidden detail row
 // with every declared option. A JS toggle, not <details>, so WebKit's flex-summary
 // double-click bug can't apply.
-function verbRow(v, i) {
+function rpcRow(v, i) {
   // Every option is a column now; expanding adds only the full schemas.
   const detail = v.inputSchema || v.outputSchema
     ? schemaBlock('input', v.inputSchema) + schemaBlock('output', v.outputSchema)
@@ -490,16 +490,16 @@ function verbRow(v, i) {
 async function loadSurface() {
   const surfaceEl = document.getElementById('surface')
   try {
-    const { verbs, sockets } = await (await fetch(root + '/surface')).json()
+    const { rpcs, sockets } = await (await fetch(root + '/surface')).json()
     // Registration order is arbitrary; sort by path (then method) so the catalog is scannable.
-    const sortedVerbs = [...verbs].sort((a, b) => a.url.localeCompare(b.url) || a.method.localeCompare(b.method))
+    const sortedRpcs = [...rpcs].sort((a, b) => a.url.localeCompare(b.url) || a.method.localeCompare(b.method))
     const sortedSockets = [...sockets].sort((a, b) => a.name.localeCompare(b.name))
-    const verbTable =
+    const rpcTable =
       '<table class="surface"><thead><tr>' +
       '<th>method</th><th>path</th><th class="c">schema</th><th class="c">browser</th>' +
       '<th class="c">mcp</th><th class="c">cli</th><th class="c">xorigin</th><th class="c">files</th>' +
       '<th class="num">timeout</th><th class="num">body</th>' +
-      '</tr></thead><tbody>' + sortedVerbs.map(verbRow).join('') + '</tbody></table>'
+      '</tr></thead><tbody>' + sortedRpcs.map(rpcRow).join('') + '</tbody></table>'
     const socketTable = sockets.length
       ? '<table class="surface"><thead><tr><th>socket</th><th>operations</th><th>http</th></tr></thead><tbody>' +
         sortedSockets.map((s) =>
@@ -509,7 +509,7 @@ async function loadSurface() {
       : '<div class="empty">none</div>'
     surfaceEl.className = ''
     surfaceEl.innerHTML =
-      '<h2>RPC verbs (' + verbs.length + ')</h2>' + verbTable +
+      '<h2>RPCs (' + rpcs.length + ')</h2>' + rpcTable +
       '<h2>Sockets (' + sockets.length + ')</h2>' + socketTable
     for (const row of surfaceEl.querySelectorAll('tr.vrow')) {
       row.onclick = () => {
@@ -544,12 +544,12 @@ async function loadCache() {
         '<td>' + (e.remote ? 'remote' : 'producer') + '</td>' +
         '<td class="num">' + fmtTtl(e.ttl) + '</td>' +
         '<td class="num">' + fmtExpiry(e.expiresInMs) + '</td>' +
-        '<td>' + esc(e.scope.join(' ') || '·') + (e.policy ? ' <span class="channel">' + esc(e.policy) + '</span>' : '') + '</td>' +
+        '<td>' + esc(e.tags.join(' ') || '·') + (e.policy ? ' <span class="channel">' + esc(e.policy) + '</span>' : '') + '</td>' +
         '<td class="cval">' + esc(e.value || '·') + '</td></tr>').join('')
       el.className = ''
       el.innerHTML = refresh +
         '<table class="surface"><thead><tr><th>key</th><th>status</th><th>kind</th>' +
-        '<th class="num">ttl</th><th class="num">expires</th><th>scope</th><th>value</th></tr></thead><tbody>' +
+        '<th class="num">ttl</th><th class="num">expires</th><th>tags</th><th>value</th></tr></thead><tbody>' +
         rows + '</tbody></table>'
     }
     document.getElementById('cacheRefresh').onclick = loadCache

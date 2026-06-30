@@ -1,24 +1,34 @@
 import { findExportCallSite } from './findExportCallSite.ts'
 import { importNamesToStrip } from './importNamesToStrip.ts'
+import { isReadOnlyMethod } from './isReadOnlyMethod.ts'
+import { skipNonCode } from './skipNonCode.ts'
 import { stripImport } from './stripImport.ts'
-import type { HttpVerb } from './types/HttpVerb.ts'
+import type { HttpMethod } from './types/HttpMethod.ts'
 
-const VERB_NAMES = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'] as const
-const VERB_SET = new Set<string>(VERB_NAMES)
+const RPC_NAMES = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'] as const
+const RPC_SET = new Set<string>(RPC_NAMES)
 
 const SINGLE_EXPORT_ERROR =
-    '[belte] $rpc module contains more than one `<VERB>(...)` export — each file must declare exactly one remote function'
+    '[belte] $rpc module contains more than one `<METHOD>(...)` export — each file must declare exactly one remote function'
 
 export type PreparedRpcModule = {
-    verb: HttpVerb
+    method: HttpMethod
+    /* `outbox: true` in the opts — the client proxy is emitted durable. */
+    durable: boolean
     exportName: string
     rewriteForServer: (url: string) => string
 }
 
+/* The `outbox` opts key plus its value's leading token (up to the next comma / whitespace /
+   closing brace). `outbox` is a BUILD-TIME flag: the client bundle is rewritten durable or
+   not from this scan, before any handler runs — so the value must be a literal the scan can
+   read, not a computed expression. */
+const OUTBOX_OPT = /\boutbox\s*:\s*([^,\s}]+)/
+
 /*
-Scans an `$rpc/**` module once and returns its declared verb + export
+Scans an `$rpc/**` module once and returns its declared method + export
 name plus a closure that, given the route URL, emits the server-side
-rewrite (`__belteDefineVerb__("VERB", "<url>", … )` spliced into the
+rewrite (`__belteDefineRpc__("METHOD", "<url>", … )` spliced into the
 original source). The single scan replaces the prior separate
 extract + rewrite passes, so the resolver plugin only walks each source
 character-by-character once.
@@ -32,28 +42,91 @@ export function prepareRpcModule(
     importName: string,
 ): PreparedRpcModule | undefined {
     /*
-    The "no barrels" surface places each verb at its own path
+    The "no barrels" surface places each method at its own path
     (`belte/server/GET`, `belte/server/POST`, …) — strip every one so
-    the user's verb import doesn't linger and side-effect-load the
+    the user's method import doesn't linger and side-effect-load the
     stub module into the server bundle. The user may import under the
     project's chosen name or the canonical package name, so strip both.
     */
     const stripped = importNamesToStrip(importName).reduce(
         (current, name) =>
-            VERB_NAMES.reduce((acc, verb) => stripImport(acc, `${name}/server/${verb}`), current),
+            RPC_NAMES.reduce(
+                (acc, method) => stripImport(acc, `${name}/server/${method}`),
+                current,
+            ),
         source,
     )
-    const site = findExportCallSite(stripped, (ident) => VERB_SET.has(ident), SINGLE_EXPORT_ERROR)
+    const site = findExportCallSite(stripped, (ident) => RPC_SET.has(ident), SINGLE_EXPORT_ERROR)
     if (!site) {
         return undefined
     }
-    const verb = site.ident as HttpVerb
+    const method = site.ident as HttpMethod
+    const durable = detectDurable(stripped, site.parenStart, site.parenEnd, method)
     return {
-        verb,
+        method,
+        durable,
         exportName: site.exportName,
         rewriteForServer(url: string): string {
-            const binding = `__belteDefineVerb__(${JSON.stringify(verb)}, ${JSON.stringify(url)}, `
+            const binding = `__belteDefineRpc__(${JSON.stringify(method)}, ${JSON.stringify(url)}, `
             return stripped.slice(0, site.callStart) + binding + stripped.slice(site.parenStart + 1)
         },
     }
+}
+
+/* Reads the `outbox` flag off the call's opts object (the trailing argument), enforcing the
+   two build-time invariants. Scoping to the opts object keeps the scan off the handler body,
+   so a handler that mentions `outbox:` doesn't misfire. */
+function detectDurable(
+    source: string,
+    parenStart: number,
+    parenEnd: number,
+    method: HttpMethod,
+): boolean {
+    const opts = lastArgText(source, parenStart, parenEnd)
+    const match = opts === undefined ? null : OUTBOX_OPT.exec(opts)
+    if (match === null) {
+        return false
+    }
+    const value = match[1]
+    if (value !== 'true' && value !== 'false') {
+        throw new Error(
+            `[belte] \`outbox\` must be a literal \`true\` or \`false\` (got \`${value}\`) — it's a build-time flag the client bundle reads, so it can't be a computed expression`,
+        )
+    }
+    const durable = value === 'true'
+    if (durable && isReadOnlyMethod(method)) {
+        throw new Error(
+            `[belte] outbox: true is only valid on mutating RPCs (POST/PUT/PATCH/DELETE), not ${method}`,
+        )
+    }
+    return durable
+}
+
+/*
+The text of the call's final argument — the opts object for a `METHOD(handler, opts)` call.
+Walks the arg list depth-aware, skipping strings / templates / comments / regex (skipNonCode)
+so their commas and braces don't miscount, and returns the slice after the last top-level
+comma. undefined when the call has a single argument (a bare handler, no opts).
+*/
+function lastArgText(source: string, parenStart: number, parenEnd: number): string | undefined {
+    let depth = 0
+    let lastComma = -1
+    let i = parenStart + 1
+    while (i < parenEnd) {
+        const skipped = skipNonCode(source, i)
+        if (skipped !== undefined) {
+            i = skipped
+            continue
+        }
+        const c = source[i]
+        if (c === '(' || c === '{' || c === '[') {
+            depth++
+        } else if (c === ')' || c === '}' || c === ']') {
+            depth--
+        } else if (c === ',' && depth === 0) {
+            lastComma = i
+        }
+        i++
+    }
+    return lastComma === -1 ? undefined : source.slice(lastComma + 1, parenEnd)
 }

@@ -3,7 +3,7 @@ import { belteLog } from '../../shared/belteLog.ts'
 import { NO_STORE } from '../../shared/CACHE_CONTROL_VALUES.ts'
 import { memoizeByKey } from '../../shared/memoizeByKey.ts'
 import { REMOTE_FUNCTION } from '../../shared/REMOTE_FUNCTION.ts'
-import type { HttpVerb } from '../../shared/types/HttpVerb.ts'
+import type { HttpMethod } from '../../shared/types/HttpMethod.ts'
 import type { RemoteFunction } from '../../shared/types/RemoteFunction.ts'
 import type { RemoteRoutes } from '../rpc/types/RemoteRoutes.ts'
 import { crossOriginGate } from './crossOriginGate.ts'
@@ -12,7 +12,7 @@ import type { RequestStore } from './types/RequestStore.ts'
 type AnyRemoteFunction = RemoteFunction<unknown, unknown>
 
 /* Cold rpc-module load span, opt-in via DEBUG=belte:rpc — same channel as the
-   verb's parse/validate/dispatch spans so a request's rpc work groups together. */
+   rpc's parse/validate/dispatch spans so a request's rpc work groups together. */
 const rpcLog = belteLog.channel('belte:rpc')
 
 /* Resolves a matched route to a Response, given the request and its scope. */
@@ -29,7 +29,7 @@ type RenderPage = (
     store: RequestStore,
 ) => Promise<Response>
 
-/* The framework's 405 — `Allow` names the permitted verb(s), body and NO_STORE shared so the rpc and page branches can't drift. */
+/* The framework's 405 — `Allow` names the permitted rpc(s), body and NO_STORE shared so the rpc and page branches can't drift. */
 function methodNotAllowed(allow: string): Response {
     return new Response('Method Not Allowed', {
         status: 405,
@@ -39,9 +39,9 @@ function methodNotAllowed(allow: string): Response {
 
 /*
 Owns route dispatch: deciding, per registered URL, whether a request hits an
-rpc verb, a page render, or nothing — and the method-matching that picks the
+an rpc, a page render, or nothing — and the method-matching that picks the
 status. Page URLs (under src/browser/pages/) serve GET/HEAD by rendering; rpc
-URLs (under src/server/rpc/, `/rpc/...`) dispatch to the single declared verb,
+URLs (under src/server/rpc/, `/rpc/...`) dispatch to the single declared rpc,
 405 on method mismatch; an unregistered URL is 404. Page and rpc URLs are
 disjoint by construction, so each route lands in exactly one branch.
 
@@ -69,7 +69,7 @@ export function createRouteDispatcher({
         Each $rpc module has exactly one named export, validated at build
         time. Pick the first REMOTE_FUNCTION-branded export — exact, so an
         incidental re-export carrying method/url props can't be mistaken
-        for the verb.
+        for the rpc.
         */
         /* The import() is the cold-load cost (transpile + evaluate the module on
            first hit); memoized, so the span fires once — mirrors the page-side `import`. */
@@ -89,14 +89,14 @@ export function createRouteDispatcher({
         const hasPage = pages[routeUrl] !== undefined
         const hasRpc = rpc[routeUrl] !== undefined
         return async function routeHandler(req, pathParams, store) {
-            const method = req.method as HttpVerb
+            const method = req.method as HttpMethod
             if (hasRpc) {
                 const fn = await loadRpc(routeUrl)
                 if (fn && fn.method === method) {
                     const forbidden = crossOriginGate(req, store.url, {
                         allowReadOnly: true,
                         optOut: fn.crossOrigin === true,
-                        hint: 'Declare `crossOrigin: true` on the verb to accept cross-site calls.',
+                        hint: 'Declare `crossOrigin: true` on the rpc to accept cross-site calls.',
                     })
                     if (forbidden) {
                         return forbidden

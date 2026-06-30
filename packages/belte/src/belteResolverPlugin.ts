@@ -82,7 +82,7 @@ function once<T>(produce: () => Promise<T>): () => Promise<T> {
 
 /*
 Bun plugin that wires every virtual import belte produces at build time:
-- `belte:rpc`     — { rpcUrl: () => import(rpc-module) } HTTP-verb manifest
+- `belte:rpc`     — { rpcUrl: () => import(rpc-module) } HTTP-method manifest
 - `belte:sockets` — { socketName: () => import(socket-module) } socket manifest
 - `belte:pages`   — { pageUrl: () => import(page.svelte) } manifest
 - `belte:layouts` — { dirPrefix: () => import(layout.svelte) } manifest
@@ -94,8 +94,8 @@ Bun plugin that wires every virtual import belte produces at build time:
 - `belte:shell`   — app.html content (custom or default)
 
 Also rewrites modules under src/server/rpc and src/server/sockets:
-- src/server/rpc/<file>.ts: each HTTP-verb export is bound to a runtime
-  implementation — defineVerb on the server, remoteProxy on the client.
+- src/server/rpc/<file>.ts: each HTTP-method export is bound to a runtime
+  implementation — defineRpc on the server, remoteProxy on the client.
 - src/server/sockets/<file>.ts: each `socket(opts)` export is bound to
   defineSocket on the server (with the socket name + opts) or
   socketProxy on the client (name only — opts are server-side).
@@ -150,7 +150,7 @@ export function belteResolverPlugin({
         scanDir(rpcDir, '**/*.ts').then(async (rpcFiles) => {
             const importName = await belteImportNameOnce()
             await writeRpcDts({ cwd, rpcDir, rpcFiles, importName })
-            /* Typed createTestApp `app.rpc.<verb>` surface. */
+            /* Typed createTestApp `app.rpc.<rpc>` surface. */
             await writeTestRpcDts({ cwd, rpcFiles, importName })
             return rpcFiles
         }),
@@ -265,7 +265,7 @@ export function belteResolverPlugin({
                 const prepared = prepareRpcModule(source, importName)
                 if (!prepared) {
                     throw new Error(
-                        `[belte] src/server/rpc/${relativePath} has no \`export const <name> = <VERB>(...)\` — every $rpc module must declare exactly one remote function`,
+                        `[belte] src/server/rpc/${relativePath} has no \`export const <name> = <METHOD>(...)\` — every $rpc module must declare exactly one remote function`,
                     )
                 }
                 const expectedName = fileStem(relativePath)
@@ -282,22 +282,25 @@ export function belteResolverPlugin({
                 so page imports resolve identically on both sides.
                 */
                 if (target === 'client') {
+                    /* A durable rpc (`outbox: true`) gets the third arg so its client proxy
+                       parks unreachable calls onto the outbox. */
+                    const durableArg = prepared.durable ? ', { outbox: true }' : ''
                     const contents = `import { remoteProxy as __belteRemoteProxy__ } from '${importName}/browser/remoteProxy';
-export const ${prepared.exportName} = __belteRemoteProxy__(${JSON.stringify(prepared.verb)}, ${JSON.stringify(url)});
+export const ${prepared.exportName} = __belteRemoteProxy__(${JSON.stringify(prepared.method)}, ${JSON.stringify(url)}${durableArg});
 `
                     return { contents, loader: 'ts' }
                 }
                 /*
-                Server target: strip the user's verb import, then rewrite
-                the `<VERB>(` call so the verb (from the identifier) and
+                Server target: strip the user's method import, then rewrite
+                the `<METHOD>(` call so the method (from the identifier) and
                 the URL (from the file path) are threaded into the
-                runtime constructor — defineVerb. The user's handler body
+                runtime constructor — defineRpc. The user's handler body
                 stays intact between the parens; any generics on the call
                 are dropped (they carry no runtime info). Rewriting is
                 tokenizer-driven so `GET` mentions inside strings and
                 comments are left alone.
                 */
-                const banner = `import { defineVerb as __belteDefineVerb__ } from '${importName}/server/rpc/defineVerb';
+                const banner = `import { defineRpc as __belteDefineRpc__ } from '${importName}/server/rpc/defineRpc';
 `
                 return { contents: `${banner}${prepared.rewriteForServer(url)}`, loader: 'ts' }
             })
@@ -485,7 +488,7 @@ ${optionLines}
                     The CLI binary's bake-time manifest. Discovery (a
                     one-shot script the bundler runs separately) writes
                     `${cwd}/dist/cli-manifest.json` from the populated
-                    verbRegistry; this virtual splices that JSON in as a
+                    rpcRegistry; this virtual splices that JSON in as a
                     default-exported object. Empty manifest when the
                     discovery file is missing — the binary still works
                     but exposes no subcommands until the user runs the
@@ -620,7 +623,7 @@ export const footer = ${JSON.stringify(footer)}
                 if (args.path === 'belte:mcp') {
                     /*
                     The MCP server is fully framework-generated — tools from
-                    the verb registry, prompts from src/mcp/prompts, resources
+                    the rpc registry, prompts from src/mcp/prompts, resources
                     from src/mcp/resources. createMcpServer is internal; there
                     is no user-authored server module. Server identity comes
                     from package.json so the `mcp__<name>__*` permission prefix
@@ -833,7 +836,7 @@ async function scanPages(pagesDir: string): Promise<PagesScan> {
 
 /*
 Walks one registry directory once: src/server/rpc (every `.ts` file is an
-HTTP-verb rpc handler), src/server/sockets (each `.ts` file declares one
+HTTP-method rpc handler), src/server/sockets (each `.ts` file declares one
 socket, loaded lazily on first sub/pub frame), or src/mcp/prompts (each `.md`
 file declares one MCP prompt — frontmatter for metadata, body for the
 template). Returns an empty list when the directory doesn't exist so an app

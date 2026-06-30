@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 import { dispatchMcpRequest } from '../src/lib/mcp/dispatchMcpRequest.ts'
 import { json } from '../src/lib/server/json.ts'
-import { defineVerb } from '../src/lib/server/rpc/defineVerb.ts'
+import { defineRpc } from '../src/lib/server/rpc/defineRpc.ts'
 import { testSchema } from './standardSchema.ts'
 
 const serverInfo = { name: 'test-app', version: '1.2.3' }
@@ -28,11 +28,11 @@ function findTool(tools: Tool[], name: string): Tool | undefined {
 
 describe('MCP dispatch happy path', () => {
     beforeAll(() => {
-        defineVerb('GET', '/rpc/mcp-echo', ({ id }: { id: string }) => json({ id }), {
+        defineRpc('GET', '/rpc/mcp-echo', ({ id }: { id: string }) => json({ id }), {
             inputSchema: testSchema({ type: 'object', properties: { id: { type: 'string' } } }),
             outputSchema: testSchema({ type: 'object', properties: { id: { type: 'string' } } }),
         })
-        defineVerb('DELETE', '/rpc/mcp-remove', () => json({ ok: true }), {
+        defineRpc('DELETE', '/rpc/mcp-remove', () => json({ ok: true }), {
             inputSchema: testSchema(),
             clients: { mcp: true },
         })
@@ -49,7 +49,7 @@ describe('MCP dispatch happy path', () => {
         expect(await call('ping')).toEqual({})
     })
 
-    test('tools/list carries verb-derived annotations and output schema', async () => {
+    test('tools/list carries rpc-derived annotations and output schema', async () => {
         const { tools } = (await call('tools/list')) as { tools: Tool[] }
         const echo = findTool(tools, 'mcp-echo')
         expect(echo?.annotations).toEqual({ readOnlyHint: true, destructiveHint: false })

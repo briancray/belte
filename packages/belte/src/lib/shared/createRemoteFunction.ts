@@ -5,14 +5,14 @@ import { REMOTE_FUNCTION } from './REMOTE_FUNCTION.ts'
 import { recordRemoteMeta } from './recordRemoteMeta.ts'
 import { subscribableFromResponse } from './subscribableFromResponse.ts'
 import type { ClientFlags } from './types/ClientFlags.ts'
-import type { HttpVerb } from './types/HttpVerb.ts'
+import type { HttpMethod } from './types/HttpMethod.ts'
 import type { RawRemoteFunction } from './types/RawRemoteFunction.ts'
 import type { RemoteFunction } from './types/RemoteFunction.ts'
 import type { Subscribable } from './types/Subscribable.ts'
 
 /*
 Assembles the public RemoteFunction shape used identically by the
-server-side defineVerb (in-process handler invocation) and the
+server-side defineRpc (in-process handler invocation) and the
 client-side remoteProxy (network fetch). Centralising the wiring here
 keeps the call/raw/stream/fetch semantics — including WeakMap meta
 recording, Content-Type decode, and Subscribable derivation — in one
@@ -23,7 +23,7 @@ place so the two halves can't drift.
   base; client uses window.location. The result is memoised inside the
   per-call `getRequest` thunk so the Request is built at most once per
   call regardless of how many readers pull on it.
-- `invoke(args, getRequest)` actually runs the call: server defineVerb
+- `invoke(args, getRequest)` actually runs the call: server defineRpc
   runs the handler and ignores `getRequest`; client remoteProxy calls
   `fetch(getRequest())`. The thunk lets the server skip the Request
   allocation entirely on the SSR hot path — the only consumer that ever
@@ -34,10 +34,10 @@ place so the two halves can't drift.
   forwards the request through invoke().
 */
 export function createRemoteFunction<Args, Return>(opts: {
-    method: HttpVerb
+    method: HttpMethod
     url: string
     clients: ClientFlags
-    /* Server-side only: exempts a mutating verb from the router's same-origin CSRF gate. */
+    /* Server-side only: exempts a mutating rpc from the router's same-origin CSRF gate. */
     crossOrigin?: boolean
     buildRequest: (args: Args | undefined) => Request
     invoke: (args: Args | undefined, getRequest: () => Request) => Promise<Response>
@@ -66,7 +66,7 @@ export function createRemoteFunction<Args, Return>(opts: {
     }
 
     /*
-    A body verb may receive a FormData in place of typed Args (the upload
+    A body rpc may receive a FormData in place of typed Args (the upload
     escape hatch). It flows through dispatch only into buildRpcRequest /
     keyForRemoteCall, both of which take it as-is, so the cast to Args is a
     contained type lie — buildRpcRequest's `instanceof FormData` branch handles

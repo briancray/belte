@@ -18,7 +18,7 @@ function preview(value: unknown): string | undefined {
     }
 }
 
-/* The entry's armed invalidate policy as a label, if it declared one. */
+/* The entry's armed swr policy as a label, if it declared one. */
 function policyLabel(entry: CacheEntry): string | undefined {
     const policy = entry.invalidation
     if (!policy) {
@@ -41,7 +41,7 @@ function projectEntry(entry: CacheEntry, now: number): InspectorCacheEntry {
         remote: entry.request !== undefined,
         ttl: entry.ttl,
         expiresInMs: entry.expiresAt !== undefined ? entry.expiresAt - now : undefined,
-        scope: entry.scope ? [...entry.scope] : [],
+        tags: entry.tags ? [...entry.tags] : [],
         value: preview(entry.value),
         policy: policyLabel(entry),
     }

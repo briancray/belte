@@ -1,5 +1,6 @@
 import type { ClientFlags } from './ClientFlags.ts'
-import type { HttpVerb } from './HttpVerb.ts'
+import type { HttpMethod } from './HttpMethod.ts'
+import type { Outbox } from './Outbox.ts'
 import type { RawRemoteFunction } from './RawRemoteFunction.ts'
 import type { RemoteCallable } from './RemoteCallable.ts'
 import type { Subscribable } from './Subscribable.ts'
@@ -25,23 +26,27 @@ HTTP rpc isn't the place for long-lived multi-publisher subscriptions.
 `.fetch(req)` is the framework's request-dispatch entry point — used by
 the router to invoke the handler from an incoming HTTP request, not
 for user code.
-`crossOrigin` (server-side only, set via the verb's opts) exempts a
-mutating verb from the router's same-origin CSRF gate, accepting browser
+`crossOrigin` (server-side only, set via the rpc's opts) exempts a
+mutating rpc from the router's same-origin CSRF gate, accepting browser
 requests whose Origin doesn't match the app's own host.
 */
 /*
-A body verb (POST/PUT/PATCH) also accepts a FormData in place of typed args:
+A body rpc (POST/PUT/PATCH) also accepts a FormData in place of typed args:
 buildRpcRequest ships it as a multipart body and the server splits text fields
 into args (still schema-validated) and File parts into files(). FormData is
 stringly-typed, so this is the upload escape hatch — typed object args remain
 the default for everything else.
 */
 export type RemoteFunction<Args, Return> = RemoteCallable<Args, Return> & {
-    readonly method: HttpVerb
+    readonly method: HttpMethod
     readonly url: string
     readonly clients: ClientFlags
     readonly crossOrigin?: boolean
     readonly raw: RawRemoteFunction<Args>
+    /* The durable-delivery face, present only on a client proxy declared `outbox: true`:
+       `rpc.outbox()` reads the reactive list of undelivered parked writes and
+       `rpc.outbox.retry()` drains the queue. Absent on the server and on non-durable rpcs. */
+    readonly outbox?: Outbox<Args>
     stream(args?: Args | FormData): Subscribable<Return>
     fetch(request: Request): Promise<Response>
 }

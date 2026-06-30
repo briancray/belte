@@ -281,14 +281,14 @@ test('resolves $shared sub-paths through extension and index resolution', async 
 })
 
 /*
-Server target: the verb import is stripped and the `GET(` call rewritten to
-defineVerb with the verb + the URL derived from the file path, keeping the
+Server target: the rpc import is stripped and the `GET(` call rewritten to
+defineRpc with the rpc + the URL derived from the file path, keeping the
 user's handler body.
 */
-test('rewrites an rpc module to defineVerb for the server target', async () => {
+test('rewrites an rpc module to defineRpc for the server target', async () => {
     const { success, bundle } = await buildProject({ cwd: rpcProject(), target: 'server' })
     expect(success).toBe(true)
-    expect(bundle).toContain('@belte/belte/server/rpc/defineVerb')
+    expect(bundle).toContain('@belte/belte/server/rpc/defineRpc')
     expect(bundle).toContain('"GET"')
     expect(bundle).toContain('"/rpc/getThing"')
     expect(bundle).toContain('SERVER_ONLY_BODY')
@@ -306,7 +306,7 @@ test('replaces an rpc module with a remoteProxy stub for the client target', asy
     expect(bundle).not.toContain('SERVER_ONLY_BODY')
 })
 
-test('fails the build when an rpc module declares no verb export', async () => {
+test('fails the build when an rpc module declares no rpc export', async () => {
     const cwd = tempProject((root) => {
         mkdirSync(`${root}/src/server/rpc`, { recursive: true })
         writeFileSync(`${root}/src/server/rpc/getThing.ts`, 'export const getThing = 1\n')
@@ -314,7 +314,7 @@ test('fails the build when an rpc module declares no verb export', async () => {
     })
     const { success, messages } = await buildProject({ cwd })
     expect(success).toBe(false)
-    expect(messages.join('\n')).toContain('has no `export const <name> = <VERB>(...)`')
+    expect(messages.join('\n')).toContain('has no `export const <name> = <METHOD>(...)`')
 })
 
 test('fails the build when the rpc export name does not match the file stem', async () => {
@@ -544,7 +544,7 @@ test('belte:cli-manifest and belte:cli-chrome splice discovery output and chrome
     const cwd = tempProject((root) => {
         mkdirSync(`${root}/dist`, { recursive: true })
         mkdirSync(`${root}/src/cli`, { recursive: true })
-        writeFileSync(`${root}/dist/cli-manifest.json`, '{"getThing":{"verb":"GET"}}')
+        writeFileSync(`${root}/dist/cli-manifest.json`, '{"getThing":{"method":"GET"}}')
         writeFileSync(`${root}/src/cli/banner.txt`, 'BANNER_TEXT')
         writeFileSync(`${root}/src/cli/footer.txt`, 'FOOTER_TEXT')
         writeFileSync(
@@ -556,7 +556,7 @@ test('belte:cli-manifest and belte:cli-chrome splice discovery output and chrome
     const { success, bundle } = await buildProject({ cwd })
     expect(success).toBe(true)
     // The bundler may unquote the manifest's object keys; match the key bare.
-    expect(bundle).toMatch(/getThing.*verb/s)
+    expect(bundle).toMatch(/getThing.*method/s)
     expect(bundle).toContain('BANNER_TEXT')
     expect(bundle).toContain('FOOTER_TEXT')
 })

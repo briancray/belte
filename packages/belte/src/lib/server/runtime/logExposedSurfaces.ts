@@ -1,7 +1,7 @@
 import type { Pages } from '../../browser/types/Pages.ts'
 import { belteLog } from '../../shared/belteLog.ts'
 import type { ViewResolver } from '../../shared/types/ViewResolver.ts'
-import { verbRegistry } from '../rpc/verbRegistry.ts'
+import { rpcRegistry } from '../rpc/rpcRegistry.ts'
 import { socketRegistry } from '../sockets/socketRegistry.ts'
 import { ensureRegistriesLoaded } from './registryManifests.ts'
 
@@ -16,7 +16,7 @@ const redden = (text: string): string =>
     hasColor ? `${Bun.color('red', 'ansi-256')}${text}\x1b[39m` : text
 
 /*
-A declared inputSchema is what makes mcp/cli safe to advertise (see defineVerb /
+A declared inputSchema is what makes mcp/cli safe to advertise (see defineRpc /
 defineSocket), so a missing schema gets a red `·` to flag the declaration whose
 machine surfaces are gated behind it.
 */
@@ -134,12 +134,12 @@ export async function logExposedSurfaces(routing: {
     */
     const methodWidth = Math.max(
         'http'.length,
-        ...Array.from(verbRegistry.values(), (entry) => entry.remote.method.length),
+        ...Array.from(rpcRegistry.values(), (entry) => entry.remote.method.length),
     )
     const withMethod = (method: string, identifier: string): string =>
         method.padEnd(methodWidth + COLUMN_GAP) + identifier
 
-    const rpcRows = Array.from(verbRegistry.values(), (entry) => [
+    const rpcRows = Array.from(rpcRegistry.values(), (entry) => [
         withMethod(entry.remote.method, entry.remote.url),
         schemaCell(Boolean(entry.inputSchema)),
         flag(entry.clients.browser),

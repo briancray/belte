@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { json } from '../src/lib/server/json.ts'
-import { defineVerb } from '../src/lib/server/rpc/defineVerb.ts'
+import { defineRpc } from '../src/lib/server/rpc/defineRpc.ts'
 import { requestContext } from '../src/lib/server/runtime/requestContext.ts'
 import { runWithRequestScope } from '../src/lib/server/runtime/runWithRequestScope.ts'
 import { cache } from '../src/lib/shared/cache.ts'
@@ -12,11 +12,11 @@ const options = { logRequests: false }
 /*
 pending() reflects in-flight membership of the active store. It shares
 invalidate's selector grammar, so the global form, the per-function form, and
-the scoped form each narrow which entries count toward "loading".
+the tagged form each narrow which entries count toward "loading".
 */
 describe('pending()', () => {
-    const getPost = defineVerb('GET', '/rpc/pending-post', () => json({ ok: true }))
-    const getUser = defineVerb('GET', '/rpc/pending-user', () => json({ ok: true }))
+    const getPost = defineRpc('GET', '/rpc/pending-post', () => json({ ok: true }))
+    const getUser = defineRpc('GET', '/rpc/pending-user', () => json({ ok: true }))
 
     beforeAll(() => {
         cacheStoreSlot.resolver = () => requestContext.getStore()?.cache
@@ -48,13 +48,13 @@ describe('pending()', () => {
         })
     })
 
-    test('scope selector tracks only entries tagged with the scope', async () => {
+    test('tag selector tracks only entries sharing the tag', async () => {
         await runWithRequestScope(new Request('https://test.local/'), options, async () => {
-            const post = cache(getPost, { scope: 'feed' })()
-            expect(pending({ scope: 'feed' })).toBe(true)
-            expect(pending({ scope: 'profile' })).toBe(false)
+            const post = cache(getPost, { tags: ['feed'] })()
+            expect(pending({ tags: ['feed'] })).toBe(true)
+            expect(pending({ tags: ['profile'] })).toBe(false)
             await post
-            expect(pending({ scope: 'feed' })).toBe(false)
+            expect(pending({ tags: ['feed'] })).toBe(false)
             return json(null)
         })
     })

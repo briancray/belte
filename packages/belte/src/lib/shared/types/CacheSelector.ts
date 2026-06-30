@@ -8,7 +8,7 @@ Selector grammar shared by cache.invalidate(), pending(), and refreshing():
   remote fn   → that function's calls (method+url prefix); fn and fn.raw match
                 the same set since they share wire identity
   producer fn → that producer's calls (reference-id prefix)
-  { scope }   → any entry sharing one of the requested scope tags
+  { tags }    → any entry sharing one of the requested tags
 */
 export type CacheSelector<Args, Return> =
     | RemoteFunction<Args, Return>
@@ -21,4 +21,4 @@ export type CacheSelector<Args, Return> =
        producer keyable by cache() is equally selectable by pending()/refreshing()
        /invalidate(). Order-free: a union member can't hijack like an overload. */
     | ((args: Args) => Promise<Return>)
-    | Pick<CacheOptions, 'scope'>
+    | Pick<CacheOptions, 'tags'>

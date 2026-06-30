@@ -27,7 +27,7 @@ import { rpc } from '../../_virtual/rpc.ts'
 import { shell } from '../../_virtual/shell.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
 import { sockets } from '../../_virtual/sockets.ts'
-import { verbRegistry } from '../server/rpc/verbRegistry.ts'
+import { rpcRegistry } from '../server/rpc/rpcRegistry.ts'
 import { createServer } from '../server/runtime/createServer.ts'
 import { ensureRegistriesLoaded } from '../server/runtime/registryManifests.ts'
 import { requestContext } from '../server/runtime/requestContext.ts'
@@ -48,8 +48,8 @@ import type { RemoteFunction } from '../shared/types/RemoteFunction.ts'
 import { createTestSocketChannel } from './createTestSocketChannel.ts'
 
 /*
-Augmentable verb/socket maps for `app.rpc.<verb>` / `app.sockets.<name>`. The
-build's writeTestRpcDts / writeTestSocketsDts emit one entry per verb/socket
+Augmentable rpc/socket maps for `app.rpc.<rpc>` / `app.sockets.<name>`. The
+build's writeTestRpcDts / writeTestSocketsDts emit one entry per rpc/socket
 (into src/.belte/), so the keys + signatures are the project's real surface
 with no imports. Empty here; types arrive once the app has been built. Mirrors
 url's RpcRoutes / health's AppHealthMap.
@@ -60,7 +60,7 @@ export interface RpcClient {}
 // biome-ignore lint/suspicious/noEmptyInterface: augmented by the generated testSockets.d.ts
 export interface SocketClient {}
 
-/* The booted app under test. Every named subsystem is reachable as the verb
+/* The booted app under test. Every named subsystem is reachable as the rpc
    you call, the socket you iterate, or a path you fetch — over the real
    server, so the full pipeline (CSRF, cookies, base path) runs. */
 export type TestApp = {
@@ -71,7 +71,7 @@ export type TestApp = {
        matches routes at raw paths — the APP_URL mount base is stripped by an
        external proxy in production, absent here — so paths carry no base. */
     fetch: (path: string, init?: RequestInit) => Promise<Response>
-    /* Verb calls over HTTP, keyed by command name: `app.rpc.getProduct({ id })`. */
+    /* Rpc calls over HTTP, keyed by command name: `app.rpc.getProduct({ id })`. */
     rpc: RpcClient
     /* Sockets keyed by name: `app.sockets.ticker` is the Socket — iterate it for
        the live stream, `.tail(n)` to seed, `.publish(m)` to send. */
@@ -90,7 +90,7 @@ export type TestApp = {
 Boots the real app on an ephemeral port — the same wiring serverEntry performs,
 minus the standalone-binary env layers. Imports the framework's virtual
 manifests (resolved by belteResolverPlugin, registered via `@belte/belte/preload`
-in the consumer's bunfig), so the routes, verbs, and sockets are the project's
+in the consumer's bunfig), so the routes, rpcs, and sockets are the project's
 real surface, not a fixture. Pass nothing: `await createTestApp()` is the app
 exactly as `bun start` would serve it.
 
@@ -141,19 +141,19 @@ export async function createTestApp(): Promise<TestApp> {
         return fetch(`${origin}${path}`, init)
     }
 
-    /* Verb modules loaded once so the registry holds every RemoteFunction; the
+    /* Rpc modules loaded once so the registry holds every RemoteFunction; the
        proxy maps command name → an HTTP call against the booted server. */
     await ensureRegistriesLoaded()
     const remotes = new Map<string, RemoteFunction<unknown, unknown>>(
-        Array.from(verbRegistry.values()).map((entry) => [
+        Array.from(rpcRegistry.values()).map((entry) => [
             commandNameForUrl(entry.remote.url),
             entry.remote,
         ]),
     )
 
     function send(remote: RemoteFunction<unknown, unknown>, args: unknown): Promise<Response> {
-        /* Same-origin Origin header so the CSRF gate admits mutating verbs; the
-           server serves verbs at their raw url (no mount base applied here). */
+        /* Same-origin Origin header so the CSRF gate admits mutating rpcs; the
+           server serves rpcs at their raw url (no mount base applied here). */
         const request = buildRpcRequest({
             method: remote.method,
             url: remote.url,

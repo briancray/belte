@@ -13,7 +13,7 @@ client uses a single module-level store (so subscribers persist for the tab).
 by selector prefix. `trackLifecycle(prefix)` taps a channel keyed to that
 fn selector's entries (see selectorPrefix), so a `pending(fn)` reader
 re-derives only when fn's calls change state; `trackLifecycle()` taps the
-store-wide channel — bare and scope selectors scan many entries, so they
+store-wide channel — bare and tag selectors scan many entries, so they
 (deliberately) wake on every event. `markLifecycle(key)` — fired whenever a
 call starts, settles, is evicted, or is invalidated — marks the store-wide
 channel plus every probed prefix channel owning `key`.

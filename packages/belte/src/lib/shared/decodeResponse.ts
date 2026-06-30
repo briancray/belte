@@ -1,4 +1,4 @@
-import { HttpError } from './HttpError.ts'
+import { httpErrorFor } from './httpErrorFor.ts'
 import { isStreamingResponse } from './isStreamingResponse.ts'
 
 /*
@@ -26,7 +26,7 @@ returns the underlying Response untouched.
 */
 export async function decodeResponse(response: Response): Promise<unknown> {
     if (!response.ok) {
-        throw new HttpError(response)
+        throw await httpErrorFor(response)
     }
     if (response.status === 204) {
         return undefined

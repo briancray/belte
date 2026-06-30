@@ -1,4 +1,5 @@
 import { NO_STORE } from '../shared/CACHE_CONTROL_VALUES.ts'
+import type { ErrorDescriptor } from '../shared/types/ErrorDescriptor.ts'
 import type { TypedResponse } from './rpc/types/TypedResponse.ts'
 import { withResponseDefaults } from './runtime/withResponseDefaults.ts'
 
@@ -56,7 +57,34 @@ branch carries (`TypedResponse<{user}> | TypedResponse<never>` → Return
 = {user}).
 */
 // @readme response
-export function error(status: number, message?: string, init?: ResponseInit): TypedResponse<never> {
+export function error(status: number, message?: string, init?: ResponseInit): TypedResponse<never>
+export function error(descriptor: ErrorDescriptor): TypedResponse<never>
+export function error(
+    statusOrDescriptor: number | ErrorDescriptor,
+    message?: string,
+    init?: ResponseInit,
+): TypedResponse<never> {
+    /*
+    Descriptor form (`error({ $belteError, status, data })`): a typed error
+    serialized as a `{ $belteError, data }` JSON body. The reason phrase is set
+    as statusText so it reaches `HttpError.statusText` on the client; the client
+    parses the body back onto `HttpError.kind` / `.data` (httpErrorFor).
+    */
+    if (typeof statusOrDescriptor === 'object') {
+        const descriptor = statusOrDescriptor
+        return new Response(
+            JSON.stringify({ $belteError: descriptor.$belteError, data: descriptor.data }),
+            withResponseDefaults(
+                { statusText: STATUS_TEXT[descriptor.status] },
+                {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': NO_STORE,
+                },
+                descriptor.status,
+            ),
+        ) as TypedResponse<never>
+    }
+    const status = statusOrDescriptor
     const body = message ?? STATUS_TEXT[status] ?? `HTTP ${status}`
     return new Response(
         body,

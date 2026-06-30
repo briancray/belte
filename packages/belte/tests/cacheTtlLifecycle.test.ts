@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { cacheEntryFromSnapshot } from '../src/lib/browser/cacheEntryFromSnapshot.ts'
 import { json } from '../src/lib/server/json.ts'
-import { defineVerb } from '../src/lib/server/rpc/defineVerb.ts'
+import { defineRpc } from '../src/lib/server/rpc/defineRpc.ts'
 import { requestContext } from '../src/lib/server/runtime/requestContext.ts'
 import { runWithRequestScope } from '../src/lib/server/runtime/runWithRequestScope.ts'
 import { serializeCacheSnapshot } from '../src/lib/server/runtime/serializeCacheSnapshot.ts'
@@ -32,13 +32,13 @@ edges the other cache suites don't pin:
 */
 
 let calls = 0
-const countedRemote = defineVerb('GET', '/rpc/ttl-counted', () => json({ hit: ++calls }))
+const countedRemote = defineRpc('GET', '/rpc/ttl-counted', () => json({ hit: ++calls }))
 
 let writes = 0
-const countedWrite = defineVerb('POST', '/rpc/ttl-write', () => json({ write: ++writes }))
+const countedWrite = defineRpc('POST', '/rpc/ttl-write', () => json({ write: ++writes }))
 
 let failures = 0
-const flakyRemote = defineVerb('GET', '/rpc/ttl-flaky', () => {
+const flakyRemote = defineRpc('GET', '/rpc/ttl-flaky', () => {
     failures += 1
     if (failures === 1) {
         throw new Error('first call fails')

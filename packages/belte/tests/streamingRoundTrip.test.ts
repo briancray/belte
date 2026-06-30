@@ -3,7 +3,7 @@ import { applyStreamedResolution } from '../src/lib/browser/applyStreamedResolut
 import { cacheEntryFromSnapshot } from '../src/lib/browser/cacheEntryFromSnapshot.ts'
 import { installStreamingPlaceholders } from '../src/lib/browser/installStreamingPlaceholders.ts'
 import { json } from '../src/lib/server/json.ts'
-import { defineVerb } from '../src/lib/server/rpc/defineVerb.ts'
+import { defineRpc } from '../src/lib/server/rpc/defineRpc.ts'
 import { requestContext } from '../src/lib/server/runtime/requestContext.ts'
 import { runWithRequestScope } from '../src/lib/server/runtime/runWithRequestScope.ts'
 import { serializeCacheSnapshot } from '../src/lib/server/runtime/serializeCacheSnapshot.ts'
@@ -37,16 +37,16 @@ function createGate(): { opened: Promise<void>; release: () => void } {
     return { opened, release }
 }
 
-const fastRemote = defineVerb('GET', '/rpc/round-fast', () => json({ n: 1 }))
+const fastRemote = defineRpc('GET', '/rpc/round-fast', () => json({ n: 1 }))
 
 let slowGate = createGate()
-const slowRemote = defineVerb('GET', '/rpc/round-slow', async () => {
+const slowRemote = defineRpc('GET', '/rpc/round-slow', async () => {
     await slowGate.opened
     return json({ n: 42 })
 })
 
 let rejectingGate = createGate()
-const rejectingRemote = defineVerb('GET', '/rpc/round-reject', async () => {
+const rejectingRemote = defineRpc('GET', '/rpc/round-reject', async () => {
     await rejectingGate.opened
     /* A handler throw rejects the entry's promise → non-snapshottable → miss marker. */
     throw new Error('round-trip reject')

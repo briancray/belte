@@ -1,10 +1,10 @@
-import type { VerbHelper } from './rpc/types/VerbHelper.ts'
+import type { RpcHelper } from './rpc/types/RpcHelper.ts'
 import { unprocessed } from './rpc/unprocessed.ts'
 
 /*
-DELETE verb helper. The bundler rewrites every `export const x = DELETE(fn)` inside
-`src/server/rpc/<file>.ts` into a defineVerb call (server target) or a
+DELETE rpc helper. The bundler rewrites every `export const x = DELETE(fn)` inside
+`src/server/rpc/<file>.ts` into a defineRpc call (server target) or a
 remoteProxy stub (client target). Calling this directly throws.
 */
 // @readme rpc
-export const DELETE: VerbHelper = (_fn: any, _opts?: any) => unprocessed('DELETE')
+export const DELETE: RpcHelper = (_fn: any, _opts?: any) => unprocessed('DELETE')

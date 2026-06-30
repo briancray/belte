@@ -1,5 +1,5 @@
 import { belteLog } from '../../shared/belteLog.ts'
-import { verbRegistry } from '../rpc/verbRegistry.ts'
+import { rpcRegistry } from '../rpc/rpcRegistry.ts'
 import { socketRegistry } from '../sockets/socketRegistry.ts'
 import { ensureRegistriesLoaded } from './registryManifests.ts'
 
@@ -19,7 +19,7 @@ export async function warnUnguardedMcp(): Promise<void> {
         return
     }
     const exposed =
-        Array.from(verbRegistry.values()).filter((entry) => entry.clients.mcp).length +
+        Array.from(rpcRegistry.values()).filter((entry) => entry.clients.mcp).length +
         Array.from(socketRegistry.values()).filter((entry) => entry.clients.mcp).length
     if (exposed === 0) {
         return

@@ -5,34 +5,34 @@ import { forwardHeaders } from '../../shared/forwardHeaders.ts'
 import { isReadOnlyMethod } from '../../shared/isReadOnlyMethod.ts'
 import { resolveClientFlags } from '../../shared/resolveClientFlags.ts'
 import type { ClientFlags } from '../../shared/types/ClientFlags.ts'
-import type { HttpVerb } from '../../shared/types/HttpVerb.ts'
+import type { HttpMethod } from '../../shared/types/HttpMethod.ts'
 import type { RemoteFunction } from '../../shared/types/RemoteFunction.ts'
 import type { StandardSchemaV1 } from '../../shared/types/StandardSchemaV1.ts'
-import { json } from '../json.ts'
 import { requestContext } from '../runtime/requestContext.ts'
 import { parseArgs } from './parseArgs.ts'
-import { registerVerb } from './registerVerb.ts'
-import { runWithVerbTimeout } from './runWithVerbTimeout.ts'
+import { registerRpc } from './registerRpc.ts'
+import { runWithRpcTimeout } from './runWithRpcTimeout.ts'
 import type { RemoteHandler } from './types/RemoteHandler.ts'
+import { validationError } from './validationError.ts'
 
 /*
-Stash for the per-request AbortController a timed verb composes into the
+Stash for the per-request AbortController a timed rpc composes into the
 inbound signal — read back in invoke's deadline callback to fire it. Lives on
-the scope's Request (one verb per .fetch — network or in-process dispatch) so
+the scope's Request (one rpc per .fetch — network or in-process dispatch) so
 an SSR pass's many in-process cache reads, which call invoke() directly and
 never reach parseArgsForFetch, can't cross-cancel.
 */
-const VERB_TIMEOUT_ABORT = Symbol('belteVerbTimeoutAbort')
+const RPC_TIMEOUT_ABORT = Symbol('belteRpcTimeoutAbort')
 
-/* Verb dispatch + validation spans, opt-in via DEBUG=belte:rpc. Reveals an
+/* Rpc dispatch + validation spans, opt-in via DEBUG=belte:rpc. Reveals an
    in-process RPC→RPC call (same request scope, same trace) as a nested span. */
 const rpcLog = belteLog.channel('belte:rpc')
 
 /*
-Builds a RemoteFunction from an HTTP verb + RPC URL + handler. The bundler
-rewrites every `export const VERB = handler(fn)` inside an `$rpc/**` module
-so the verb (from the export name) and the URL (from the file path under
-`src/server/rpc/`, with `/rpc/` prefix) are threaded into defineVerb.
+Builds a RemoteFunction from an HTTP method + RPC URL + handler. The bundler
+rewrites every `export const METHOD = handler(fn)` inside an `$rpc/**` module
+so the rpc (from the export name) and the URL (from the file path under
+`src/server/rpc/`, with `/rpc/` prefix) are threaded into defineRpc.
 
 The plain call (`fn(args)`) resolves to the Content-Type-decoded body;
 non-2xx responses throw HttpError. `.raw(args)` returns the underlying
@@ -45,8 +45,8 @@ Every raw invocation records the synthesized Request against the returned
 promise so cache() can stash it on the entry without re-building.
 */
 // @readme plumbing
-export function defineVerb<Args, Return>(
-    method: HttpVerb,
+export function defineRpc<Args, Return>(
+    method: HttpMethod,
     url: string,
     handler: RemoteHandler<Args, Return>,
     opts?: {
@@ -55,22 +55,34 @@ export function defineVerb<Args, Return>(
         filesSchema?: StandardSchemaV1
         clients?: Partial<ClientFlags>
         crossOrigin?: boolean
-        /* Per-verb cap on actual received body bytes (413 past it); omitted = Bun's server-wide maxRequestBodySize. */
+        /* Per-rpc cap on actual received body bytes (413 past it); omitted = Bun's server-wide maxRequestBodySize. */
         maxBodySize?: number
-        /* Per-verb handler deadline (ms): a 504 once exceeded, on every surface (SSR/MCP/CLI/network). */
+        /* Per-rpc handler deadline (ms): a 504 once exceeded, on every surface (SSR/MCP/CLI/network). */
         timeout?: number
+        /* Durable delivery: on an unreachable server (transport failure / 502/503/504/52x) the
+           client proxy parks the request for replay instead of just throwing. The parked write
+           drains on `rpc.outbox.retry()` (no auto-drain). Mutating methods only. A build-time
+           flag read by the bundler (prepareRpcModule); this server-side guard is a backstop. */
+        outbox?: boolean
     },
 ): RemoteFunction<Args, Return> {
+    /* `outbox: true` is a mutation contract — a read RPC has nothing to durably deliver. The
+       bundler enforces this too; this guard catches a direct defineRpc call. */
+    if (opts?.outbox === true && isReadOnlyMethod(method)) {
+        throw new Error(
+            `[belte] outbox: true is only valid on mutating RPCs (POST/PUT/PATCH/DELETE), not ${method}`,
+        )
+    }
     const timeout = opts?.timeout
     const inputSchema = opts?.inputSchema
     const outputSchema = opts?.outputSchema
     const filesSchema = opts?.filesSchema
     /*
     An input schema makes the handler safe to advertise to non-browser
-    surfaces. CLI flips on for any verb with one (a human/script invokes it
-    deliberately). MCP only auto-exposes read-only verbs (GET/HEAD) — a
+    surfaces. CLI flips on for any rpc with one (a human/script invokes it
+    deliberately). MCP only auto-exposes read-only rpcs (GET/HEAD) — a
     model shouldn't be able to mutate/delete just because the handler
-    carries a schema, so mutating verbs require an explicit clients.mcp.
+    carries a schema, so mutating rpcs require an explicit clients.mcp.
     Explicit `clients` always wins.
     */
     const hasSchema = inputSchema !== undefined
@@ -103,7 +115,7 @@ export function defineVerb<Args, Return>(
 
     /*
     Validates the parsed args against inputSchema (text fields), then — when the
-    verb declares filesSchema — validates the File parts parseArgs split onto
+    rpc declares filesSchema — validates the File parts parseArgs split onto
     the request store and merges them into the args bag the handler receives.
     Either schema's issues become a 422. Files stay out of inputSchema so its
     JSON-Schema projection (OpenAPI/MCP/CLI) never has to model a binary.
@@ -115,7 +127,7 @@ export function defineVerb<Args, Return>(
                 inputSchema['~standard'].validate(value),
             )
             if (result.issues) {
-                return json({ issues: result.issues }, { status: 422 })
+                return validationError(result.issues)
             }
             value = result.value
         }
@@ -123,7 +135,7 @@ export function defineVerb<Args, Return>(
             const files = requestContext.getStore()?.files ?? {}
             const result = await filesSchema['~standard'].validate(files)
             if (result.issues) {
-                return json({ issues: result.issues }, { status: 422 })
+                return validationError(result.issues)
             }
             value = { ...(value as object), ...(result.value as object) }
         }
@@ -138,11 +150,11 @@ export function defineVerb<Args, Return>(
     SSR call.
     */
     /* Abort the controller parseArgsForFetch stashed on store.req; a no-op when none was stashed (SSR cache reads). */
-    function abortVerbTimeout(): void {
+    function abortRpcTimeout(): void {
         const req = requestContext.getStore()?.req as
-            | (Request & { [VERB_TIMEOUT_ABORT]?: AbortController })
+            | (Request & { [RPC_TIMEOUT_ABORT]?: AbortController })
             | undefined
-        req?.[VERB_TIMEOUT_ABORT]?.abort(new DOMException('handler timeout', 'TimeoutError'))
+        req?.[RPC_TIMEOUT_ABORT]?.abort(new DOMException('handler timeout', 'TimeoutError'))
     }
 
     function invoke(args: Args | undefined): Promise<Response> {
@@ -153,9 +165,9 @@ export function defineVerb<Args, Return>(
         /*
         On the deadline, fire the controller parseArgsForFetch composed into
         request().signal (absent on the SSR cache-read path, so a sibling
-        verb's outbound fetch is never cancelled) — then 504.
+        rpc's outbound fetch is never cancelled) — then 504.
         */
-        return runWithVerbTimeout(work, timeout, abortVerbTimeout)
+        return runWithRpcTimeout(work, timeout, abortRpcTimeout)
     }
 
     const remote = createRemoteFunction<Args, Return>({
@@ -172,17 +184,17 @@ export function defineVerb<Args, Return>(
                 parseArgs(method, request, opts?.maxBodySize),
             )
             /*
-            Compose this verb's deadline into request().signal so a handler's
+            Compose this rpc's deadline into request().signal so a handler's
             fetch(ext, { signal: request().signal }) is cancelled when the
             timeout fires — not just abandoned. Applied after parseArgs onto the
-            scope's *final* request: a maxBodySize verb swaps store.req for a
+            scope's *final* request: a maxBodySize rpc swaps store.req for a
             buffered copy (readBodyWithinLimit) and an app.handle hook may
             rewrite it, so composing onto the inbound `request` would leave
-            request() — and abortVerbTimeout, which reads store.req — pointed at
+            request() — and abortRpcTimeout, which reads store.req — pointed at
             an un-cancellable signal. Only the signal is shadowed; the body
             stays readable. The store always exists here (network + in-process
             dispatch both run inside runWithRequestScope); SSR cache reads call
-            invoke() directly, never this path, so a sibling verb is never
+            invoke() directly, never this path, so a sibling rpc is never
             cross-cancelled.
             */
             if (timeout !== undefined) {
@@ -191,7 +203,7 @@ export function defineVerb<Args, Return>(
                     const controller = new AbortController()
                     const composed = AbortSignal.any([req.signal, controller.signal])
                     Object.defineProperty(req, 'signal', { value: composed, configurable: true })
-                    Object.defineProperty(req, VERB_TIMEOUT_ABORT, {
+                    Object.defineProperty(req, RPC_TIMEOUT_ABORT, {
                         value: controller,
                         configurable: true,
                     })
@@ -200,7 +212,7 @@ export function defineVerb<Args, Return>(
             return args as Args | undefined
         },
     })
-    registerVerb({
+    registerRpc({
         remote: remote as RemoteFunction<unknown, unknown>,
         inputSchema,
         outputSchema,

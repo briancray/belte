@@ -3,7 +3,7 @@ import type { Errors } from '../src/lib/browser/types/Errors.ts'
 import type { Layouts } from '../src/lib/browser/types/Layouts.ts'
 import type { Pages } from '../src/lib/browser/types/Pages.ts'
 import { json } from '../src/lib/server/json.ts'
-import { defineVerb } from '../src/lib/server/rpc/defineVerb.ts'
+import { defineRpc } from '../src/lib/server/rpc/defineRpc.ts'
 import type { RemoteRoutes } from '../src/lib/server/rpc/types/RemoteRoutes.ts'
 import { bootTestServer } from './support/bootTestServer.ts'
 import { fastData } from './support/fixtures/rpc/fastData.ts'
@@ -12,12 +12,12 @@ import { fastData } from './support/fixtures/rpc/fastData.ts'
 HTTP-level characterization of createServer: a real Bun.serve on an ephemeral
 port, fixture pages/layouts/errors compiled SSR-side by the preload, asserted
 through fetch. These pin the externally observable contract — routing, SSR
-document shape, `__SSR__` state, error rendering, verb dispatch — so the
+document shape, `__SSR__` state, error rendering, rpc dispatch — so the
 internals (route resolution, request scope, cache serialization) can be
 restructured against a stable surface.
 */
 
-const echo = defineVerb('GET', '/rpc/http-echo', () => json({ echoed: true }))
+const echo = defineRpc('GET', '/rpc/http-echo', () => json({ echoed: true }))
 
 const pages: Pages = {
     '/': () => import('./support/fixtures/pages/home.svelte'),
@@ -128,13 +128,13 @@ describe('createServer over HTTP', () => {
         expect(html).toContain('500:boom render')
     })
 
-    test('dispatches an rpc verb over HTTP', async () => {
+    test('dispatches an rpc over HTTP', async () => {
         const res = await fetch(`${origin}/rpc/http-echo`)
         expect(res.status).toBe(200)
         expect(await res.json()).toEqual({ echoed: true })
     })
 
-    test('method mismatch on an rpc URL is 405 naming the verb', async () => {
+    test('method mismatch on an rpc URL is 405 naming the rpc', async () => {
         const res = await fetch(`${origin}/rpc/http-echo`, { method: 'POST' })
         expect(res.status).toBe(405)
         expect(res.headers.get('allow')).toBe('GET')

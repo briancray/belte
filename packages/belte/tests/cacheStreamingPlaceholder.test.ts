@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { json } from '../src/lib/server/json.ts'
-import { defineVerb } from '../src/lib/server/rpc/defineVerb.ts'
+import { defineRpc } from '../src/lib/server/rpc/defineRpc.ts'
 import { cache } from '../src/lib/shared/cache.ts'
 import { cacheStoreSlot } from '../src/lib/shared/cacheStoreSlot.ts'
 import { createCacheStore } from '../src/lib/shared/createCacheStore.ts'
@@ -20,7 +20,7 @@ describe('streaming placeholder prevents a duplicate fetch', () => {
 
     test('cache() hits the placeholder (handler never runs) until the stream settles it', async () => {
         let calls = 0
-        const getValue = defineVerb('GET', '/rpc/placeholder-probe', () => json({ hit: ++calls }))
+        const getValue = defineRpc('GET', '/rpc/placeholder-probe', () => json({ hit: ++calls }))
         const store: CacheStore = createCacheStore()
         cacheStoreSlot.resolver = () => store
 

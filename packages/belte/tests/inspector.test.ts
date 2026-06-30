@@ -29,8 +29,8 @@ describe('maybeMountInspector', () => {
 
         const response = await handler!(...request('/__belte/inspector/surface'))
         expect(response.headers.get('Content-Type')).toContain('application/json')
-        const surface = (await response.json()) as { verbs: unknown[]; sockets: unknown[] }
-        expect(Array.isArray(surface.verbs)).toBe(true)
+        const surface = (await response.json()) as { rpcs: unknown[]; sockets: unknown[] }
+        expect(Array.isArray(surface.rpcs)).toBe(true)
         expect(Array.isArray(surface.sockets)).toBe(true)
     })
 

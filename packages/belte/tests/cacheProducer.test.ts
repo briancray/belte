@@ -57,7 +57,7 @@ describe('cache() producer', () => {
     })
 
     test('type: arg-arity flows through to the invoker (overload ordering guard)', () => {
-        // Never invoked — type-level only, mirroring defineVerb.test's idiom. A
+        // Never invoked — type-level only, mirroring defineRpc.test's idiom. A
         // regression in the overload order/presence fails to compile here: drop the
         // required overload and invoke() stops erroring (unused @ts-expect-error);
         // put it first and optional() below stops typechecking.
@@ -76,7 +76,7 @@ describe('cache() producer', () => {
         // Never invoked — type-level only. The selector union must accept the same
         // required-arg producer cache() accepts; a regression that drops the
         // required-arg arm from CacheSelector fails to compile here (the call
-        // falls through to the { scope } arm and rejects the function).
+        // falls through to the { tags } arm and rejects the function).
         const retrieveSimilar = (file: File) => Promise.resolve(file.name)
         void (() => {
             cache(retrieveSimilar)(new File([], 'a'))
@@ -130,10 +130,10 @@ describe('cache() producer', () => {
         expect(await cache(fetchValue)()).toBe(2)
     })
 
-    test('invalidate by scope drops tagged producer entries', async () => {
+    test('invalidate by tags drops tagged producer entries', async () => {
         const fetchValue = counter()
-        await cache(fetchValue, { scope: 'external' })()
-        cache.invalidate({ scope: 'external' })
+        await cache(fetchValue, { tags: ['external'] })()
+        cache.invalidate({ tags: ['external'] })
         expect(cacheStoreSlot.fallback!.entries.size).toBe(0)
     })
 

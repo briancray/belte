@@ -15,7 +15,7 @@ import { REPLAYABLE_METHODS } from './REPLAYABLE_METHODS.ts'
 import { SocketDisconnectedError } from './SocketDisconnectedError.ts'
 import { selectorMatcher } from './selectorMatcher.ts'
 import { selectorPrefix } from './selectorPrefix.ts'
-import { toScopeSet } from './toScopeSet.ts'
+import { toTagSet } from './toTagSet.ts'
 import type { CacheEntry } from './types/CacheEntry.ts'
 import type { CacheOnContext } from './types/CacheOnContext.ts'
 import type { CacheOptions } from './types/CacheOptions.ts'
@@ -189,7 +189,7 @@ export function cache<Args, Return>(
         const existing = store.entries.get(key)
         recordRead(options?.global ? activeCacheStore() : store, key, existing)
         if (existing) {
-            tagScope(existing, options?.scope)
+            applyTags(existing, options?.tags)
             attachPolicy(existing, options, () => remote(args as Args))
             adoptTtl(store, existing, options)
         }
@@ -219,7 +219,7 @@ export function cache<Args, Return>(
         {#await}-renders-without-suspension property.
         */
         if (!isRaw && existing?.value !== undefined) {
-            return structuredClone(existing.value) as Return
+            return cloneWarmValue(existing.value) as Return
         }
         const responsePromise = invokeRemote(
             store,
@@ -237,30 +237,46 @@ export function cache<Args, Return>(
 }
 
 /*
+Normalises the `swr` option to its coalescing window, or undefined when no
+policy is set. `true` is the immediate form — an empty window, so a refetch fires
+on the leading edge of every invalidate (scheduleInvalidationRefetch sees no
+throttle/debounce and fires at once); `false` reads as no policy, the hard-drop
+default. The object form carries its throttle/debounce through unchanged.
+*/
+function policyWindow(
+    swr: CacheOptions['swr'],
+): { throttle?: number; debounce?: number } | undefined {
+    if (swr === undefined || swr === false) {
+        return undefined
+    }
+    return swr === true ? {} : swr
+}
+
+/*
 Guards impossible option combinations at wrap time, where the call site is on
-the stack. A policy declares "this call is safe to re-run unprompted", so a
+the stack. `swr` declares "this call is safe to re-run unprompted", so a
 non-replayable remote method (a write) must never carry one — replaying a write
 through the invalidation grammar would be a state change disguised as a
 refresh. Producers are opaque (no method to check); the same contract is on
-the caller there. ttl: 0 retains nothing, so there is nothing for a policy to
+the caller there. ttl: 0 retains nothing, so there is nothing for swr to
 revalidate; and the two coalescing strategies are exclusive by construction.
 */
 function validatePolicy(options: CacheOptions | undefined, method: string | undefined): void {
-    const policy = options?.invalidate
-    if (!policy || (policy.throttle === undefined && policy.debounce === undefined)) {
+    const policy = policyWindow(options?.swr)
+    if (!policy) {
         return
     }
     if (policy.throttle !== undefined && policy.debounce !== undefined) {
-        throw new Error('[belte] cache(): set invalidate.throttle or invalidate.debounce, not both')
+        throw new Error('[belte] cache(): set swr.throttle or swr.debounce, not both')
     }
     if (options?.ttl === 0) {
         throw new Error(
-            '[belte] cache(): an invalidate policy requires retention — ttl: 0 keeps nothing to revalidate',
+            '[belte] cache(): swr requires retention — ttl: 0 keeps nothing to revalidate',
         )
     }
     if (method !== undefined && !REPLAYABLE_METHODS.has(method.toUpperCase())) {
         throw new Error(
-            `[belte] cache(): an invalidate policy re-runs the call unprompted — ${method.toUpperCase()} is a write and must not be replayed`,
+            `[belte] cache(): swr re-runs the call unprompted — ${method.toUpperCase()} is a write and must not be replayed`,
         )
     }
 }
@@ -282,7 +298,7 @@ function warnAnonymousProducer(producer: (args?: never) => unknown): void {
     }
     warnedAnonymousProducers.add(source)
     belteLog.warn(
-        'cache() received an anonymous function — each call mints a fresh identity, so it never coalesces and pending()/refreshing() never match it. Hoist it to a named binding, or add a scope tag to probe it from elsewhere.',
+        'cache() received an anonymous function — each call mints a fresh identity, so it never coalesces and pending()/refreshing() never match it. Hoist it to a named binding, or add a tag to probe it from elsewhere.',
     )
 }
 
@@ -307,7 +323,7 @@ function invokeProducer<Args, Return>(
     const existing = store.entries.get(key)
     recordRead(options?.global ? activeCacheStore() : store, key, existing)
     if (existing) {
-        tagScope(existing, options?.scope)
+        applyTags(existing, options?.tags)
         attachPolicy(existing, options, () => producer(args))
         const shared = existing.promise as Promise<Return>
         /* A coalesced join waits on the in-flight producer — time the block so the
@@ -339,7 +355,7 @@ function invokeRemote<Args>(
     const request = getRemoteMeta(promise)
     if (!request) {
         throw new Error(
-            '[belte] cache() received a function whose call did not record metadata — was it produced by a verb helper?',
+            '[belte] cache() received a function whose call did not record metadata — was it produced by a rpc helper?',
         )
     }
     registerEntry(store, key, promise, options, request, () => rawFn(args as Args))
@@ -361,12 +377,11 @@ function registerEntry(
     label?: string,
 ): CacheEntry {
     const ttl = options?.ttl
-    /* Capture the refetch thunk + policy only when an invalidate window was asked for. */
-    const policy = options?.invalidate
-    const invalidation =
-        policy?.throttle !== undefined || policy?.debounce !== undefined
-            ? { refetch, throttle: policy.throttle, debounce: policy.debounce }
-            : undefined
+    /* Capture the refetch thunk + policy only when an swr policy was asked for. */
+    const policy = policyWindow(options?.swr)
+    const invalidation = policy
+        ? { refetch, throttle: policy.throttle, debounce: policy.debounce }
+        : undefined
     /*
     A prior entry for this key was dropped by invalidate() and is awaiting its
     next read — consume the marker so this replacement read reports as a reload
@@ -380,7 +395,7 @@ function registerEntry(
         request,
         ttl,
         expiresAt: undefined,
-        scope: options?.scope === undefined ? undefined : toScopeSet(options.scope),
+        tags: options?.tags === undefined ? undefined : toTagSet(options.tags),
         refreshing,
         invalidation,
     }
@@ -452,7 +467,7 @@ function armTtlExpiry(store: CacheStore, entry: CacheEntry, ttl: number): void {
 }
 
 /*
-Mirrors tagScope/attachPolicy for retention: a hydrated snapshot entry ships
+Mirrors applyTags/attachPolicy for retention: a hydrated snapshot entry ships
 without its wrap options (they live at call sites, not on the wire), so the
 first read adopts its call site's ttl declaration. Omitted = forever, exactly
 as shipped; ttl > 0 = the expiry clock starts at this read; ttl = 0 = the warm
@@ -481,6 +496,26 @@ function adoptTtl(store: CacheStore, entry: CacheEntry, options: CacheOptions | 
 }
 
 /*
+Deep-copies a warm value so each reader gets its own mutable object — the
+no-shared-mutation invariant the warm path turns on (a live fetch hands every
+reader a fresh object; a warm read must match). A warm value only ever comes
+from the snapshot's textual body kinds (warmValueFromSnapshot): json yields
+JSON.parse output, text yields a string — the whole population is
+JSON-round-trippable by construction (no Date/Map/Blob/cycle a structuredClone
+would be needed for). A primitive (a string or scalar-json body) is immutable,
+so it returns as-is with no copy; an object/array goes through a JSON round-trip,
+measurably faster than structuredClone for this shape while producing the same
+fresh, mutable copy. cache.on's patch writes the same decoded population, so it
+shares this clone.
+*/
+function cloneWarmValue<T>(value: T): T {
+    if (typeof value !== 'object' || value === null) {
+        return value
+    }
+    return JSON.parse(JSON.stringify(value)) as T
+}
+
+/*
 Returns a promise that resolves to a fresh clone of the underlying Response.
 Multiple readers can each consume the body independently — the stored
 promise's Response is never consumed directly, so clones always succeed.
@@ -494,7 +529,7 @@ Invalidates every entry matching the selector (see selectorMatcher) across both
 the request/tab store and the process-level store, and notifies readers.
 `args` narrows a fn selector to exactly that call's entry — derived through
 the same encoders the read path uses, so other args variants stay warm. An entry
-with an invalidate throttle/debounce policy is kept and its refetch coalesced (stale served
+with an swr policy is kept and its refetch coalesced (stale served
 until it resolves); every other match is dropped so the next read refetches —
 its key recorded in pendingRefresh so that read reports as a reload (refreshing())
 rather than a first-ever load. An empty or unmatched selector is a no-op on the
@@ -531,7 +566,7 @@ function invalidate<Args, Return>(arg?: CacheSelector<Args, Return>, args?: Args
 Human-readable selector identity for the tripwire and cache.on coverage: the
 key prefix for fn selectors — the exact key when args narrow it — falling
 back to the function's name for a producer never cached, the tag list for
-scopes, `*` for the bare form.
+tag selectors, `*` for the bare form.
 */
 function selectorLabel<Args, Return>(
     arg?: CacheSelector<Args, Return>,
@@ -544,7 +579,7 @@ function selectorLabel<Args, Return>(
     if (typeof arg === 'function') {
         return prefix ?? selectorPrefix(arg, args) ?? (arg.name || 'anonymous producer')
     }
-    return `scope: ${[...toScopeSet(arg.scope ?? [])].join(', ')}`
+    return `tags: ${[...toTagSet(arg.tags ?? [])].join(', ')}`
 }
 
 cache.invalidate = invalidate
@@ -583,7 +618,7 @@ async function patchEntries<Args, Return>(
                 (await decodeResponse(
                     await shareable(entry.promise as Promise<Response>),
                 ))) as Return
-            entry.value = structuredClone(updater(current))
+            entry.value = cloneWarmValue(updater(current))
             entry.settled = true
             entry.refreshing = false
             store.markLifecycle(entry.key)
@@ -695,7 +730,7 @@ function on<T>(
 cache.on = on
 
 /*
-Schedules a coalesced refetch per the entry's invalidate policy. debounce: (re)arm
+Schedules a coalesced refetch per the entry's swr policy. debounce: (re)arm
 a timer that fires after N ms of quiet. throttle: fire on the leading edge when a
 full window has elapsed since the last fire, else arm a single trailing timer for
 the remainder — so a continuous invalidation stream refetches at most once per window.
@@ -800,24 +835,24 @@ function settleRefetchFailure(store: CacheStore, entry: CacheEntry, status?: num
 }
 
 /* Folds new tags into an entry's existing set without duplicating them. */
-function mergeScopes(existing: Set<string> | undefined, incoming: string | string[]): Set<string> {
-    return new Set([...(existing ?? []), ...toScopeSet(incoming)])
+function mergeTags(existing: Set<string> | undefined, incoming: string[]): Set<string> {
+    return new Set([...(existing ?? []), ...incoming])
 }
 
 /*
-Tags an existing entry with a read's scope so a later cache.invalidate({ scope })
-reaches entries hydrated from the SSR snapshot (which carry a value but no scope)
+Tags an existing entry with a read's tags so a later cache.invalidate({ tags })
+reaches entries hydrated from the SSR snapshot (which carry a value but no tags)
 without a refetch. Merges rather than replaces so a read tagging one group can't
-drop tags another read site already added; a no-op when the read passes no scope.
+drop tags another read site already added; a no-op when the read passes no tags.
 */
-function tagScope(entry: CacheEntry, scope: CacheOptions['scope']): void {
-    if (scope !== undefined) {
-        entry.scope = mergeScopes(entry.scope, scope)
+function applyTags(entry: CacheEntry, tags: CacheOptions['tags']): void {
+    if (tags !== undefined) {
+        entry.tags = mergeTags(entry.tags, tags)
     }
 }
 
 /*
-Mirrors tagScope for invalidate policies: a read declaring a policy arms an
+Mirrors applyTags for swr policies: a read declaring a policy arms an
 existing entry that lacks one. Hydrated snapshot entries carry a value but no
 refetch thunk — without this, the first invalidate after hydration would hard-
 drop the entry (a pending flash) instead of revalidating stale-in-place, and a
@@ -830,12 +865,8 @@ function attachPolicy(
     options: CacheOptions | undefined,
     refetch: () => Promise<unknown>,
 ): void {
-    const policy = options?.invalidate
-    if (
-        entry.invalidation ||
-        !policy ||
-        (policy.throttle === undefined && policy.debounce === undefined)
-    ) {
+    const policy = policyWindow(options?.swr)
+    if (entry.invalidation || !policy) {
         return
     }
     entry.invalidation = { refetch, throttle: policy.throttle, debounce: policy.debounce }

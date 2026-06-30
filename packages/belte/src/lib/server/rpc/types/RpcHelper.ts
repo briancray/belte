@@ -4,9 +4,9 @@ import type { StandardSchemaV1 } from '../../../shared/types/StandardSchemaV1.ts
 import type { RemoteHandler } from './RemoteHandler.ts'
 
 /*
-Shared signature for every verb helper (GET / POST / …). Three overloads:
+Shared signature for every rpc helper (GET / POST / …). Three overloads:
 
-  - `Verb(fn, { inputSchema, outputSchema?, clients? })` — `Args` infers
+  - `Rpc(fn, { inputSchema, outputSchema?, clients? })` — `Args` infers
     from `InferInput<InputSchema>`, the handler receives
     `InferOutput<InputSchema>`. Generic order is `<Return, InputSchema>` so
     users can override `Return` while letting `InputSchema` infer from
@@ -14,10 +14,10 @@ Shared signature for every verb helper (GET / POST / …). Three overloads:
     the success body — it feeds the OpenAPI 200 response and the MCP tool
     `outputSchema`. JSON Schema is projected from each schema's own
     `toJSONSchema()` (wrap with withJsonSchema if the library lacks one).
-    `clients` controls which surfaces (browser / mcp / cli) expose this verb.
-    `crossOrigin: true` exempts a mutating verb from the router's same-origin
+    `clients` controls which surfaces (browser / mcp / cli) expose this rpc.
+    `crossOrigin: true` exempts a mutating rpc from the router's same-origin
     CSRF gate — by default a browser request whose Origin doesn't match the
-    app's own host is refused with 403 on every non-GET/HEAD verb.
+    app's own host is refused with 403 on every non-GET/HEAD rpc.
     `maxBodySize` caps the body's actual received bytes (413 past it),
     enforced before parsing; omitted, the only ceiling is Bun.serve's
     server-wide maxRequestBodySize. `timeout` (ms) bounds the handler's
@@ -25,15 +25,15 @@ Shared signature for every verb helper (GET / POST / …). Three overloads:
     exceeded; on the network path it also aborts request().signal so a
     handler's `fetch(ext, { signal: request().signal })` is cancelled, not
     just abandoned.
-  - `Verb(fn, { clients })` — schemaless but with explicit client
+  - `Rpc(fn, { clients })` — schemaless but with explicit client
     targeting (e.g. server-internal RPC with `clients: { browser: false }`).
-  - `Verb(fn)` — bare handler. `Args` and `Return` come from the handler
+  - `Rpc(fn)` — bare handler. `Args` and `Return` come from the handler
     type; `Return` is usually inferred via the `TypedResponse<T>` brand on
     `json`/`error`/`redirect`/`jsonl`/`sse`.
 */
-export type VerbHelper = {
+export type RpcHelper = {
     /*
-    `Verb(fn, { inputSchema, filesSchema, … })` — multipart upload. The
+    `Rpc(fn, { inputSchema, filesSchema, … })` — multipart upload. The
     handler receives the text fields (`InferOutput<InputSchema>`) intersected
     with the validated File parts (`InferOutput<FilesSchema>`); both are merged
     into one args bag. The call site sends a FormData (RemoteFunction's call

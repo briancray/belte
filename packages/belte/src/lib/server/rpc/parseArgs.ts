@@ -1,5 +1,5 @@
 import { carriesBodyArgs } from '../../shared/carriesBodyArgs.ts'
-import type { HttpVerb } from '../../shared/types/HttpVerb.ts'
+import type { HttpMethod } from '../../shared/types/HttpMethod.ts'
 import { requestContext } from '../runtime/requestContext.ts'
 import { readBodyWithinLimit } from './readBodyWithinLimit.ts'
 
@@ -36,7 +36,7 @@ function splitFormData(form: FormData): Record<string, unknown> {
 }
 
 /*
-Parses + merges every source of args available for a verb-defined handler:
+Parses + merges every source of args available for a rpc-defined handler:
 - body (json or form-encoded, ignored for GET/DELETE/HEAD)
 - url query string
 
@@ -49,12 +49,12 @@ to layer the query into, and the framework's args type is a single bag rather
 than a `{body, query}` envelope. Returns undefined when no source contributes
 any key.
 
-`maxBodySize` (per-verb, opt-in) bounds the body's actual received bytes
+`maxBodySize` (per-rpc, opt-in) bounds the body's actual received bytes
 before any parse — see readBodyWithinLimit. Omitted = no belte-level check;
 Bun.serve's server-wide maxRequestBodySize is the ceiling.
 */
 export async function parseArgs(
-    method: HttpVerb,
+    method: HttpMethod,
     request: Request,
     maxBodySize?: number,
 ): Promise<unknown> {

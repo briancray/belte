@@ -1,10 +1,10 @@
 import { carriesBodyArgs } from '../../shared/carriesBodyArgs.ts'
 import { commandNameForUrl } from '../../shared/commandNameForUrl.ts'
 import { jsonSchemaForSchema } from '../../shared/jsonSchemaForSchema.ts'
-import { verbRegistry } from '../rpc/verbRegistry.ts'
+import { rpcRegistry } from '../rpc/rpcRegistry.ts'
 
 /*
-Turns a verb's resolved JSON Schema into OpenAPI query parameters — one
+Turns a rpc's resolved JSON Schema into OpenAPI query parameters — one
 per top-level property, marked required when the schema lists it. Used
 for GET/DELETE/HEAD operations, which carry their args on the query
 string (mirroring buildRpcRequest).
@@ -24,7 +24,7 @@ function queryParameters(jsonSchema: Record<string, unknown>): Array<Record<stri
 }
 
 /*
-Request body schema for a multipart upload verb: the text fields from
+Request body schema for a multipart upload rpc: the text fields from
 inputSchema, plus the binary parts. A File has no honest
 Standard-Schema→JSON-Schema conversion, so the file parts are advertised
 generically as additional binary properties rather than named per field.
@@ -44,7 +44,7 @@ function multipartBodySchema(textSchema: Record<string, unknown>): Record<string
 }
 
 /*
-Builds an OpenAPI 3.1 document from the verb registry — the HTTP surface
+Builds an OpenAPI 3.1 document from the rpc registry — the HTTP surface
 every rpc exposes regardless of which non-browser clients it advertises.
 GET/DELETE/HEAD args become query parameters; POST/PUT/PATCH args become
 a JSON request body. operationId is the folder-prefixed command name so
@@ -55,13 +55,13 @@ export function buildOpenApiSpec(info: {
     version: string
 }): Record<string, unknown> {
     const paths: Record<string, Record<string, unknown>> = {}
-    for (const entry of verbRegistry.values()) {
+    for (const entry of rpcRegistry.values()) {
         const url = entry.remote.url
         const method = entry.remote.method
         const jsonSchema = jsonSchemaForSchema(entry.inputSchema)
         const description = jsonSchema.description as string | undefined
         /*
-        When the verb declares an `outputSchema`, describe the 200 body
+        When the rpc declares an `outputSchema`, describe the 200 body
         with it so external tooling sees the real return shape; otherwise
         fall back to a bare OK.
         */

@@ -7,7 +7,7 @@ Process-wide slot for the rpc + sockets + prompts manifests. createServer
 assigns once at boot (right after the route table is built); the MCP
 server, the OpenAPI emitter, and prompt enumeration read it on first
 request so they can lazy-import every module and walk the
-verb/socket/prompt registries.
+rpc/socket/prompt registries.
 
 The slot pattern (mirrors getActiveServer) lets the framework-generated
 McpServer bind to the manifests at module scope while the loaders stay
@@ -29,7 +29,7 @@ export function setRegistryManifests(value: RegistryManifests): void {
 
 /*
 On first call, eagerly imports every rpc + socket + prompt module so
-defineVerb / defineSocket / definePrompt fire and populate the
+defineRpc / defineSocket / definePrompt fire and populate the
 registries. Idempotent — repeat calls reuse the same in-flight promise,
 so concurrent first requests (e.g. /openapi.json + an MCP tools/list)
 trigger exactly one load instead of racing to fire the full import set

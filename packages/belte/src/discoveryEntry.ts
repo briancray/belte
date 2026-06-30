@@ -3,14 +3,14 @@ import { rpc } from './_virtual/rpc.ts'
 // @ts-expect-error virtual module resolved by belteResolverPlugin
 import { sockets } from './_virtual/sockets.ts'
 import type { CliManifestEntry } from './lib/cli/types/CliManifestEntry.ts'
-import { verbRegistry } from './lib/server/rpc/verbRegistry.ts'
+import { rpcRegistry } from './lib/server/rpc/rpcRegistry.ts'
 import { socketOperations } from './lib/server/sockets/socketOperations.ts'
 import { socketRegistry } from './lib/server/sockets/socketRegistry.ts'
 import { commandNameForUrl } from './lib/shared/commandNameForUrl.ts'
 import { jsonSchemaForSchema } from './lib/shared/jsonSchemaForSchema.ts'
 
 /*
-One-shot script that imports every rpc + socket module so defineVerb /
+One-shot script that imports every rpc + socket module so defineRpc /
 defineSocket populate the process-wide registries, then prints the CLI
 manifest to stdout as JSON. Used by buildCli to bake the manifest into
 the standalone binary at build time without resorting to static source
@@ -23,7 +23,7 @@ await Promise.all([
 
 const manifest: Record<string, CliManifestEntry> = {}
 
-for (const entry of verbRegistry.values()) {
+for (const entry of rpcRegistry.values()) {
     if (!entry.clients.cli) {
         continue
     }
