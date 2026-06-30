@@ -301,8 +301,12 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
             } catch {
                 return
             }
+            /* Async handlers run detached from the ws message callback; a throw
+               (snapshotTail, schema validation, a buggy socket module) would
+               otherwise surface as an unhandled rejection that a malformed
+               client frame could trigger at will. Log and contain it. */
             if (frame.type === 'sub') {
-                void handleSub(ws, state, frame)
+                handleSub(ws, state, frame).catch(belteLog.error)
                 return
             }
             if (frame.type === 'unsub') {
@@ -310,7 +314,7 @@ export function createSocketDispatcher(sockets: SocketRoutes): SocketDispatcher 
                 return
             }
             if (frame.type === 'pub') {
-                void handlePub(ws, frame)
+                handlePub(ws, frame).catch(belteLog.error)
                 return
             }
         },
