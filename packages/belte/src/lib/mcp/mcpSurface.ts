@@ -1,4 +1,5 @@
 import { promptRegistry } from '../server/prompts/promptRegistry.ts'
+import { registryRevision } from '../server/registryRevision.ts'
 import { dispatchRpcInProcess } from '../server/rpc/dispatchRpcInProcess.ts'
 import { findRpcByCommandName } from '../server/rpc/findRpcByCommandName.ts'
 import { rpcRegistry } from '../server/rpc/rpcRegistry.ts'
@@ -68,7 +69,17 @@ Sockets: every socket with clients.mcp=true contributes a `<base>-tail`
 read tool (recent buffered messages) and, when clientPublish is set, a
 `<base>-publish` tool.
 */
+/* Memoized tool/prompt projections, keyed by registryRevision: the registries
+   are static once the app boots, so the per-rpc/socket JSON Schema projection
+   runs once, not per tools/list. A registration busts the cache (see
+   registryRevision). */
+let toolsCache: { revision: number; tools: ToolDescriptor[] } | undefined
+let promptsCache: { revision: number; prompts: PromptDescriptor[] } | undefined
+
 export function buildTools(): ToolDescriptor[] {
+    if (toolsCache?.revision === registryRevision.value) {
+        return toolsCache.tools
+    }
     const tools: ToolDescriptor[] = []
     for (const entry of rpcRegistry.values()) {
         if (!entry.clients.mcp) {
@@ -126,6 +137,7 @@ export function buildTools(): ToolDescriptor[] {
             })
         }
     }
+    toolsCache = { revision: registryRevision.value, tools }
     return tools
 }
 
@@ -136,7 +148,10 @@ Schema the resolver built from each prompt's frontmatter `arguments` list
 framework interpolates them into the body on getPrompt.
 */
 export function buildPrompts(): PromptDescriptor[] {
-    return Array.from(promptRegistry.values()).map((entry) => {
+    if (promptsCache?.revision === registryRevision.value) {
+        return promptsCache.prompts
+    }
+    const prompts = Array.from(promptRegistry.values()).map((entry) => {
         const jsonSchema = entry.jsonSchema ?? {}
         const properties = (jsonSchema.properties ?? {}) as Record<string, { description?: string }>
         const required = new Set((jsonSchema.required as string[] | undefined) ?? [])
@@ -150,6 +165,8 @@ export function buildPrompts(): PromptDescriptor[] {
             })),
         }
     })
+    promptsCache = { revision: registryRevision.value, prompts }
+    return prompts
 }
 
 /* MCP tool-dispatch spans, opt-in via DEBUG=belte:mcp — a model's tool call,
