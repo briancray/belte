@@ -1,9 +1,11 @@
-import { createLivenessWatch } from '../../shared/createLivenessWatch.ts'
+import { createLivenessWatch } from './createLivenessWatch.ts'
+import { originOf } from './originOf.ts'
 
 /*
-The reachability registry behind `belte/server/reachable`. A probe transport
-and the timings are injected so the public name wires them from env + a real
-HEAD while tests drive scripted outcomes on tiny intervals.
+The reachability registry behind `belte/shared/reachable`. A probe transport,
+the timings, and an optional change notifier are injected so the public name
+wires them per side (server HEAD + env timings; browser no-cors HEAD + a
+reactive notifier) while tests drive scripted outcomes on tiny intervals.
 
 Per origin, the first read awaits one real probe (the FAITHFUL first answer —
 its latency, including a full timeout when the host is down, is the price of
@@ -22,6 +24,9 @@ export function createReachable(options: {
     probe: (origin: string) => Promise<boolean>
     intervalMs: number
     idleMs: number
+    /* Called with the origin whenever its warm value flips — the client wires
+       this to a per-origin reactive subscriber so reads re-run on up/down. */
+    notify?: (origin: string) => void
 }): {
     reachable: (host: string | URL) => Promise<boolean>
     /* Stop every origin's poll — graceful shutdown, and test isolation. */
@@ -55,6 +60,7 @@ export function createReachable(options: {
             probe: watchProbe,
             onChange: (alive) => {
                 entry.alive = alive
+                options.notify?.(origin)
             },
             intervalMs: options.intervalMs,
         })
@@ -62,14 +68,7 @@ export function createReachable(options: {
     }
 
     async function reachable(host: string | URL): Promise<boolean> {
-        /*
-        HEAD the origin root: this answers host connectivity, not endpoint
-        health. A bare host string defaults to https (the external-dependency
-        norm); an explicit http://… is honored.
-        */
-        const url =
-            typeof host === 'string' && !/^https?:\/\//i.test(host) ? `https://${host}` : host
-        const origin = new URL(url).origin
+        const origin = originOf(host)
         const existing = registry.get(origin)
         if (existing) {
             existing.lastReadAt = Date.now()

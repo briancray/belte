@@ -258,7 +258,7 @@ export function createOutboxQueue<Args>(opts: {
             if (reason !== undefined) {
                 errors.set(id, reason)
             }
-            items.push({
+            const item: StoredEntry<Args> = {
                 id,
                 args,
                 method: request.method,
@@ -266,10 +266,10 @@ export function createOutboxQueue<Args>(opts: {
                 body: '',
                 contentType: '',
                 status: 'queued',
-            })
+            }
+            items.push(item)
             commit()
             void captureRequest(id, request)
-            const item = items.find((entry) => entry.id === id) as StoredEntry<Args>
             return toLive(item)
         },
         entries() {

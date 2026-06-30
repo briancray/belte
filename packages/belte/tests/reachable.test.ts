@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { createReachable } from '../src/lib/server/runtime/createReachable.ts'
+import { createReachable } from '../src/lib/shared/createReachable.ts'
+import { reachable } from '../src/lib/shared/reachable.ts'
 
 /* A scripted probe whose outcome is flippable, counting how often it actually ran. */
 function scriptedProbe(up = true) {
@@ -94,5 +95,21 @@ describe('reachable (createReachable)', () => {
         await ms(90) // quiet — a live poll would keep incrementing
         expect(state.calls).toBe(callsAfterReap)
         stop()
+    })
+})
+
+describe('reachable (isomorphic public name)', () => {
+    /* Bare reachable() on the server with no APP_URL has no host to name — it
+       reads vacuously reachable without probing the network. */
+    test('bare reachable() with no APP_URL reads true and runs no probe', async () => {
+        const previous = process.env.APP_URL
+        delete process.env.APP_URL
+        try {
+            expect(await reachable()).toBe(true)
+        } finally {
+            if (previous !== undefined) {
+                process.env.APP_URL = previous
+            }
+        }
     })
 })

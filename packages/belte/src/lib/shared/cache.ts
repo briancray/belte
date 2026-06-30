@@ -551,8 +551,12 @@ function invalidate<Args, Return>(arg?: CacheSelector<Args, Return>, args?: Args
                 scheduleInvalidationRefetch(store, entry)
             } else {
                 store.entries.delete(entry.key)
-                /* Mark so the next read of this key reports as a reload via refreshing(). */
-                store.pendingRefresh.add(entry.key)
+                /* Flag the next read a reload (refreshing()) — but only if a reader is
+                   holding the value now; with none on screen the next read is a first
+                   load, and an ungated add would linger forever on the tab store. */
+                if (store.hasReader(entry.key)) {
+                    store.pendingRefresh.add(entry.key)
+                }
                 affected.push(entry.key)
             }
             store.markLifecycle(entry.key)
@@ -827,7 +831,12 @@ so a live read replaces it and surfaces the proper error once.
 function settleRefetchFailure(store: CacheStore, entry: CacheEntry, status?: number): void {
     if (status === 404) {
         evictIfCurrent(store, entry)
-        store.pendingRefresh.add(entry.key)
+        /* Mirror invalidate()'s gating: only flag a reload when a reader still holds
+           the value — a background refetch can 404 after the reader navigated away, and
+           an ungated add then lingers forever on the tab store (no teardown to prune it). */
+        if (store.hasReader(entry.key)) {
+            store.pendingRefresh.add(entry.key)
+        }
         emit(store, [entry.key])
         return
     }

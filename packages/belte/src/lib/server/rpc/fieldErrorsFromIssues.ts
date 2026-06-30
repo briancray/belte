@@ -14,7 +14,9 @@ export function fieldErrorsFromIssues(
     const fields: Record<string, string> = {}
     for (const issue of issues) {
         const segment = issue.path?.[0]
-        const key = typeof segment === 'object' ? segment.key : segment
+        /* `typeof null === 'object'` — guard it so a malformed adapter emitting a null
+           segment can't deref `.key` and turn a clean 422 into a 500. */
+        const key = segment !== null && typeof segment === 'object' ? segment.key : segment
         if (typeof key === 'string' && !(key in fields)) {
             fields[key] = issue.message
         }

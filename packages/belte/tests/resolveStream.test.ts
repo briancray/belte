@@ -9,6 +9,7 @@ function storeWith(entries: CacheEntry[]): CacheStore {
         entries: new Map(entries.map((entry) => [entry.key, entry])),
         events: new EventTarget(),
         subscribe: () => {},
+        hasReader: () => false,
         trackLifecycle: () => {},
         markLifecycle: () => {},
         pendingRefresh: new Set(),

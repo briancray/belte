@@ -11,10 +11,20 @@ export type GlobalOutbox = (() => GlobalOutboxEntry[]) & { retry: () => Promise<
 
 function list(): GlobalOutboxEntry[] {
     return outboxRegistry.all().flatMap(({ rpc, queue }) =>
-        queue.entries().map((entry) => ({
-            ...entry,
-            rpc: rpc as RemoteFunction<unknown, unknown>,
-        })),
+        /* Copy descriptors rather than spread: spreading reads `entry.settled`, which
+           arms its lazy deferred for every entry just by building this list (e.g. a
+           reactive "N unsynced" badge). An armed-but-unawaited deferred rejects on the
+           next server refusal → unhandled rejection — the exact case the lazy getter
+           avoids. defineProperties carries the getter over without invoking it. */
+        queue
+            .entries()
+            .map(
+                (entry) =>
+                    Object.defineProperties(
+                        { rpc: rpc as RemoteFunction<unknown, unknown> },
+                        Object.getOwnPropertyDescriptors(entry),
+                    ) as GlobalOutboxEntry,
+            ),
     )
 }
 
