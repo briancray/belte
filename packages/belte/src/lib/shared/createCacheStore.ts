@@ -25,6 +25,12 @@ export function createCacheStore(): CacheStore {
     const entries = new Map<string, CacheEntry>()
     const events = new EventTarget()
     const subscribers = new Map<string, () => void>()
+    /* Keys whose createSubscriber connect callback is currently holding a reactive
+       reader — set on connect, cleared on teardown. hasReader reads this, NOT
+       `subscribers`: a read outside a tracking scope still registers a subscriber
+       (for dedup) but never connects, so `subscribers` alone would report a phantom
+       reader and let invalidate() accrete a reload marker for a key nobody holds. */
+    const liveReaders = new Set<string>()
     const pendingRefresh = new Set<string>()
 
     function subscribe(key: string): void {
@@ -34,6 +40,7 @@ export function createCacheStore(): CacheStore {
             return
         }
         const registered = createSubscriber((update) => {
+            liveReaders.add(key)
             const onInvalidate = (event: Event) => {
                 if ((event as CustomEvent<CacheInvalidation>).detail.has(key)) {
                     update()
@@ -44,6 +51,7 @@ export function createCacheStore(): CacheStore {
                 events.removeEventListener('invalidate', onInvalidate)
                 if (subscribers.get(key) === registered) {
                     subscribers.delete(key)
+                    liveReaders.delete(key)
                     /* The reload marker is only ever consumed by the NEXT read of this
                        key (registerEntry). With the last reactive reader gone there is
                        no scope left to show refreshing() for it, and a future remount
@@ -56,6 +64,13 @@ export function createCacheStore(): CacheStore {
         })
         subscribers.set(key, registered)
         registered()
+        /* Untracked read (outside $derived/$effect): the connect callback never ran,
+           so no teardown will ever evict this subscriber — drop it now or it sits in
+           the map for the tab's life and hasReader reports a phantom reader. Mirrors
+           tail.ts's `!entry.live` eviction. */
+        if (!liveReaders.has(key)) {
+            subscribers.delete(key)
+        }
     }
 
     /* Store-wide in-flight tap for the probes; semantics live in createLifecycleChannel. */
@@ -107,7 +122,7 @@ export function createCacheStore(): CacheStore {
            its value on screen. invalidate() gates its reload marker on this: a key
            with no live reader has nothing to reload into, so the next read is a
            first-ever load, not a refresh. */
-        hasReader: (key: string) => subscribers.has(key),
+        hasReader: (key: string) => liveReaders.has(key),
         trackLifecycle,
         markLifecycle,
         pendingRefresh,

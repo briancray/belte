@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { cache } from '../src/lib/shared/cache.ts'
 import { cacheStoreSlot } from '../src/lib/shared/cacheStoreSlot.ts'
 import { createCacheStore } from '../src/lib/shared/createCacheStore.ts'
+import { producerKey } from '../src/lib/shared/producerKey.ts'
 import { REMOTE_FUNCTION } from '../src/lib/shared/REMOTE_FUNCTION.ts'
 import { remoteMetaStore } from '../src/lib/shared/remoteMetaStore.ts'
 import type { CacheStore } from '../src/lib/shared/types/CacheStore.ts'
@@ -87,6 +88,50 @@ describe('pendingRefresh garbage collection', () => {
         await settle()
         /* Subscriber cleanup drops the orphaned marker. */
         expect(store.pendingRefresh.has('GET /rpc/gc-teardown')).toBe(false)
+    })
+
+    test('a key read outside a tracking scope is no phantom reader — invalidate leaves no marker', async () => {
+        const get = remote('GET', '/rpc/gc-untracked')
+        /* Untracked read: a plain await in an event handler, no $derived/$effect.
+           subscribe() registers a subscriber for dedup but never connects. */
+        await cache(get)()
+        await settle()
+        expect(store.entries.has('GET /rpc/gc-untracked')).toBe(true)
+        /* No reactive scope holds the value, so there is no reader to reload into. */
+        expect(store.hasReader('GET /rpc/gc-untracked')).toBe(false)
+
+        cache.invalidate(get)
+        await settle()
+        expect(store.pendingRefresh.has('GET /rpc/gc-untracked')).toBe(false)
+    })
+
+    test('a policy-less invalidate with a live reader flags the next read a reload', async () => {
+        let resolveSecond: (value: number) => void = () => {}
+        const second = new Promise<number>((resolve) => {
+            resolveSecond = resolve
+        })
+        /* Flip after the first settle so re-reads the invalidate wakes return the same
+           in-flight promise — a reactive reader may re-read more than once. */
+        let reloading = false
+        const producer = () => (reloading ? second : Promise.resolve(1))
+        const key = producerKey(producer, undefined)
+
+        const tracked = track(() => cache(producer)())
+        await settle()
+        expect(store.entries.get(key)?.refreshing ?? false).toBe(false)
+
+        reloading = true
+        cache.invalidate(producer)
+        await settle()
+        /* Reader present at invalidate → marker minted; the woken re-read is a cold miss
+           the marker flags a reload (refreshing) rather than a first-ever load. */
+        expect(store.entries.get(key)?.refreshing).toBe(true)
+
+        resolveSecond(2)
+        await settle()
+        /* Reload settled → no longer refreshing. */
+        expect(store.entries.get(key)?.refreshing).toBe(false)
+        tracked.stop()
     })
 
     test('the normal invalidate→reread path still flags the reload (gc did not eat the live case)', async () => {

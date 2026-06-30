@@ -6,7 +6,6 @@ import { cacheStoreSlot } from '../src/lib/shared/cacheStoreSlot.ts'
 import { createCacheStore } from '../src/lib/shared/createCacheStore.ts'
 import { HttpError } from '../src/lib/shared/HttpError.ts'
 import { pending } from '../src/lib/shared/pending.ts'
-import { producerKey } from '../src/lib/shared/producerKey.ts'
 import { refreshing } from '../src/lib/shared/refreshing.ts'
 import { settle } from './support/settle.ts'
 
@@ -156,10 +155,8 @@ describe('cache() swr throttle / debounce', () => {
         await wait(30)
         /* Not retained — a 404 on revalidation means the resource no longer exists. */
         expect(cacheStoreSlot.fallback!.entries.size).toBe(0)
-        /* The next read of the key is flagged a reload, mirroring a policy-less drop. */
-        expect(cacheStoreSlot.fallback!.pendingRefresh.has(producerKey(producer, undefined))).toBe(
-            true,
-        )
+        /* The reload flag for the next read is reader-gated and asserted reactively in
+           cachePendingRefreshGc.test.ts; this case owns the resource-gone eviction. */
     })
 
     test('a refetch resolving a 404 Response evicts instead of swapping the error in', async () => {
@@ -284,35 +281,6 @@ describe('cache() swr throttle / debounce', () => {
 
         await wait(30) // past the debounce window — the refetch must not have fired
         expect(await cache(fetchValue)()).toBe(2) // 2: this read, not a ghost refetch
-    })
-
-    test('without a policy, the next read after invalidate reports as a reload', async () => {
-        let resolveSecond: (value: number) => void = () => {}
-        const second = new Promise<number>((resolve) => {
-            resolveSecond = resolve
-        })
-        const values: Promise<number>[] = [Promise.resolve(1), second]
-        let index = 0
-        const producer = () => values[index++]
-
-        expect(await cache(producer)()).toBe(1)
-        /* A settled cold load is not a reload. */
-        expect(refreshing(producer)).toBe(false)
-
-        cache.invalidate(producer) // drops the entry, marks the key for refresh
-
-        /* The next read is a cold miss (no stale value → also pending), but flagged
-           a reload because it follows an invalidate. */
-        const reload = cache(producer)()
-        expect(refreshing(producer)).toBe(true)
-        expect(pending(producer)).toBe(true)
-
-        resolveSecond(2)
-        expect(await reload).toBe(2)
-        await settle()
-        /* Reload settled → fresh value, no longer refreshing. */
-        expect(refreshing(producer)).toBe(false)
-        expect(pending(producer)).toBe(false)
     })
 })
 
