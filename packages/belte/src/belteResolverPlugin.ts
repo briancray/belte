@@ -1,12 +1,16 @@
 // node:fs existsSync — Bun plugin onResolve is sync-only; Bun.file().exists() is async
-import { existsSync, statSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import type { BunPlugin } from 'bun'
 import { Glob } from 'bun'
 import { belteImportName } from './lib/shared/belteImportName.ts'
 import { belteLog } from './lib/shared/belteLog.ts'
+import { embedZstdDir } from './lib/shared/embedZstdDir.ts'
+import { escapeRegex } from './lib/shared/escapeRegex.ts'
 import { fileStem } from './lib/shared/fileStem.ts'
 import { jsonSchemaForPromptArguments } from './lib/shared/jsonSchemaForPromptArguments.ts'
+import { loadShell } from './lib/shared/loadShell.ts'
 import { manifestModule } from './lib/shared/manifestModule.ts'
+import { once } from './lib/shared/once.ts'
 import { pageUrlForFile } from './lib/shared/pageUrlForFile.ts'
 import { parsePromptMarkdown } from './lib/shared/parsePromptMarkdown.ts'
 import { prepareRpcModule } from './lib/shared/prepareRpcModule.ts'
@@ -14,7 +18,10 @@ import { prepareSocketModule } from './lib/shared/prepareSocketModule.ts'
 import { programNameForPackage } from './lib/shared/programNameForPackage.ts'
 import { promptNameForFile } from './lib/shared/promptNameForFile.ts'
 import { readPackageJson } from './lib/shared/readPackageJson.ts'
+import { resolveExtension } from './lib/shared/resolveExtension.ts'
 import { rpcUrlForFile } from './lib/shared/rpcUrlForFile.ts'
+import { scanDir } from './lib/shared/scanDir.ts'
+import { scanPages } from './lib/shared/scanPages.ts'
 import { socketNameForFile } from './lib/shared/socketNameForFile.ts'
 import { writeHealthDts } from './lib/shared/writeHealthDts.ts'
 import { writePublicAssetsDts } from './lib/shared/writePublicAssetsDts.ts'
@@ -23,62 +30,7 @@ import { writeRpcDts } from './lib/shared/writeRpcDts.ts'
 import { writeTestRpcDts } from './lib/shared/writeTestRpcDts.ts'
 import { writeTestSocketsDts } from './lib/shared/writeTestSocketsDts.ts'
 
-/*
-Resolves a bare directory or extensionless path to a concrete file. Mirrors
-Node-style resolution (path.ts, path.js, path/index.ts, path/index.js) so
-project code can use SvelteKit-style aliases like `$shared/foo/utils` that point
-at directories with an index file. The (path → resolved) mapping is
-deterministic per build, so cache it — every module that imports a `$shared`
-alias hits this twice or more, and each call would otherwise do up to nine
-filesystem stats.
-*/
-const resolveExtensionCache = new Map<string, string>()
-function resolveExtension(path: string): string {
-    const cached = resolveExtensionCache.get(path)
-    if (cached !== undefined) {
-        return cached
-    }
-    const resolved = resolveExtensionUncached(path)
-    resolveExtensionCache.set(path, resolved)
-    return resolved
-}
-
-const RESOLVE_EXTENSIONS = ['.ts', '.js', '.tsx', '.jsx']
-
-function resolveExtensionUncached(path: string): string {
-    if (existsSync(path) && !statSync(path).isDirectory()) {
-        return path
-    }
-    for (const extension of RESOLVE_EXTENSIONS) {
-        if (existsSync(`${path}${extension}`)) {
-            return `${path}${extension}`
-        }
-    }
-    for (const extension of RESOLVE_EXTENSIONS) {
-        const indexPath = `${path}/index${extension}`
-        if (existsSync(indexPath)) {
-            return indexPath
-        }
-    }
-    return path
-}
-
 const NS = 'belte-virtual'
-
-function escapeRegex(value: string): string {
-    return value.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
-}
-
-/* Memoises a zero-arg async producer so repeat calls reuse the first in-flight promise. */
-function once<T>(produce: () => Promise<T>): () => Promise<T> {
-    let promise: Promise<T> | undefined
-    return () => {
-        if (!promise) {
-            promise = produce()
-        }
-        return promise
-    }
-}
 
 /*
 Bun plugin that wires every virtual import belte produces at build time:
@@ -739,158 +691,4 @@ export const footer = ${JSON.stringify(footer)}
             })
         },
     }
-}
-
-/*
-Encodes every file in `files` (relative to `dir`) into a base64 zstd map and
-emits `export const <exportName> = { "<key>": _d("<base64>") }`. `keyFor` maps
-a relative path to its lookup key; `precompressed` true means the files are
-already `.zst` on disk (read + base64 as-is), false means compress here at
-level 22. Shared by the belte:assets / belte:public-assets / belte:mcp-resources
-virtuals, which differ only in source dir, key shape, and whether the inputs
-are pre-compressed.
-*/
-async function embedZstdDir({
-    dir,
-    files,
-    keyFor,
-    precompressed,
-    exportName,
-    label,
-    source,
-}: {
-    dir: string
-    files: string[]
-    keyFor: (file: string) => string
-    precompressed: boolean
-    exportName: string
-    label: string
-    source: string
-}): Promise<string> {
-    const encoded = await Promise.all(
-        files.map(async (file) => {
-            const raw = await Bun.file(`${dir}/${file}`).bytes()
-            const bytes = precompressed ? raw : await Bun.zstdCompress(raw, { level: 22 })
-            return {
-                line: `    ${JSON.stringify(keyFor(file))}: _d(${JSON.stringify(bytes.toBase64())}),`,
-                bytes: bytes.byteLength,
-            }
-        }),
-    )
-    const totalBytes = encoded.reduce((total, entry) => total + entry.bytes, 0)
-    const unit = precompressed ? 'KiB' : 'KiB zstd'
-    belteLog.info(
-        `embedded ${encoded.length} ${label} from ${source} (${(totalBytes / 1024).toFixed(1)} ${unit})`,
-    )
-    return `const _d = (s) => Uint8Array.fromBase64(s)
-export const ${exportName} = {
-${encoded.map((entry) => entry.line).join('\n')}
-}
-`
-}
-
-type PagesScan = {
-    pageFiles: string[]
-    layoutFiles: string[]
-    errorFiles: string[]
-}
-
-/*
-Walks src/browser/pages once and partitions every `.svelte` file into pages,
-layouts, and error pages. Rejects any other file shape — every leaf must live in
-its own folder (or directly under `src/browser/pages/` for the root) and the
-basename must be `page.svelte`, `layout.svelte`, or `error.svelte`. A misnamed
-file (e.g. `about.svelte`) would otherwise be silently ignored; the explicit
-error gives the right hint.
-*/
-async function scanPages(pagesDir: string): Promise<PagesScan> {
-    if (!existsSync(pagesDir)) {
-        return { pageFiles: [], layoutFiles: [], errorFiles: [] }
-    }
-    const allFiles = await Array.fromAsync(new Glob('**/*.svelte').scan({ cwd: pagesDir }))
-    const pageFiles: string[] = []
-    const layoutFiles: string[] = []
-    const errorFiles: string[] = []
-    for (const file of allFiles) {
-        const basename = file.split('/').pop() ?? ''
-        if (basename === 'page.svelte') {
-            pageFiles.push(file)
-            continue
-        }
-        if (basename === 'layout.svelte') {
-            layoutFiles.push(file)
-            continue
-        }
-        if (basename === 'error.svelte') {
-            errorFiles.push(file)
-            continue
-        }
-        const stem = basename.replace(/\.[^.]+$/, '')
-        const parent = file.includes('/') ? `${file.slice(0, file.lastIndexOf('/'))}/` : ''
-        throw new Error(
-            `[belte] src/browser/pages/${file} is not a recognized page file — every page must live in its own folder as page.svelte, layout.svelte, or error.svelte (try src/browser/pages/${parent}${stem}/page.svelte)`,
-        )
-    }
-    return { pageFiles, layoutFiles, errorFiles }
-}
-
-/*
-Walks one registry directory once: src/server/rpc (every `.ts` file is an
-HTTP-method rpc handler), src/server/sockets (each `.ts` file declares one
-socket, loaded lazily on first sub/pub frame), or src/mcp/prompts (each `.md`
-file declares one MCP prompt — frontmatter for metadata, body for the
-template). Returns an empty list when the directory doesn't exist so an app
-missing the folder builds the same.
-*/
-async function scanDir(dir: string, pattern: string): Promise<string[]> {
-    if (!existsSync(dir)) {
-        return []
-    }
-    return await Array.fromAsync(new Glob(pattern).scan({ cwd: dir }))
-}
-
-/*
-Picks `src/browser/app.html` when it exists, otherwise the bundled default
-shell. Reads the file once per build so the resolver's two virtual passes share
-a single disk hit. Rewrites the literal `/_app/client.js` and `/_app/client.css`
-references to the hashed entry filenames emitted by the client build so the
-entry bundles can be served with `immutable` cache headers like the chunks.
-*/
-async function loadShell(cwd: string): Promise<string> {
-    const userShell = `${cwd}/src/browser/app.html`
-    const defaultShell = new URL('./assets/app.html', import.meta.url).pathname
-    const filepath = (await Bun.file(userShell).exists()) ? userShell : defaultShell
-    if (filepath === userShell) {
-        belteLog.info('using custom src/browser/app.html')
-    }
-    const content = await Bun.file(filepath).text()
-    return await rewriteHashedClientEntries(content, cwd)
-}
-
-/*
-Scans `dist/_app/` for the hashed client entry filenames produced by
-build.ts (e.g. `client-abc12345.js`, `client-abc12345.css`) and swaps the
-shell's literal `/_app/client.js` and `/_app/client.css` references for
-them. When the directory is missing (someone running the server before a
-build) the shell is returned unchanged so the existing broken-asset
-behaviour is preserved.
-*/
-async function rewriteHashedClientEntries(shell: string, cwd: string): Promise<string> {
-    const appDir = `${cwd}/dist/_app`
-    if (!existsSync(appDir)) {
-        return shell
-    }
-    const entries = await Array.fromAsync(
-        new Glob('client-*').scan({ cwd: appDir, onlyFiles: true }),
-    )
-    const jsEntry = entries.find((file) => /^client-[a-z0-9]+\.js$/i.test(file))
-    const cssEntry = entries.find((file) => /^client-[a-z0-9]+\.css$/i.test(file))
-    let result = shell
-    if (jsEntry) {
-        result = result.replace('/_app/client.js', `/_app/${jsEntry}`)
-    }
-    if (cssEntry) {
-        result = result.replace('/_app/client.css', `/_app/${cssEntry}`)
-    }
-    return result
 }
