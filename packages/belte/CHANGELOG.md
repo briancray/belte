@@ -26,8 +26,6 @@
 
 - [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - satisfy useIterableCallbackReturn lint in applyTags ([`993f411`](https://github.com/briancray/belte/commit/993f41172fa60c4de9fb8e44567612aa6cc73ae7))
 
-- preserve non-JSON values in cache.on().patch ([`bbff8a1`](https://github.com/briancray/belte/commit/bbff8a163d63f7f5328cb4c9d67372f22613f9ee))
-
 - [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - contain async handler rejections in ws message dispatch ([`f25a278`](https://github.com/briancray/belte/commit/f25a27820d807ed3ae7f9872804ce5b96f2eeb2b))
 
 - [`3ad5d6d`](https://github.com/briancray/belte/commit/3ad5d6d65124b7832c511571c34c1e0eb90a9b87) - Fix the cache reload marker (`refreshing()` after a policy-less `cache.invalidate`) firing for keys read outside a tracking scope. `hasReader` reported a phantom reader for any key ever read — including a plain `await cache(fn)()` in an event handler — so `invalidate()` could accrete a `pendingRefresh` marker on the long-lived tab store for keys nobody is reactively holding. The marker is now gated on a live reactive reader (mirroring `tail.ts`), matching the documented `CacheStore` contract that an untracked read is a no-op; a tracked read still flags the reload exactly as before.
