@@ -34,6 +34,20 @@ describe('createTestApp', () => {
         expect(app.rpc.getProduct({ id: 'nope' })).rejects.toBeInstanceOf(HttpError)
     })
 
+    test('rpc.reserveProduct returns a typed error with narrowable .kind / .data', async () => {
+        // id '1' is out of stock — the handler returns the error.typed('outOfStock') constructor.
+        try {
+            await app.rpc.reserveProduct({ id: '1' })
+            throw new Error('expected reserveProduct to reject')
+        } catch (caught) {
+            expect(caught).toBeInstanceOf(HttpError)
+            const error = caught as HttpError
+            expect(error.status).toBe(409)
+            expect(error.kind).toBe('outOfStock')
+            expect(error.data).toEqual({ id: '1', restockDays: 3 })
+        }
+    })
+
     test('rpc.createEcho.raw exposes the 201 status', async () => {
         const created = await app.rpc.createEcho.raw({ message: 'hi' })
         expect(created.status).toBe(201)

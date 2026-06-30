@@ -28,7 +28,7 @@ across the whole process. Same coalesce/ttl/invalidate/probe machinery the rpc
 verbs get — only the Response-based SSR streaming snapshot is unavailable,
 since an external fetch carries no wire metadata to snapshot.
 */
-export const getRates = GET<{ base?: string }, Rates>(async ({ base = 'USD' }) => {
+export const getRates = GET(async ({ base = 'USD' }: { base?: string }) => {
     const rates = await cache(fetchRates, { global: true, ttl: 60_000 })(base)
     return json(rates)
 })

@@ -196,7 +196,9 @@ const cachedRaw = $derived(cache(getReport.raw)({ id: 'r-1' }))  // shared cache
         title="src/server/rpc/getReport.ts — handler sets a custom header"
         code={`import { GET } from '@belte/belte/server/GET'
 
-export const getReport = GET<{ id: string }, { id: string; rows: number[] }>(({ id }) =>
+export const getReport = GET(({ id }: { id: string }) =>
+    // bare Response.json — no TypedResponse brand, so the decoded body is \`unknown\`;
+    // consume it through .raw for the headers + status.
     Response.json(
         { id, rows: [1, 2, 3] },
         { headers: { 'x-report-version': '7', 'Cache-Control': 'no-store' } },

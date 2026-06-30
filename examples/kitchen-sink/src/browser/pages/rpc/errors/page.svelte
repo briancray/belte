@@ -5,10 +5,26 @@ import RpcHeader from '$browser/RpcHeader.svelte'
 import { boom } from '$server/rpc/boom.ts'
 import { getEcho } from '$server/rpc/getEcho.ts'
 import { getProduct } from '$server/rpc/getProduct.ts'
+import { reserveProduct } from '$server/rpc/reserveProduct.ts'
 
 let outcome404 = $state('(not triggered)')
 let outcome405 = $state('(not triggered)')
 let outcome500 = $state('(not triggered)')
+let outcomeTyped = $state('(not triggered)')
+
+async function triggerTyped() {
+    try {
+        await reserveProduct({ id: '1' })
+        outcomeTyped = '(no error?)'
+    } catch (err) {
+        // The per-rpc guard narrows `.kind` and the typed `.data` together.
+        if (reserveProduct.isError(err, 'outOfStock')) {
+            outcomeTyped = `outOfStock — restock in ${err.data.restockDays}d (status ${err.status})`
+        } else {
+            outcomeTyped = String(err)
+        }
+    }
+}
 
 async function trigger404() {
     try {
@@ -47,7 +63,13 @@ async function trigger500() {
     carries <code class="font-mono">status</code>,
     <code class="font-mono">statusText</code>, and the raw
     <code class="font-mono">response</code>. All error responses are
-    <code class="font-mono">Cache-Control: no-store</code>.
+    <code class="font-mono">Cache-Control: no-store</code>. A
+    <code class="font-mono">error.typed(name, status, schema?)</code>
+    constructor adds a named, typed failure the client narrows with
+    <code class="font-mono">rpc.isError(caught, name)</code>
+    — reading <code class="font-mono">.kind</code> and the typed
+    <code class="font-mono">.data</code>
+    together.
 </p>
 
 <section class="mt-6">
@@ -85,6 +107,16 @@ async function trigger500() {
                         routes through <code class="font-mono">app.handleError</code>
                     </td>
                 </tr>
+                <tr>
+                    <td class="px-4 py-2 font-mono">409</td>
+                    <td class="px-4 py-2 text-slate-600">
+                        handler returns <code class="font-mono">error.typed(…)</code>
+                    </td>
+                    <td class="px-4 py-2 text-slate-600">
+                        narrows to <code class="font-mono">.kind</code> + typed
+                        <code class="font-mono">.data</code>
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -112,11 +144,19 @@ async function trigger500() {
             onclick={trigger500}>
             boom() → 500
         </button>
+        <button
+            type="button"
+            class="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-100"
+            onclick={triggerTyped}>
+            reserveProduct({`{ id: '1' }`}
+            ) → 409 outOfStock
+        </button>
     </div>
     <ul class="mt-3 space-y-1 font-mono text-xs text-slate-700">
         <li>404:{outcome404}</li>
         <li>405:{outcome405}</li>
         <li>500:{outcome500}</li>
+        <li>typed:{outcomeTyped}</li>
     </ul>
 </section>
 
@@ -156,4 +196,30 @@ try {
 // 405 detection without throwing — plain fetch
 const response = await fetch(getEcho.url, { method: 'POST' })
 // response.status === 405; response.headers.get('allow') === 'GET'`} />
+
+    <CodeBlock
+        title="src/server/rpc/reserveProduct.ts — a typed, named failure"
+        code={`import { error } from '@belte/belte/server/error'
+import { json } from '@belte/belte/server/json'
+import { POST } from '@belte/belte/server/POST'
+import { z } from 'zod'
+
+// Declare once at module scope; returning it IS the error.
+const outOfStock = error.typed('outOfStock', 409, z.object({ id: z.string(), restockDays: z.number() }))
+
+export const reserveProduct = POST(
+    ({ id }) => (stock[id] ? json({ id, reserved: true }) : outOfStock({ id, restockDays: 3 })),
+    { inputSchema: z.object({ id: z.string() }), clients: { mcp: true } },
+)
+// The rpc infers its error surface from the returned constructors — no errors: option.`} />
+
+    <CodeBlock
+        title="client — narrow .kind and the typed .data together"
+        code={`try {
+    await reserveProduct({ id: '1' })
+} catch (err) {
+    if (reserveProduct.isError(err, 'outOfStock')) {
+        err.data.restockDays   // typed number, narrowed from the constructor's schema
+    }
+}`} />
 </section>

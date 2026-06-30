@@ -128,8 +128,7 @@ to justify adoption. The artifacts argue; prose doesn't.
 
 ## The body — the story arc
 
-Budget: target ~400 lines, ceiling ~450 (the phase headers and merged
-sections cost a little over the old flat layout). Per concept: **one snippet,
+Per concept: **one snippet,
 one table, at most one `>` warning line, prose ≤ 2 sentences.** Tables first
 for anything enumerable; bullets for one-line rules; prose only for a nuance
 neither can hold. Over budget → cut prose, never facts.
