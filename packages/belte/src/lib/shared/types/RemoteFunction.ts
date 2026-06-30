@@ -1,8 +1,10 @@
 import type { ClientFlags } from './ClientFlags.ts'
+import type { ErrorSpec } from './ErrorSpec.ts'
 import type { HttpMethod } from './HttpMethod.ts'
 import type { Outbox } from './Outbox.ts'
 import type { RawRemoteFunction } from './RawRemoteFunction.ts'
 import type { RemoteCallable } from './RemoteCallable.ts'
+import type { RpcErrorGuard } from './RpcErrorGuard.ts'
 import type { Subscribable } from './Subscribable.ts'
 
 /*
@@ -37,7 +39,11 @@ into args (still schema-validated) and File parts into files(). FormData is
 stringly-typed, so this is the upload escape hatch — typed object args remain
 the default for everything else.
 */
-export type RemoteFunction<Args, Return> = RemoteCallable<Args, Return> & {
+export type RemoteFunction<
+    Args,
+    Return,
+    Errors extends ErrorSpec = Record<never, never>,
+> = RemoteCallable<Args, Return> & {
     readonly method: HttpMethod
     readonly url: string
     readonly clients: ClientFlags
@@ -47,6 +53,11 @@ export type RemoteFunction<Args, Return> = RemoteCallable<Args, Return> & {
        `rpc.outbox()` reads the reactive list of undelivered parked writes and
        `rpc.outbox.retry()` drains the queue. Absent on the server and on non-durable rpcs. */
     readonly outbox?: Outbox<Args>
+    /* Type-guard a caught error against this rpc's declared `errors` (plus the framework
+       `'validation'` / `'queued'`): narrows `.kind` and, for a known kind, `.data` — the
+       per-rpc replacement for a global guard, since the error name → data type mapping
+       lives in the rpc's own spec. */
+    readonly isError: RpcErrorGuard<Errors>
     stream(args?: Args | FormData): Subscribable<Return>
     fetch(request: Request): Promise<Response>
 }

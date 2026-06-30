@@ -1,4 +1,5 @@
 import type { ClientFlags } from '../../../shared/types/ClientFlags.ts'
+import type { ErrorSpec } from '../../../shared/types/ErrorSpec.ts'
 import type { RemoteFunction } from '../../../shared/types/RemoteFunction.ts'
 import type { StandardSchemaV1 } from '../../../shared/types/StandardSchemaV1.ts'
 import type { RemoteHandler } from './RemoteHandler.ts'
@@ -45,42 +46,51 @@ export type RpcHelper = {
         Return = unknown,
         InputSchema extends StandardSchemaV1 = StandardSchemaV1,
         FilesSchema extends StandardSchemaV1 = StandardSchemaV1,
+        Errors extends ErrorSpec = Record<string, never>,
     >(
         fn: RemoteHandler<
             StandardSchemaV1.InferOutput<InputSchema> & StandardSchemaV1.InferOutput<FilesSchema>,
-            Return
+            Return,
+            Errors
         >,
         opts: {
             inputSchema: InputSchema
             filesSchema: FilesSchema
             outputSchema?: StandardSchemaV1
+            errors?: Errors
             clients?: Partial<ClientFlags>
             crossOrigin?: boolean
             maxBodySize?: number
             timeout?: number
         },
-    ): RemoteFunction<StandardSchemaV1.InferInput<InputSchema>, Return>
-    <Return = unknown, InputSchema extends StandardSchemaV1 = StandardSchemaV1>(
-        fn: RemoteHandler<StandardSchemaV1.InferOutput<InputSchema>, Return>,
+    ): RemoteFunction<StandardSchemaV1.InferInput<InputSchema>, Return, Errors>
+    <
+        Return = unknown,
+        InputSchema extends StandardSchemaV1 = StandardSchemaV1,
+        Errors extends ErrorSpec = Record<string, never>,
+    >(
+        fn: RemoteHandler<StandardSchemaV1.InferOutput<InputSchema>, Return, Errors>,
         opts: {
             inputSchema: InputSchema
             outputSchema?: StandardSchemaV1
+            errors?: Errors
             clients?: Partial<ClientFlags>
             crossOrigin?: boolean
             maxBodySize?: number
             timeout?: number
         },
-    ): RemoteFunction<StandardSchemaV1.InferInput<InputSchema>, Return>
-    <Args = undefined, Return = unknown>(
-        fn: RemoteHandler<Args, Return>,
+    ): RemoteFunction<StandardSchemaV1.InferInput<InputSchema>, Return, Errors>
+    <Args = undefined, Return = unknown, Errors extends ErrorSpec = Record<never, never>>(
+        fn: RemoteHandler<Args, Return, Errors>,
         opts: {
             outputSchema?: StandardSchemaV1
+            errors?: Errors
             clients?: Partial<ClientFlags>
             crossOrigin?: boolean
             maxBodySize?: number
             timeout?: number
         },
-    ): RemoteFunction<Args, Return>
+    ): RemoteFunction<Args, Return, Errors>
     <Args = undefined, Return = unknown>(
         fn: RemoteHandler<Args, Return>,
     ): RemoteFunction<Args, Return>

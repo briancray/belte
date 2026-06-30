@@ -9,6 +9,7 @@ import type { HttpMethod } from '../shared/types/HttpMethod.ts'
 import type { Outbox } from '../shared/types/Outbox.ts'
 import type { PersistenceStore } from '../shared/types/PersistenceStore.ts'
 import type { RemoteFunction } from '../shared/types/RemoteFunction.ts'
+import type { RpcOptions } from '../shared/types/RpcOptions.ts'
 import { UNREACHABLE_STATUSES } from '../shared/UNREACHABLE_STATUSES.ts'
 import { withBase } from '../shared/withBase.ts'
 import { createOutboxQueue, type OutboxQueue } from './rpcOutbox/createOutboxQueue.ts'
@@ -59,13 +60,13 @@ export function remoteProxy<Args, Return>(
         proxy (/v2/rpc/…); the cache key keeps the bare `url` (keyForRemoteCall
         reads fn.url), so SSR snapshots round-trip base-independently.
         */
-        buildRequest: (args) =>
+        buildRequest: (args, opts) =>
             buildRpcRequest({
                 method,
                 url: withBase(url),
                 args,
                 baseUrl: window.location.href,
-                headers: rpcHeaders(),
+                headers: rpcHeaders(opts?.headers),
             }),
         /*
         Forcing `getRequest()` once builds the Request and seeds the cache meta thunk in
@@ -75,9 +76,9 @@ export function remoteProxy<Args, Return>(
         locked), so the clone is what a resend can reconstruct. The throw lets the caller
         branch on `error.kind === 'queued'` (parked, will retry) vs. a real server rejection.
         */
-        invoke: (args, getRequest) => {
+        invoke: (args, getRequest, opts) => {
             if (queue === undefined) {
-                return fetchWithTimeout(getRequest())
+                return fetchWithTimeout(getRequest(), opts)
             }
             /* A non-empty queue means an undelivered backlog: park this call at the TAIL and
                throw, rather than let a live fetch leapfrog older writes and land out of
@@ -95,7 +96,7 @@ export function remoteProxy<Args, Return>(
             }
             const request = getRequest()
             const parkable = request.clone()
-            return fetchWithTimeout(request).then(
+            return fetchWithTimeout(request, opts).then(
                 (response) => {
                     if (UNREACHABLE_STATUSES.has(response.status)) {
                         throw queuedThrow(
@@ -188,18 +189,23 @@ function outboxFace<Args>(queue: OutboxQueue<Args>): Outbox<Args> {
 }
 
 /*
-Applies the env-configured client timeout (BELTE_CLIENT_TIMEOUT, ms) when one
-is set; an unset slot fetches unbounded, exactly as before. A timeout abort
-surfaces as a 504 HttpError so the error boundary reports an honest status
-(errorParamsForThrow reads HttpError.status) instead of a raw DOMException →
-500. Other rejections (genuine network failure) propagate untouched.
+Fetches under the caller's opts.signal merged with the env-configured client
+timeout (BELTE_CLIENT_TIMEOUT, ms) via AbortSignal.any; neither present and no
+transport opts → the unbounded fetch, exactly as before. A timeout surfaces as a
+504 HttpError so the error boundary reports an honest status (errorParamsForThrow
+reads HttpError.status) instead of a raw DOMException → 500. Other rejections (a
+genuine network failure, or the caller's own abort) propagate untouched. The
+caller's keepalive/priority/cache opts pass through to fetch unchanged.
 */
-function fetchWithTimeout(request: Request): Promise<Response> {
+function fetchWithTimeout(request: Request, opts?: RpcOptions): Promise<Response> {
     const timeout = rpcTimeoutSlot.ms
-    if (timeout === undefined) {
+    const timeoutSignal = timeout === undefined ? undefined : AbortSignal.timeout(timeout)
+    const signal = combineSignals(opts?.signal ?? undefined, timeoutSignal)
+    const init = fetchInit(signal, opts)
+    if (init === undefined) {
         return fetch(request)
     }
-    return fetch(request, { signal: AbortSignal.timeout(timeout) }).catch((error: unknown) => {
+    return fetch(request, init).catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'TimeoutError') {
             throw new HttpError(
                 new Response('client timeout', { status: 504, statusText: 'Gateway Timeout' }),
@@ -210,23 +216,57 @@ function fetchWithTimeout(request: Request): Promise<Response> {
 }
 
 /*
-belte's per-RPC headers: the page traceparent (continues the server trace) and,
-only while offline, the offline marker so the handler's online() reflects the
-caller's connectivity. Returns undefined when neither applies so the
-allocation-free fetch path stays the common case.
+The fetch init from the merged abort signal plus the caller's transport opts
+(keepalive/priority/cache). headers are deliberately absent — they live on the
+Request built in buildRequest, since fetch(request, { headers }) replaces rather
+than merges. undefined when nothing applies, preserving the allocation-free
+unbounded fetch for the common call.
 */
-function rpcHeaders(): Headers | undefined {
-    const headers = new Headers()
-    let any = false
+function fetchInit(signal: AbortSignal | undefined, opts?: RpcOptions): RequestInit | undefined {
+    const init: RequestInit = {}
+    if (signal !== undefined) {
+        init.signal = signal
+    }
+    if (opts?.keepalive !== undefined) {
+        init.keepalive = opts.keepalive
+    }
+    if (opts?.priority !== undefined) {
+        init.priority = opts.priority
+    }
+    if (opts?.cache !== undefined) {
+        init.cache = opts.cache
+    }
+    return Object.keys(init).length === 0 ? undefined : init
+}
+
+/* One AbortSignal over those present: AbortSignal.any when both, the lone one when
+   one, undefined when none (the unbounded fetch). */
+function combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal | undefined {
+    const present = signals.filter((signal): signal is AbortSignal => signal !== undefined)
+    if (present.length <= 1) {
+        return present[0]
+    }
+    return AbortSignal.any(present)
+}
+
+/*
+belte's per-RPC headers, merged onto the caller's opts.headers: the page traceparent
+(continues the server trace) and, only while offline, the offline marker so the
+handler's online() reflects the caller's connectivity. Caller headers go in first and
+the framework's are set last, so a caller adds transport metadata (idempotency-key,
+authorization) but can never overwrite traceparent or the offline marker; content-type
+stays owned by buildRpcRequest. Returns undefined when neither caller nor framework set
+a header, so the allocation-free fetch path stays the common case.
+*/
+function rpcHeaders(callerHeaders?: HeadersInit): Headers | undefined {
+    const headers = new Headers(callerHeaders)
     const traceparent = trace()
     if (traceparent) {
         headers.set('traceparent', traceparent)
-        any = true
     }
     /* Presence = offline; absence = online/unknown. navigator.onLine's offline signal is the reliable direction. */
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         headers.set(OFFLINE_HEADER, '1')
-        any = true
     }
-    return any ? headers : undefined
+    return headers.keys().next().done ? undefined : headers
 }
