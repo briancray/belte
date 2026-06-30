@@ -16,8 +16,13 @@ export function attachPolicy(
     options: CacheOptions | undefined,
     refetch: () => Promise<unknown>,
 ): void {
+    /* The entry-has-policy check is a free field read; do it before parsing the
+       swr window so a warm read of an already-armed entry skips policyWindow. */
+    if (entry.invalidation) {
+        return
+    }
     const policy = policyWindow(options?.swr)
-    if (entry.invalidation || !policy) {
+    if (!policy) {
         return
     }
     entry.invalidation = { refetch, throttle: policy.throttle, debounce: policy.debounce }

@@ -98,7 +98,7 @@ function appOrigin(): string | undefined {
         return undefined
     }
     try {
-        return new URL(process.env.APP_URL).origin
+        return originOf(process.env.APP_URL)
     } catch {
         return undefined
     }

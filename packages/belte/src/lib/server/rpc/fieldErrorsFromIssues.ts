@@ -11,15 +11,15 @@ raw `issues` keep every message and the full path. Issues with no string field
 export function fieldErrorsFromIssues(
     issues: readonly StandardSchemaV1.Issue[],
 ): Record<string, string> {
-    const fields: Record<string, string> = {}
-    for (const issue of issues) {
+    return issues.reduce<Record<string, string>>((fields, issue) => {
         const segment = issue.path?.[0]
         /* `typeof null === 'object'` — guard it so a malformed adapter emitting a null
            segment can't deref `.key` and turn a clean 422 into a 500. */
         const key = segment !== null && typeof segment === 'object' ? segment.key : segment
+        /* First message wins per field — skip a key already recorded. */
         if (typeof key === 'string' && !(key in fields)) {
             fields[key] = issue.message
         }
-    }
-    return fields
+        return fields
+    }, {})
 }
