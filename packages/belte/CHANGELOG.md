@@ -1,5 +1,39 @@
 # @belte/belte
 
+## 0.33.0
+
+### Minor Changes
+
+- [`ea0deaa`](https://github.com/briancray/belte/commit/ea0deaa8212a26d933096d8a7ebe556c98ffc3af) - errors() factory replaces ctx.errors; constructors return TypedResponse ([`668b484`](https://github.com/briancray/belte/commit/668b484890e7f38e016ea6391d8290ce9527d89e))
+
+- [`ea0deaa`](https://github.com/briancray/belte/commit/ea0deaa8212a26d933096d8a7ebe556c98ffc3af) - Breaking: error.typed() replaces errors() factory; typed errors inferred from handler return ([`a967b2d`](https://github.com/briancray/belte/commit/a967b2d1c84f13c4769e988b9e86680de3f9bcbc))
+
+- [`01ca2cf`](https://github.com/briancray/belte/commit/01ca2cfc2191dad45ae3073e87cf5ad41cd8d9f9) - Add `error.typed(name, status, schema?)` — declare a single, reusable typed-error constructor. Returning it from a handler IS the error (it serializes a `{ $belteError, data }` body at `status`), and the rpc reads the constructor's branded return type to expose the error on the client's `rpc.isError(caught, 'name')` (narrowing `.kind` and typed `.data`). Compose by returning whichever constructors you want — no set, no registration:
+
+  ```ts
+  const outOfStock = error.typed(
+    "outOfStock",
+    409,
+    z.object({ sku: z.string() })
+  );
+  export const buy = POST(({ sku }) =>
+    inStock(sku) ? json(place(sku)) : outOfStock({ sku })
+  );
+  // buy.isError(e, 'outOfStock') → e.data: { sku: string }, inferred from the body
+  ```
+
+  The rpc's typed-error surface is now **inferred from the handler's return type** — the errors a handler returns are the errors it can raise — so there is no `errors:` rpc option and no `errors(spec)` factory. A typed error you only ever `throw` (rather than `return`) narrows kind-only, like a plain `error()`.
+
+  BREAKING: removes the never-released `belte/server/errors` export and the rpc `errors:` option. Replace `errors({ x: { status, data } })` + `errors: set` with module-scope `const x = error.typed('x', status, schema)` constructors returned from the handler.
+
+### Patch Changes
+
+- [`ea0deaa`](https://github.com/briancray/belte/commit/ea0deaa8212a26d933096d8a7ebe556c98ffc3af) - drop dead error(descriptor) overload + ErrorDescriptor ([`1b6fec0`](https://github.com/briancray/belte/commit/1b6fec00913fc75a5d1318d6c6b8e1fdf8eff8b2))
+
+- [`ea0deaa`](https://github.com/briancray/belte/commit/ea0deaa8212a26d933096d8a7ebe556c98ffc3af) - restore RemoteHandler doc-block; assert nullary error arity ([`3d031be`](https://github.com/briancray/belte/commit/3d031be4c05c3a0570e9ecff7d57ae5c17d963b6))
+
+- [`ea0deaa`](https://github.com/briancray/belte/commit/ea0deaa8212a26d933096d8a7ebe556c98ffc3af) - extract typedErrorResponse + STATUS_TEXT serializer ([`4b20f7b`](https://github.com/briancray/belte/commit/4b20f7b7e9f6f784a522d7e904774163c3e00c3a))
+
 ## 0.32.0
 
 ### Minor Changes
