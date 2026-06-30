@@ -4,12 +4,13 @@
    shape with a field-keyed message map. */
 import { expect, test } from 'bun:test'
 import { error } from '../src/lib/server/error.ts'
+import { errors } from '../src/lib/server/errors.ts'
+import { POST } from '../src/lib/server/POST.ts'
 import { defineRpc } from '../src/lib/server/rpc/defineRpc.ts'
 import { runWithRequestScope } from '../src/lib/server/runtime/runWithRequestScope.ts'
 import { decodeResponse } from '../src/lib/shared/decodeResponse.ts'
 import { HttpError } from '../src/lib/shared/HttpError.ts'
 import { streamResponse } from '../src/lib/shared/streamResponse.ts'
-import type { ErrorConstructors } from '../src/lib/shared/types/ErrorConstructors.ts'
 import type { OutboxEntry } from '../src/lib/shared/types/OutboxEntry.ts'
 import type { RemoteFunction } from '../src/lib/shared/types/RemoteFunction.ts'
 import type { StandardSchemaV1 } from '../src/lib/shared/types/StandardSchemaV1.ts'
@@ -33,17 +34,12 @@ const requireEmail: StandardSchemaV1 = {
     },
 }
 
-const couponSpec = { invalidCoupon: { status: 400, data: passthrough } } as const
+const couponErrors = errors({ invalidCoupon: { status: 400, data: passthrough } })
 
-const buy = defineRpc(
-    'POST',
-    '/rpc/buy',
-    (_args, ctx) => {
-        const errors = ctx.errors as ErrorConstructors<typeof couponSpec>
-        return error(errors.invalidCoupon({ code: 'EXPIRED' }))
-    },
-    { inputSchema: passthrough, errors: couponSpec },
-)
+const buy = defineRpc('POST', '/rpc/buy', () => couponErrors.invalidCoupon({ code: 'EXPIRED' }), {
+    inputSchema: passthrough,
+    errors: couponErrors,
+})
 
 function post(url: string, body: unknown): Request {
     return new Request(`https://test.local${url}`, {
@@ -219,3 +215,21 @@ test('rpc.isError types declared-error data from the rpc spec', () => {
     /* The guarantee is the compile of `_narrows` above; this just keeps it referenced. */
     expect(typeof _narrows).toBe('function')
 })
+
+/* Type-only: `Errors` infers off the `errors:` opt (no cast), flows to the
+   returned fn's `isError`, narrowing both `.kind` and `.data`. The schema carries
+   real `~standard` types (like `_narrows` above) so `InferInput` is `{ available }`,
+   not `unknown` — a validate-only literal would collapse `.data` back to `unknown`. */
+const stockDataSchema = undefined as unknown as StandardSchemaV1<{ available: number }>
+function _inferenceCheck(caught: unknown): number | undefined {
+    const stockErrors = errors({ outOfStock: { status: 409, data: stockDataSchema } })
+    const sell = POST((_args: { available: number }) => stockErrors.outOfStock({ available: 0 }), {
+        inputSchema: stockDataSchema,
+        errors: stockErrors,
+    })
+    if (sell.isError(caught, 'outOfStock')) {
+        return caught.data.available
+    }
+    return undefined
+}
+void _inferenceCheck
