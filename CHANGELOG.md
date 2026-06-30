@@ -1,5 +1,37 @@
 # @belte/belte
 
+## 0.32.0
+
+### Minor Changes
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - typed error specs with rpc.isError() guard and per-call RpcOptions ([`7fab4c0`](https://github.com/briancray/belte/commit/7fab4c02379053365b0c8f4621b3b8d6970f838e))
+
+### Patch Changes
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - extract belte:\* virtual loaders into belteVirtualModule ([`32b21a2`](https://github.com/briancray/belte/commit/32b21a2c4d5470c650b71654d297ef2c14161a73))
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - single-pass script-payload escaping + lock behavior with tests ([`384d178`](https://github.com/briancray/belte/commit/384d1785c3042fa13f50612e3239dee1cdb9c7ec))
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - extract belteResolverPlugin pure helpers to lib/shared ([`4d092ef`](https://github.com/briancray/belte/commit/4d092ef36a15412cf8c733aad4dbabe9eaab1996))
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - extract rpc/socket/prompt module rewriters from belteResolverPlugin ([`4df6e23`](https://github.com/briancray/belte/commit/4df6e234425f522a4516affd1a93139127f63311))
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - memoize tools/prompts projection against registry revision ([`513c240`](https://github.com/briancray/belte/commit/513c24025be548a6773404d51eddf01eca951b67))
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - code-review cleanups in cache/rpc/reachable ([`5dae431`](https://github.com/briancray/belte/commit/5dae43119c08ee2f658e63b4818d15d13fb238b5))
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - split createServer into focused runtime factories ([`86d3a30`](https://github.com/briancray/belte/commit/86d3a30fe38c7528ca365f4646bbaa2b6706d538))
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - split cache.ts into single-responsibility shared modules ([`9149ea6`](https://github.com/briancray/belte/commit/9149ea61bb12c8f0c716db3d0043a09cf813fb19))
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - satisfy useIterableCallbackReturn lint in applyTags ([`993f411`](https://github.com/briancray/belte/commit/993f41172fa60c4de9fb8e44567612aa6cc73ae7))
+
+- [`fcafa2a`](https://github.com/briancray/belte/commit/fcafa2aa234995bb827c91a01498ff032891d21b) - contain async handler rejections in ws message dispatch ([`f25a278`](https://github.com/briancray/belte/commit/f25a27820d807ed3ae7f9872804ce5b96f2eeb2b))
+
+- [`3ad5d6d`](https://github.com/briancray/belte/commit/3ad5d6d65124b7832c511571c34c1e0eb90a9b87) - Fix the cache reload marker (`refreshing()` after a policy-less `cache.invalidate`) firing for keys read outside a tracking scope. `hasReader` reported a phantom reader for any key ever read — including a plain `await cache(fn)()` in an event handler — so `invalidate()` could accrete a `pendingRefresh` marker on the long-lived tab store for keys nobody is reactively holding. The marker is now gated on a live reactive reader (mirroring `tail.ts`), matching the documented `CacheStore` contract that an untracked read is a no-op; a tracked read still flags the reload exactly as before.
+
+- [`d445f2b`](https://github.com/briancray/belte/commit/d445f2b6f124e6b0988ed92bccb06cceb02c3049) - Fix `cache.on().patch()` corrupting non-JSON values. The patch path cloned the updater's output through a JSON round-trip, silently coercing `Date`/`Set`/`Map` and dropping `undefined` fields (and throwing on `BigInt`). It now uses `structuredClone`, so an updater returning `current => ({ ...current, lastSeen: new Date(), roles: new Set(current.roles) })` preserves those types. Also gives the `error({ $belteError, status, data })` descriptor form a `HTTP <status>` reason-phrase fallback, so a typed error declaring a non-standard status no longer surfaces an empty `HttpError.statusText`.
+
 ## 0.31.0
 
 ### Minor Changes
