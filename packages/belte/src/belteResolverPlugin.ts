@@ -7,18 +7,17 @@ import { belteLog } from './lib/shared/belteLog.ts'
 import { embedZstdDir } from './lib/shared/embedZstdDir.ts'
 import { escapeRegex } from './lib/shared/escapeRegex.ts'
 import { fileStem } from './lib/shared/fileStem.ts'
-import { jsonSchemaForPromptArguments } from './lib/shared/jsonSchemaForPromptArguments.ts'
 import { loadShell } from './lib/shared/loadShell.ts'
 import { manifestModule } from './lib/shared/manifestModule.ts'
 import { once } from './lib/shared/once.ts'
 import { pageUrlForFile } from './lib/shared/pageUrlForFile.ts'
-import { parsePromptMarkdown } from './lib/shared/parsePromptMarkdown.ts'
-import { prepareRpcModule } from './lib/shared/prepareRpcModule.ts'
-import { prepareSocketModule } from './lib/shared/prepareSocketModule.ts'
 import { programNameForPackage } from './lib/shared/programNameForPackage.ts'
 import { promptNameForFile } from './lib/shared/promptNameForFile.ts'
 import { readPackageJson } from './lib/shared/readPackageJson.ts'
 import { resolveExtension } from './lib/shared/resolveExtension.ts'
+import { rewritePromptModule } from './lib/shared/rewritePromptModule.ts'
+import { rewriteRpcModule } from './lib/shared/rewriteRpcModule.ts'
+import { rewriteSocketModule } from './lib/shared/rewriteSocketModule.ts'
 import { rpcUrlForFile } from './lib/shared/rpcUrlForFile.ts'
 import { scanDir } from './lib/shared/scanDir.ts'
 import { scanPages } from './lib/shared/scanPages.ts'
@@ -206,140 +205,17 @@ export function belteResolverPlugin({
                 return undefined
             })
 
-            build.onLoad({ filter: rpcFilter }, async (args) => {
-                if (!args.path.startsWith(`${rpcDir}/`)) {
-                    return undefined
-                }
-                const relativePath = args.path.slice(rpcDir.length + 1)
-                const source = await Bun.file(args.path).text()
-                const url = rpcUrlForFile(relativePath)
-                const importName = await belteImportNameOnce()
-                const prepared = prepareRpcModule(source, importName)
-                if (!prepared) {
-                    throw new Error(
-                        `[belte] src/server/rpc/${relativePath} has no \`export const <name> = <METHOD>(...)\` — every $rpc module must declare exactly one remote function`,
-                    )
-                }
-                const expectedName = fileStem(relativePath)
-                if (prepared.exportName !== expectedName) {
-                    throw new Error(
-                        `[belte] src/server/rpc/${relativePath} exports \`${prepared.exportName}\` but the filename expects \`${expectedName}\` — the export name must match the file's stem`,
-                    )
-                }
-                /*
-                For the client bundle, replace the entire module source
-                with a single proxy stub so the handler body and any
-                server-only top-level imports never reach the browser.
-                The stub keeps the same export name the source declared,
-                so page imports resolve identically on both sides.
-                */
-                if (target === 'client') {
-                    /* A durable rpc (`outbox: true`) gets the third arg so its client proxy
-                       parks unreachable calls onto the outbox. */
-                    const durableArg = prepared.durable ? ', { outbox: true }' : ''
-                    const contents = `import { remoteProxy as __belteRemoteProxy__ } from '${importName}/browser/remoteProxy';
-export const ${prepared.exportName} = __belteRemoteProxy__(${JSON.stringify(prepared.method)}, ${JSON.stringify(url)}${durableArg});
-`
-                    return { contents, loader: 'ts' }
-                }
-                /*
-                Server target: strip the user's method import, then rewrite
-                the `<METHOD>(` call so the method (from the identifier) and
-                the URL (from the file path) are threaded into the
-                runtime constructor — defineRpc. The user's handler body
-                stays intact between the parens; any generics on the call
-                are dropped (they carry no runtime info). Rewriting is
-                tokenizer-driven so `GET` mentions inside strings and
-                comments are left alone.
-                */
-                const banner = `import { defineRpc as __belteDefineRpc__ } from '${importName}/server/rpc/defineRpc';
-`
-                return { contents: `${banner}${prepared.rewriteForServer(url)}`, loader: 'ts' }
-            })
+            build.onLoad({ filter: rpcFilter }, async (args) =>
+                rewriteRpcModule(args.path, rpcDir, target, await belteImportNameOnce()),
+            )
 
-            build.onLoad({ filter: socketsFilter }, async (args) => {
-                if (!args.path.startsWith(`${socketsDir}/`)) {
-                    return undefined
-                }
-                const relativePath = args.path.slice(socketsDir.length + 1)
-                const source = await Bun.file(args.path).text()
-                const name = socketNameForFile(relativePath)
-                const importName = await belteImportNameOnce()
-                const prepared = prepareSocketModule(source, importName)
-                if (!prepared) {
-                    throw new Error(
-                        `[belte] src/server/sockets/${relativePath} has no \`export const <name> = socket(...)\` — every $sockets module must declare exactly one socket`,
-                    )
-                }
-                const expectedName = fileStem(relativePath)
-                if (prepared.exportName !== expectedName) {
-                    throw new Error(
-                        `[belte] src/server/sockets/${relativePath} exports \`${prepared.exportName}\` but the filename expects \`${expectedName}\` — the export name must match the file's stem`,
-                    )
-                }
-                if (target === 'client') {
-                    /*
-                    Client bundle gets a name-only stub — opts (tail,
-                    clientPublish) are server-side state and don't
-                    affect the client's wire behaviour.
-                    */
-                    const contents = `import { socketProxy as __belteSocketProxy__ } from '${importName}/browser/socketProxy';
-export const ${prepared.exportName} = __belteSocketProxy__(${JSON.stringify(name)});
-`
-                    return { contents, loader: 'ts' }
-                }
-                const banner = `import { defineSocket as __belteDefineSocket__ } from '${importName}/server/sockets/defineSocket';
-`
-                return {
-                    contents: `${banner}${prepared.rewriteForServer(name)}`,
-                    loader: 'ts',
-                }
-            })
+            build.onLoad({ filter: socketsFilter }, async (args) =>
+                rewriteSocketModule(args.path, socketsDir, target, await belteImportNameOnce()),
+            )
 
-            build.onLoad({ filter: promptsFilter }, async (args) => {
-                if (!args.path.startsWith(`${promptsDir}/`)) {
-                    return undefined
-                }
-                /*
-                Prompts are MCP-only — no client-side counterpart. The
-                client bundle never imports a prompts module, but emit an
-                empty stub for the client target defensively so a stray
-                import can't drag the prompt body into the browser bundle.
-                */
-                if (target === 'client') {
-                    return { contents: 'export {}', loader: 'ts' }
-                }
-                /*
-                Server target: a `.md` prompt is data, not code. Parse the
-                frontmatter (description + arguments) and body once, then
-                generate a module that registers the prompt via definePrompt
-                — the body is embedded as a string literal and the render
-                closure interpolates `{{name}}` placeholders at call time.
-                */
-                const relativePath = args.path.slice(promptsDir.length + 1)
-                const source = await Bun.file(args.path).text()
-                const name = promptNameForFile(relativePath)
-                const importName = await belteImportNameOnce()
-                const parsed = parsePromptMarkdown(source)
-                const jsonSchema = jsonSchemaForPromptArguments(parsed.arguments)
-                const optionLines = [
-                    parsed.description
-                        ? `    description: ${JSON.stringify(parsed.description)},`
-                        : undefined,
-                    jsonSchema ? `    jsonSchema: ${JSON.stringify(jsonSchema)},` : undefined,
-                    `    render: (args) => __belteRenderPromptTemplate__(__template__, args),`,
-                ]
-                    .filter((line) => line !== undefined)
-                    .join('\n')
-                const contents = `import { definePrompt as __belteDefinePrompt__ } from '${importName}/server/prompts/definePrompt'
-import { renderPromptTemplate as __belteRenderPromptTemplate__ } from '${importName}/server/prompts/renderPromptTemplate'
-const __template__ = ${JSON.stringify(parsed.body)}
-export const prompt = __belteDefinePrompt__(${JSON.stringify(name)}, {
-${optionLines}
-})
-`
-                return { contents, loader: 'ts' }
-            })
+            build.onLoad({ filter: promptsFilter }, async (args) =>
+                rewritePromptModule(args.path, promptsDir, target, await belteImportNameOnce()),
+            )
 
             build.onLoad({ filter: /.*/, namespace: NS }, async (args) => {
                 if (args.path === 'belte:rpc') {
