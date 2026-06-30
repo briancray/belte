@@ -1,5 +1,23 @@
 # @belte/belte
 
+## 0.31.0
+
+### Minor Changes
+
+- [`17f4e64`](https://github.com/briancray/belte/commit/17f4e649010d266ff02cd1cfe40b87956f3859d3) - Cache options reshape: `scope` → `tags` and `invalidate` → `swr`. Invalidation groups are now declared with `tags: string[]` (was `scope: string | string[]`); `cache.invalidate({ tags })` drops every entry sharing a tag. Stale-while-revalidate is now `swr`: `swr: true` keeps the stale value visible and refetches in the background on every `cache.invalidate` hit (with `refreshing()` reporting the reload, so the reader never blanks), and the object form `swr: { throttle }` / `swr: { debounce }` coalesces a burst of invalidations into far fewer refetches. Replaces the prior `invalidate: { throttle, debounce }`.
+
+- [`532d106`](https://github.com/briancray/belte/commit/532d1060cc4e224cd01541f035d434104a75e504) - `reachable` is now isomorphic. The export moves from `belte/server/reachable` to `belte/shared/reachable` and runs on both sides: in the browser it HEADs the host no-cors. Bare `reachable()` defaults to the app's own server origin — the live origin the page came from on the client, `APP_URL` on the server — making it the active-probe complement to `online()`. Like `online()`, reactivity is opt-in by where you read it: read inside a `$derived`/`$effect` on the client and the scope re-runs when the host flips up or down; call it at a decision point for a one-shot `await reachable()`. Server reads stay one-shot, faithful-first `Promise<boolean>`.
+
+- [`17f4e64`](https://github.com/briancray/belte/commit/17f4e649010d266ff02cd1cfe40b87956f3859d3) - RPC-native durable outbox (local-first writes). Declare `outbox: true` on a mutating rpc (`POST(handler, { outbox: true })`) and an unreachable server — a transport failure or a 502/503/504/52x — parks the request for replay instead of just throwing. The call throws an `HttpError` with `kind === 'queued'` whose `data` is the parked entry (`await (err.data as OutboxEntry).settled` for the eventual outcome). Parked writes are persisted (localStorage), survive reload, and drain FIFO on demand via `rpc.outbox.retry()` or the global `outbox.retry()` — there is no auto-drain; the app owns when to replay. `rpc.outbox()` is the reactive per-rpc queue and the new `belte/browser/outbox` export is the global reactive aggregate; `pending(rpc)` (and `pending(rpc, args)`) now also counts parked writes, so a submit guard works offline. `outbox: true` is mutating-only and must be a build-time literal (enforced by the bundler and a server-side backstop).
+
+- [`17f4e64`](https://github.com/briancray/belte/commit/17f4e649010d266ff02cd1cfe40b87956f3859d3) - Rename "verb" terminology to "rpc" throughout. The public export `belte/server/rpc/defineVerb` is now `belte/server/rpc/defineRpc`, and the `HttpVerb` type is now `HttpMethod`. The inspector surface JSON field `verbs` is now `rpcs`. The GET/POST/PUT/PATCH/DELETE/HEAD helpers and `isReadOnlyMethod` are unchanged (they are named for the HTTP method, which is correct).
+
+- [`17f4e64`](https://github.com/briancray/belte/commit/17f4e649010d266ff02cd1cfe40b87956f3859d3) - Structured validation errors. An input/file-schema validation failure now returns a typed `422` carrying both the raw Standard Schema `issues` and a form-friendly `fields` (top-level field → first message) map. On the client it surfaces as an `HttpError` with `kind === 'validation'` and `data` shaped as the new exported `ValidationErrorData` type — narrow with `err instanceof HttpError && err.kind === 'validation'`. `HttpError` gains `kind`/`data`, and `error()` accepts a descriptor form (`error({ $belteError, status, data })`) that serializes a `{ $belteError, data }` body parsed back onto those fields on both the plain and streaming decode paths.
+
+### Patch Changes
+
+- [`532d106`](https://github.com/briancray/belte/commit/532d1060cc4e224cd01541f035d434104a75e504) - Cache reload-marker (`refreshing()`) correctness on the tab store. A policy-less `cache.invalidate` now mints its reload marker only when a reactive scope is actually holding the key's value, and the marker is pruned when that reader tears down without re-reading. Previously the marker was added unconditionally: invalidating a key with nothing on screen made its next (genuinely first-ever) mount report `refreshing()` instead of `pending()`, and the markers accreted unbounded on the long-lived client store across a session. The normal on-screen invalidate → reread reload flag is unchanged.
+
 ## 0.30.1
 
 ### Patch Changes
