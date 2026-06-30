@@ -22,9 +22,9 @@ Handlers that need the inbound Request (headers, `request.signal`, …) read
 it via `request()` from `belte/server` rather than a handler parameter, so
 the signature stays a single parsed-`args` bag.
 
-A typed error is raised by returning a constructor from a module-scope
-`errors(spec)` set (`return orderErrors.invalidCoupon({…})`) — there is no
-`ctx` param.
+A typed error is raised by returning an `error.typed(name, status, schema?)`
+constructor (`return outOfStock({…})`) — there is no `ctx` param; the rpc reads
+the error surface off the returned constructors' brands.
 */
 export type RemoteHandler<Args, Return> = (
     args: Args,

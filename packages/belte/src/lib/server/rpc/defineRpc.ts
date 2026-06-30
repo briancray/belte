@@ -5,7 +5,6 @@ import { forwardHeaders } from '../../shared/forwardHeaders.ts'
 import { isReadOnlyMethod } from '../../shared/isReadOnlyMethod.ts'
 import { resolveClientFlags } from '../../shared/resolveClientFlags.ts'
 import type { ClientFlags } from '../../shared/types/ClientFlags.ts'
-import type { ErrorSpec } from '../../shared/types/ErrorSpec.ts'
 import type { HttpMethod } from '../../shared/types/HttpMethod.ts'
 import type { RemoteFunction } from '../../shared/types/RemoteFunction.ts'
 import type { StandardSchemaV1 } from '../../shared/types/StandardSchemaV1.ts'
@@ -54,12 +53,6 @@ export function defineRpc<Args, Return>(
         inputSchema?: StandardSchemaV1
         outputSchema?: StandardSchemaV1
         filesSchema?: StandardSchemaV1
-        /* Runtime no-op type carrier: defineRpc ignores `errors` (constructors come from a
-           module-scope `errors(spec)` set). Accepts both the raw spec and any `ErrorSet` the
-           factory returns (a per-name mapped type isn't assignable to `ErrorSet<ErrorSpec>`,
-           so the carrier widens to a constructor record), keeping the migrated
-           `errors: someErrors` form type-checking. */
-        errors?: ErrorSpec | Record<string, (...args: never[]) => unknown>
         clients?: Partial<ClientFlags>
         crossOrigin?: boolean
         /* Per-rpc cap on actual received body bytes (413 past it); omitted = Bun's server-wide maxRequestBodySize. */

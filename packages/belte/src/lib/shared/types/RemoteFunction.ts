@@ -53,10 +53,10 @@ export type RemoteFunction<
        `rpc.outbox()` reads the reactive list of undelivered parked writes and
        `rpc.outbox.retry()` drains the queue. Absent on the server and on non-durable rpcs. */
     readonly outbox?: Outbox<Args>
-    /* Type-guard a caught error against this rpc's declared `errors` (plus the framework
-       `'validation'` / `'queued'`): narrows `.kind` and, for a known kind, `.data` — the
-       per-rpc replacement for a global guard, since the error name → data type mapping
-       lives in the rpc's own spec. */
+    /* Type-guard a caught error against the typed errors this rpc's handler RETURNS (plus the
+       framework `'validation'` / `'queued'`): narrows `.kind` and, for a known kind, `.data` —
+       the per-rpc replacement for a global guard, since the error name → data type mapping is
+       inferred from the `error.typed(...)` constructors in the handler's return type. */
     readonly isError: RpcErrorGuard<Errors>
     stream(args?: Args | FormData): Subscribable<Return>
     fetch(request: Request): Promise<Response>

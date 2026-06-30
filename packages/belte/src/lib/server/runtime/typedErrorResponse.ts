@@ -8,7 +8,7 @@ Serializes a typed error as a `{ $belteError, data }` JSON body at `status`, wit
 the status reason phrase as statusText so it reaches `HttpError.statusText` on the
 client (which parses the body back onto `HttpError.kind` / `.data`). `data` of
 `undefined` drops the key (nullary errors). The single serializer shared by the
-`errors()` constructors and the framework-reserved `validation` error.
+`error.typed(...)` constructors and the framework-reserved `validation` error.
 */
 export function typedErrorResponse(
     name: string,

@@ -2,96 +2,97 @@ import type { ClientFlags } from '../../../shared/types/ClientFlags.ts'
 import type { ErrorSpec } from '../../../shared/types/ErrorSpec.ts'
 import type { RemoteFunction } from '../../../shared/types/RemoteFunction.ts'
 import type { StandardSchemaV1 } from '../../../shared/types/StandardSchemaV1.ts'
-import type { ErrorSet } from './ErrorSet.ts'
-import type { RemoteHandler } from './RemoteHandler.ts'
+import type { TypedError } from './TypedError.ts'
+import type { TypedResponse } from './TypedResponse.ts'
 
 /*
-Shared signature for every rpc helper (GET / POST / …). Three overloads:
+The success body carried by a handler's return type `R`. Error branches
+(`TypedError`, checked first since they're also Responses) drop to `never` and
+union away, so `Return` is the body of the success `TypedResponse` members alone
+— an untagged `Response` falls back to `unknown`, matching hand-built responses.
+*/
+type SuccessBody<R> = R extends TypedError<string, ErrorSpec[string]>
+    ? never
+    : R extends TypedResponse<infer Body>
+      ? Body
+      : unknown
 
-  - `Rpc(fn, { inputSchema, outputSchema?, clients? })` — `Args` infers
-    from `InferInput<InputSchema>`, the handler receives
-    `InferOutput<InputSchema>`. Generic order is `<Return, InputSchema>` so
-    users can override `Return` while letting `InputSchema` infer from
-    `opts.inputSchema`. `outputSchema` is an optional Standard Schema for
-    the success body — it feeds the OpenAPI 200 response and the MCP tool
-    `outputSchema`. JSON Schema is projected from each schema's own
-    `toJSONSchema()` (wrap with withJsonSchema if the library lacks one).
-    `clients` controls which surfaces (browser / mcp / cli) expose this rpc.
-    `crossOrigin: true` exempts a mutating rpc from the router's same-origin
-    CSRF gate — by default a browser request whose Origin doesn't match the
-    app's own host is refused with 403 on every non-GET/HEAD rpc.
-    `maxBodySize` caps the body's actual received bytes (413 past it),
-    enforced before parsing; omitted, the only ceiling is Bun.serve's
-    server-wide maxRequestBodySize. `timeout` (ms) bounds the handler's
-    execution on every surface (SSR / MCP / CLI / network) — a 504 once
-    exceeded; on the network path it also aborts request().signal so a
-    handler's `fetch(ext, { signal: request().signal })` is cancelled, not
-    just abandoned.
-  - `Rpc(fn, { clients })` — schemaless but with explicit client
-    targeting (e.g. server-internal RPC with `clients: { browser: false }`).
-  - `Rpc(fn)` — bare handler. `Args` and `Return` come from the handler
-    type; `Return` is usually inferred via the `TypedResponse<T>` brand on
-    `json`/`error`/`redirect`/`jsonl`/`sse`.
+/*
+The error spec a handler's return type `R` declares — rebuilt name→entry from the
+`TypedError` brands among its branches (distributes over the union; no error
+branches → `{}`). This is what gives `rpc.isError` its typed surface with no
+`errors:` option: the errors a handler RETURNS are the errors it can raise.
+*/
+type ErrorBrand<R> = R extends TypedError<infer Name, infer Entry>
+    ? { name: Name; entry: Entry }
+    : never
+type InferredErrors<R> = { [Brand in ErrorBrand<R> as Brand['name']]: Brand['entry'] }
+
+/*
+Shared signature for every rpc helper (GET / POST / …). The handler's return
+type is inferred whole (`R`), then split: `SuccessBody<R>` becomes the caller's
+`Return`, `InferredErrors<R>` becomes the rpc's `Errors` (driving `isError`).
+Four overloads by argument source:
+
+  - `Rpc(fn, { inputSchema, filesSchema, … })` — multipart upload. The handler
+    receives the text fields (`InferOutput<InputSchema>`) intersected with the
+    validated File parts (`InferOutput<FilesSchema>`). The call site sends a
+    FormData (RemoteFunction's call accepts it). filesSchema stays off the
+    JSON-Schema projection — a File has no honest conversion — so only
+    inputSchema feeds MCP/CLI/OpenAPI.
+  - `Rpc(fn, { inputSchema, … })` — `Args` infers from `InferInput<InputSchema>`,
+    the handler receives `InferOutput<InputSchema>`. `outputSchema` is an
+    optional Standard Schema for the success body — it feeds the OpenAPI 200
+    response and the MCP tool `outputSchema`. `clients` controls which surfaces
+    expose this rpc. `crossOrigin: true` exempts a mutating rpc from the router's
+    same-origin CSRF gate. `maxBodySize` caps the body's received bytes (413).
+    `timeout` (ms) bounds the handler on every surface (a 504), and on the
+    network path aborts request().signal so an in-flight fetch is cancelled.
+  - `Rpc(fn, { clients })` — schemaless but with explicit client targeting.
+  - `Rpc(fn)` — bare handler. `Args` comes from the handler param.
 */
 export type RpcHelper = {
-    /*
-    `Rpc(fn, { inputSchema, filesSchema, … })` — multipart upload. The
-    handler receives the text fields (`InferOutput<InputSchema>`) intersected
-    with the validated File parts (`InferOutput<FilesSchema>`); both are merged
-    into one args bag. The call site sends a FormData (RemoteFunction's call
-    accepts it), since a File can't ride a JSON body. filesSchema stays off the
-    JSON-Schema projection — a File has no honest conversion (see
-    jsonSchemaForSchema) — so only inputSchema feeds MCP/CLI/OpenAPI.
-    */
     <
-        Return = unknown,
+        R extends Response,
         InputSchema extends StandardSchemaV1 = StandardSchemaV1,
         FilesSchema extends StandardSchemaV1 = StandardSchemaV1,
-        Errors extends ErrorSpec = Record<string, never>,
     >(
-        fn: RemoteHandler<
-            StandardSchemaV1.InferOutput<InputSchema> & StandardSchemaV1.InferOutput<FilesSchema>,
-            Return
-        >,
+        fn: (
+            args: StandardSchemaV1.InferOutput<InputSchema> &
+                StandardSchemaV1.InferOutput<FilesSchema>,
+        ) => R | Promise<R>,
         opts: {
             inputSchema: InputSchema
             filesSchema: FilesSchema
             outputSchema?: StandardSchemaV1
-            errors?: ErrorSet<Errors>
             clients?: Partial<ClientFlags>
             crossOrigin?: boolean
             maxBodySize?: number
             timeout?: number
         },
-    ): RemoteFunction<StandardSchemaV1.InferInput<InputSchema>, Return, Errors>
-    <
-        Return = unknown,
-        InputSchema extends StandardSchemaV1 = StandardSchemaV1,
-        Errors extends ErrorSpec = Record<string, never>,
-    >(
-        fn: RemoteHandler<StandardSchemaV1.InferOutput<InputSchema>, Return>,
+    ): RemoteFunction<StandardSchemaV1.InferInput<InputSchema>, SuccessBody<R>, InferredErrors<R>>
+    <R extends Response, InputSchema extends StandardSchemaV1 = StandardSchemaV1>(
+        fn: (args: StandardSchemaV1.InferOutput<InputSchema>) => R | Promise<R>,
         opts: {
             inputSchema: InputSchema
             outputSchema?: StandardSchemaV1
-            errors?: ErrorSet<Errors>
             clients?: Partial<ClientFlags>
             crossOrigin?: boolean
             maxBodySize?: number
             timeout?: number
         },
-    ): RemoteFunction<StandardSchemaV1.InferInput<InputSchema>, Return, Errors>
-    <Args = undefined, Return = unknown, Errors extends ErrorSpec = Record<never, never>>(
-        fn: RemoteHandler<Args, Return>,
+    ): RemoteFunction<StandardSchemaV1.InferInput<InputSchema>, SuccessBody<R>, InferredErrors<R>>
+    <Args = undefined, R extends Response = Response>(
+        fn: (args: Args) => R | Promise<R>,
         opts: {
             outputSchema?: StandardSchemaV1
-            errors?: ErrorSet<Errors>
             clients?: Partial<ClientFlags>
             crossOrigin?: boolean
             maxBodySize?: number
             timeout?: number
         },
-    ): RemoteFunction<Args, Return, Errors>
-    <Args = undefined, Return = unknown>(
-        fn: RemoteHandler<Args, Return>,
-    ): RemoteFunction<Args, Return>
+    ): RemoteFunction<Args, SuccessBody<R>, InferredErrors<R>>
+    <Args = undefined, R extends Response = Response>(
+        fn: (args: Args) => R | Promise<R>,
+    ): RemoteFunction<Args, SuccessBody<R>, InferredErrors<R>>
 }
