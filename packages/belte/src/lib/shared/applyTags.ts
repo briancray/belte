@@ -21,5 +21,7 @@ export function applyTags(entry: CacheEntry, tags: CacheOptions['tags']): void {
     if (tags.every((tag) => entry.tags!.has(tag))) {
         return
     }
-    tags.forEach((tag) => entry.tags!.add(tag))
+    tags.forEach((tag) => {
+        entry.tags!.add(tag)
+    })
 }
